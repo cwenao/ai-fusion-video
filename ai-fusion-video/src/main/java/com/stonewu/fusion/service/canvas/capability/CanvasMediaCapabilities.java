@@ -37,6 +37,8 @@ final class CanvasMediaCapabilities {
                         field("workflowVersionId", integer(1, MAX_SAFE_ID, false)),
                         field("resultType", choice(true, "image", "video")), field("prompt", text(32000)),
                         field("negativePrompt", text(32000)), field("fps", integer(1, 120, false)),
+                        field("aspectRatio", text(32)), field("megapixels", number(0.1, 16)),
+                        field("resolutionMultiple", integer(8, 128, false)), field("upscaleMegapixels", number(0.1, 16)),
                         field("generateAudio", flag()),
                         field("width", integer(1, 16384, false)), field("height", integer(1, 16384, false)),
                         field("count", integer(1, 64, false)), field("duration", integer(1, 3600, false)),

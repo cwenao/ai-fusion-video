@@ -53,6 +53,7 @@ export default function ProjectAssetsPage() {
   const [selectedItemId, setSelectedItemId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [masterEditing, setMasterEditing] = useState(false);
   const [creatingAsset, setCreatingAsset] = useState(false);
   const [creatingItem, setCreatingItem] = useState(false);
   const [search, setSearch] = useState("");
@@ -311,6 +312,7 @@ export default function ProjectAssetsPage() {
                 asset={selectedAsset}
                 saving={saving}
                 onSave={saveAsset}
+                onEditingChange={setMasterEditing}
                 onDelete={(base) => void deleteAsset(base).catch(cause => setError(getApiErrorMessage(cause)))}
               />
               <AssetItemTabs
@@ -345,6 +347,8 @@ export default function ProjectAssetsPage() {
                     }
                     mode={creatingItem ? "create" : "edit"}
                     item={creatingItem ? null : selectedItem}
+                    asset={selectedAsset}
+                    navigationBlockedReason={masterEditing ? "请先保存或取消主资产编辑，再用于生成" : null}
                     assetType={selectedAsset.type}
                     parentVersion={selectedAsset.version}
                     saving={saving}

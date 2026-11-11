@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.stonewu.fusion.entity.ai.ApiConfig;
 import com.stonewu.fusion.entity.generation.ImageTask;
 import com.stonewu.fusion.entity.generation.VideoTask;
+import com.stonewu.fusion.service.ai.comfyui.ComfyUiWorkflowService;
+import com.stonewu.fusion.service.ai.comfyui.client.ComfyUiUploadMediaKind;
 import com.stonewu.fusion.service.canvas.CanvasJson;
 import com.stonewu.fusion.service.generation.GenerationModelCapabilityService;
 import com.stonewu.fusion.service.generation.ReferenceImageTransportService;
@@ -76,10 +78,10 @@ public class GenerationProviderInputs {
             task.setReferenceImageUrls(JSONUtil.toJsonStr(images(refs, submission, api, job.claim())));
         }
         task.setReferenceVideoUrls(
-                mediaList(task.getReferenceVideoUrls(), "referenceVideoUrls", MediaKind.VIDEO, submission,
+                mediaList(task.getReferenceVideoUrls(), "referenceVideoUrls", MediaKind.VIDEO, submission, api,
                         job.claim()));
         task.setReferenceAudioUrls(
-                mediaList(task.getReferenceAudioUrls(), "referenceAudioUrls", MediaKind.AUDIO, submission,
+                mediaList(task.getReferenceAudioUrls(), "referenceAudioUrls", MediaKind.AUDIO, submission, api,
                         job.claim()));
         task.setWorkflowInputs(workflow(task.getWorkflowInputs(), submission, api, job.claim()));
         return task;
@@ -109,9 +111,8 @@ public class GenerationProviderInputs {
             List<String> values = new ArrayList<>();
             raw.path(port).forEach(value -> values.add(value.asText()));
             List<String> resolved = port.equals("referenceImages") ? images(values, submission, api, claim)
-                    : values.stream().map(value -> MediaReference.managed(value) ? media.generationUrl(value,
-                    submission.context().actor(),
-                    port.equals("referenceVideos") ? MediaKind.VIDEO : MediaKind.AUDIO, claim) : value).toList();
+                    : values.stream().map(value -> providerMedia(value,
+                    port.equals("referenceVideos") ? MediaKind.VIDEO : MediaKind.AUDIO, submission, api, claim)).toList();
             var output = result.putArray(port);
             resolved.forEach(output::add);
         }
@@ -119,12 +120,24 @@ public class GenerationProviderInputs {
     }
 
     private String mediaList(String input, String field, MediaKind kind, GenerationSubmission submission,
-                             RemoteGenerationJob.Claim claim) {
+                             ApiConfig api, RemoteGenerationJob.Claim claim) {
         if (input == null || input.isBlank()) {
             return input;
         }
-        return JSONUtil.toJsonStr(references.parseJsonInputs(input, field).stream().map(value ->
-                MediaReference.managed(value) ? media.generationUrl(value, submission.context().actor(), kind,
-                        claim) : value).toList());
+        return JSONUtil.toJsonStr(references.parseJsonInputs(input, field).stream()
+                .map(value -> providerMedia(value, kind, submission, api, claim)).toList());
+    }
+
+    private String providerMedia(String value, MediaKind kind, GenerationSubmission submission,
+                                 ApiConfig api, RemoteGenerationJob.Claim claim) {
+        if (!MediaReference.managed(value)) {
+            return value;
+        }
+        if (ComfyUiWorkflowService.PLATFORM.equalsIgnoreCase(api.getPlatform())) {
+            long limit = kind == MediaKind.VIDEO ? ComfyUiUploadMediaKind.VIDEO.maxBytes()
+                    : ComfyUiUploadMediaKind.AUDIO.maxBytes();
+            return media.dataUri(value, submission.context().actor(), kind, limit);
+        }
+        return media.generationUrl(value, submission.context().actor(), kind, claim);
     }
 }

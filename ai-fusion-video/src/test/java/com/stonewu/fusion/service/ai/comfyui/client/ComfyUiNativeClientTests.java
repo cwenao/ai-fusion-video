@@ -109,7 +109,7 @@ class ComfyUiNativeClientTests {
     }
 
     @Test
-    void uploadImageUsesOfficialMultipartContractAndParsesDescriptor() {
+    void uploadMediaUsesOfficialMultipartContractAndParsesDescriptor() {
         AtomicReference<String> authorization = new AtomicReference<>();
         AtomicReference<String> contentType = new AtomicReference<>();
         AtomicReference<String> requestBody = new AtomicReference<>();
@@ -121,9 +121,9 @@ class ComfyUiNativeClientTests {
                     "{\"name\":\"reference.png\",\"subfolder\":\"ai-fusion-video\",\"type\":\"input\"}");
         });
 
-        ComfyUiUploadResult result = client.uploadImage(
+        ComfyUiUploadResult result = client.uploadMedia(
                 apiConfig, "png-data".getBytes(StandardCharsets.UTF_8),
-                "reference.png", "image/png", "ai-fusion-video");
+                "reference.png", "image/png", "ai-fusion-video", ComfyUiUploadMediaKind.IMAGE);
 
         assertThat(result.workflowValue()).isEqualTo("ai-fusion-video/reference.png");
         assertThat(authorization.get()).isEqualTo("Bearer test-token");
@@ -137,15 +137,41 @@ class ComfyUiNativeClientTests {
     }
 
     @Test
-    void uploadImageRejectsResponseMissingOfficialSubfolderField() {
+    void uploadMediaRejectsResponseMissingOfficialSubfolderField() {
         server.createContext("/upload/image", exchange -> json(exchange, 200,
                 "{\"name\":\"reference.png\",\"type\":\"input\"}"));
 
-        assertThatThrownBy(() -> client.uploadImage(
+        assertThatThrownBy(() -> client.uploadMedia(
                 apiConfig, "png-data".getBytes(StandardCharsets.UTF_8),
-                "reference.png", "image/png", ""))
+                "reference.png", "image/png", "", ComfyUiUploadMediaKind.IMAGE))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("subfolder");
+    }
+
+    @Test
+    void uploadMediaAcceptsReferenceVideoContentType() {
+        AtomicReference<String> requestBody = new AtomicReference<>();
+        server.createContext("/upload/image", exchange -> {
+            requestBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            json(exchange, 200,
+                    "{\"name\":\"ref.mp4\",\"subfolder\":\"ai-fusion-video\",\"type\":\"input\"}");
+        });
+
+        ComfyUiUploadResult result = client.uploadMedia(
+                apiConfig, "video-data".getBytes(StandardCharsets.UTF_8),
+                "ref.mp4", "video/mp4", "ai-fusion-video", ComfyUiUploadMediaKind.VIDEO);
+
+        assertThat(result.workflowValue()).isEqualTo("ai-fusion-video/ref.mp4");
+        assertThat(requestBody.get()).contains("filename=\"ref.mp4\"");
+    }
+
+    @Test
+    void uploadMediaRejectsContentTypeOutsideDeclaredKindBeforeNetworkCall() {
+        assertThatThrownBy(() -> client.uploadMedia(
+                apiConfig, "png-data".getBytes(StandardCharsets.UTF_8),
+                "ref.mp4", "image/png", "ai-fusion-video", ComfyUiUploadMediaKind.VIDEO))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("不接受该参考视频类型");
     }
 
     @Test

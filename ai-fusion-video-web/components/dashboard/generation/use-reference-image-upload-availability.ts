@@ -43,11 +43,15 @@ export function useReferenceImageUploadAvailability(
 
   return useMemo(
     () =>
-      resolveReferenceImageUploadAvailability(
-        capabilities,
-        runtimeConfig.publicMediaAccessConfigured,
-        runtimeConfig.loaded,
-      ),
+      ({
+        ...resolveReferenceImageUploadAvailability(
+          capabilities,
+          runtimeConfig.publicMediaAccessConfigured,
+          runtimeConfig.loaded,
+        ),
+        publicMediaAccessConfigured: runtimeConfig.publicMediaAccessConfigured,
+        runtimeConfigLoaded: runtimeConfig.loaded,
+      }),
     [capabilities, runtimeConfig],
   );
 }

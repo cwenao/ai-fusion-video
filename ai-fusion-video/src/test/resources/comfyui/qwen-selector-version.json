@@ -1,0 +1,326 @@
+{
+  "api": {
+    "671": {
+      "_meta": {
+        "ver": "0.39.0",
+        "title": "UNet加载器",
+        "cnr_id": "comfy-core"
+      },
+      "inputs": {
+        "unet_name": "qwen_image_2.1_int8_convrot.safetensors",
+        "weight_dtype": "default"
+      },
+      "class_type": "UNETLoader"
+    },
+    "673": {
+      "_meta": {
+        "ver": "0.39.0",
+        "title": "加载CLIP",
+        "cnr_id": "comfy-core"
+      },
+      "inputs": {
+        "type": "qwen_image",
+        "device": "default",
+        "clip_name": "qwen3vl_8b_int8_convrot.safetensors"
+      },
+      "class_type": "CLIPLoader"
+    },
+    "674": {
+      "_meta": {
+        "ver": "0.39.0",
+        "title": "加载VAE",
+        "cnr_id": "comfy-core"
+      },
+      "inputs": {
+        "vae_name": "qwen_image_2.1_vae_bf16.safetensors"
+      },
+      "class_type": "VAELoader"
+    },
+    "675": {
+      "_meta": {
+        "ver": "0.39.0",
+        "title": "Qwen Image 2.1 缓存",
+        "cnr_id": "comfy-core"
+      },
+      "inputs": {
+        "dtype": "default",
+        "model": [
+          "671",
+          0
+        ],
+        "device": "auto"
+      },
+      "class_type": "QwenImage21Cache"
+    },
+    "678": {
+      "_meta": {
+        "ver": "0.39.0",
+        "title": "K采样器",
+        "cnr_id": "comfy-core"
+      },
+      "inputs": {
+        "cfg": 1,
+        "seed": 930225228534713,
+        "model": [
+          "675",
+          0
+        ],
+        "steps": 25,
+        "denoise": 1,
+        "negative": [
+          "679",
+          1
+        ],
+        "positive": [
+          "679",
+          0
+        ],
+        "scheduler": "simple",
+        "latent_image": [
+          "680",
+          0
+        ],
+        "sampler_name": "euler"
+      },
+      "class_type": "KSampler"
+    },
+    "679": {
+      "_meta": {
+        "ver": "0.39.0",
+        "title": "文本编码 Qwen Image 2.1",
+        "cnr_id": "comfy-core"
+      },
+      "inputs": {
+        "vae": [
+          "674",
+          0
+        ],
+        "clip": [
+          "673",
+          0
+        ],
+        "prompt": [
+          "728",
+          0
+        ],
+        "resolution": 0,
+        "images.image_1": [
+          "901",
+          0
+        ],
+        "images.image_2": [
+          "902",
+          0
+        ],
+        "images.image_3": [
+          "903",
+          0
+        ],
+        "images.image_4": [
+          "904",
+          0
+        ],
+        "images.image_5": [
+          "905",
+          0
+        ],
+        "negative_prompt": ""
+      },
+      "class_type": "TextEncodeQwenImage21"
+    },
+    "680": {
+      "_meta": {
+        "ver": "0.39.0",
+        "title": "空Latent图像",
+        "cnr_id": "comfy-core"
+      },
+      "inputs": {
+        "width": [
+          "681",
+          0
+        ],
+        "height": [
+          "681",
+          1
+        ],
+        "batch_size": 1
+      },
+      "class_type": "EmptyLatentImage"
+    },
+    "681": {
+      "_meta": {
+        "ver": "0.39.0",
+        "title": "分辨率选择器",
+        "cnr_id": "comfy-core"
+      },
+      "inputs": {
+        "multiple": 32,
+        "megapixels": 2,
+        "aspect_ratio": "16:9 (Widescreen)"
+      },
+      "class_type": "ResolutionSelector"
+    },
+    "714": {
+      "_meta": {
+        "ver": "0.39.0",
+        "title": "VAE解码",
+        "cnr_id": "comfy-core"
+      },
+      "inputs": {
+        "vae": [
+          "674",
+          0
+        ],
+        "samples": [
+          "678",
+          0
+        ]
+      },
+      "class_type": "VAEDecode"
+    },
+    "728": {
+      "_meta": {
+        "ver": "d78b780ae43fcf8c6b7c6505e6ffb4584281ceca",
+        "title": "⚙️ CR Prompt Text",
+        "cnr_id": "ComfyUI_Comfyroll_CustomNodes"
+      },
+      "inputs": {
+        "prompt": "生成一张高质量真人写实角色形象设定图，成年东亚男性，约22-24岁，古代修仙世界出身世家却被家族安排入赘、撕毁婚书逃往荒村种田的青年农夫。整体保持真人摄影级写实感，不要二次元、不要CG塑料感。\n版式为横向三栏角色设定图，纯白色无缝摄影棚背景，干净简洁，无文字、无Logo、无多余装饰。左侧约占画面1/3区域为人物正面头肩至胸部高清特写；中间为完整正面全身照；右侧为完整背面全身照。三个区域之间使用非常浅、几乎不可见的白灰色分隔。\n角色面部：年轻清隽的东亚成年男性，脸型偏长，脸部纵向比例自然，下颌线清晰但不过削，眉骨略高，剑眉，眼神倔强警觉、直视镜头，鼻梁自然挺直，唇色自然偏淡。皮肤为常年日晒的健康小麦色，保留轻微毛孔、面部绒毛、淡淡胡茬青影、鼻翼纹理、眼周纹理和自然肤色变化，柔和次表面散射，不过度磨皮。\n黑色长发，半束发以一根素木簪固定，其余垂落肩后，发量自然，真实单根发丝质感，额前有少量被汗水与风尘打湿的细碎发丝，不做夸张造型。\n中间全身：同一角色正面自然站立，双脚微微分开，双手自然垂落身体两侧，身体完全正对镜头。身穿靛青色粗布直裰长衫，麻布纹理清晰，袖口与下摆有磨损起毛痕迹，腰束深色布带，下身深色粗布裤，裤脚沾有干涸泥点，脚穿磨损的黑布鞋。完整展示从头顶到鞋底的服装结构与真实人体比例。身材清瘦挺拔但保持真实东亚成年男性比例，不要夸张肌肉。为角色资产设计需要，中间正面全身照的脸部使用一个干净、纯白、无纹理的椭圆形遮挡区域覆盖，只遮挡五官，不遮挡头发轮廓、耳朵和下颌外部结构。\n右侧全身：同一角色完全背对镜头自然站立，完整展示后脑勺、半束发与垂落发尾、直裰背部结构与褶皱、腰布带系结、裤腿与布鞋背面。头发自然垂落，保持真实重力和发丝层次。\n三个视图必须为同一个角色，发型、发色、身材比例、服装结构和材质完全一致。\nProfessional character reference sheet, photorealistic East Asian man, ancient Chinese xianxia rural farmer, indigo coarse hemp robe with worn cuffs, cloth belt, muddy cloth shoes, realistic fashion photography, clean studio lighting, large softbox frontal light, subtle fill light, natural shadows, neutral white balance, realistic skin texture, faint stubble, realistic hair strands, 85mm portrait lens for close-up, 70mm full-body studio photography, high clarity, smooth gradients, refined edges, 8K RAW, Leica-quality rendering, cinematic realism."
+      },
+      "class_type": "CR Prompt Text"
+    },
+    "749": {
+      "_meta": {
+        "ver": "0.39.0",
+        "title": "保存图像",
+        "cnr_id": "comfy-core"
+      },
+      "inputs": {
+        "images": [
+          "714",
+          0
+        ],
+        "filename_prefix": "ComfyUI"
+      },
+      "class_type": "SaveImage"
+    },
+    "901": {
+      "inputs": {
+        "image": "afv-blank.png"
+      },
+      "class_type": "LoadImage"
+    },
+    "902": {
+      "inputs": {
+        "image": "afv-blank.png"
+      },
+      "class_type": "LoadImage"
+    },
+    "903": {
+      "inputs": {
+        "image": "afv-blank.png"
+      },
+      "class_type": "LoadImage"
+    },
+    "904": {
+      "inputs": {
+        "image": "afv-blank.png"
+      },
+      "class_type": "LoadImage"
+    },
+    "905": {
+      "inputs": {
+        "image": "afv-blank.png"
+      },
+      "class_type": "LoadImage"
+    }
+  },
+  "bindings": {
+    "seed": [
+      {
+        "nodeId": "678",
+        "inputName": "seed",
+        "valueType": "integer"
+      }
+    ],
+    "count": [
+      {
+        "nodeId": "680",
+        "inputName": "batch_size",
+        "valueType": "integer"
+      }
+    ],
+    "prompt": [
+      {
+        "nodeId": "728",
+        "inputName": "prompt",
+        "valueType": "string"
+      }
+    ],
+    "negativePrompt": [
+      {
+        "nodeId": "679",
+        "inputName": "negative_prompt",
+        "valueType": "string"
+      }
+    ],
+    "referenceImages": [
+      {
+        "index": 0,
+        "nodeId": "679",
+        "optional": true,
+        "inputName": "images.image_1",
+        "valueType": "uploaded_image"
+      },
+      {
+        "index": 1,
+        "nodeId": "679",
+        "optional": true,
+        "inputName": "images.image_2",
+        "valueType": "uploaded_image"
+      },
+      {
+        "index": 2,
+        "nodeId": "679",
+        "optional": true,
+        "inputName": "images.image_3",
+        "valueType": "uploaded_image"
+      },
+      {
+        "index": 3,
+        "nodeId": "679",
+        "optional": true,
+        "inputName": "images.image_4",
+        "valueType": "uploaded_image"
+      },
+      {
+        "index": 4,
+        "nodeId": "679",
+        "optional": true,
+        "inputName": "images.image_5",
+        "valueType": "uploaded_image"
+      }
+    ],
+    "aspectRatio": [
+      {
+        "nodeId": "681",
+        "inputName": "aspect_ratio",
+        "valueType": "string"
+      }
+    ],
+    "megapixels": [
+      {
+        "nodeId": "681",
+        "inputName": "megapixels",
+        "valueType": "number"
+      }
+    ]
+  },
+  "outputs": [
+    {
+      "role": "primary",
+      "nodeId": "749",
+      "mediaType": "image"
+    }
+  ]
+}

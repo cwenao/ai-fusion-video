@@ -3,29 +3,28 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Check,
-  ImagePlus,
-  Images,
   Loader2,
   Plus,
   Trash2,
-  Upload,
   X,
 } from "lucide-react";
-import type { AssetItem } from "@/lib/api/asset";
-import { resolveMediaUrl } from "@/lib/api/client";
+import type { AssetItem, AssetWithItems } from "@/lib/api/asset";
+import { assetReferences } from "@/lib/asset-references";
+import { AssetGenerationActions } from "@/components/assets/asset-generation-actions";
 import { uploadFile } from "@/lib/api/storage";
 import { getApiErrorMessage } from "@/lib/api/api-error";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { SafeImage } from "@/components/media/managed-image";
 import { Textarea } from "@/components/ui/textarea";
-import { cn } from "@/lib/utils";
+import { AssetItemMedia } from "./asset-item-media";
 import { getAppearance, getAppearanceHints } from "./asset-types";
 
 interface AssetItemWorkspaceProps {
   mode: "create" | "edit";
   item: AssetItem | null;
+  asset: AssetWithItems;
   assetType: string;
+  navigationBlockedReason?: string | null;
   parentVersion: number;
   saving: boolean;
   onCreate: (
@@ -49,7 +48,9 @@ interface AssetItemWorkspaceProps {
 export function AssetItemWorkspace({
   mode,
   item,
+  asset,
   assetType,
+  navigationBlockedReason,
   parentVersion,
   saving,
   onCreate,
@@ -67,22 +68,12 @@ export function AssetItemWorkspace({
   const [appearance, setAppearance] = useState(initialAppearance);
   const [imageUrl, setImageUrl] = useState(initialImageUrl);
   const [uploading, setUploading] = useState(false);
-  const [dragging, setDragging] = useState(false);
   const [error, setError] = useState("");
-  const inputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const appearanceHints = useMemo(
     () => getAppearanceHints(assetType),
     [assetType],
   );
-  const fallbackType =
-    assetType === "character"
-      ? "avatar"
-      : assetType === "scene"
-        ? "scene"
-        : assetType === "prop"
-          ? "prop"
-          : "image";
   const dirty =
     name !== initialName ||
     appearance !== initialAppearance ||
@@ -91,7 +82,9 @@ export function AssetItemWorkspace({
 
   useEffect(() => {
     if (!item || !base || dirty || saving || uploading ||
-      (item.version <= base.version && item.assetVersion <= base.assetVersion)) return;
+      (item.version <= base.version && item.assetVersion <= base.assetVersion)) {
+      return;
+    }
     setBase(item);
     setName(item.name || "");
     setAppearance(getAppearance(item));
@@ -99,7 +92,9 @@ export function AssetItemWorkspace({
   }, [item, base, dirty, saving, uploading]);
 
   const upload = async (file: File) => {
-    if (saving || uploading) return;
+    if (saving || uploading) {
+      return;
+    }
     if (!file.type.startsWith("image/")) {
       setError("请选择图片文件");
       return;
@@ -119,14 +114,18 @@ export function AssetItemWorkspace({
   const appendHint = (hint: string) => {
     const token = `${hint}：`;
     setAppearance((current) => {
-      if (current.includes(token)) return current;
+      if (current.includes(token)) {
+        return current;
+      }
       return current.trim() ? `${current.trim()}\n${token}` : token;
     });
     requestAnimationFrame(() => textareaRef.current?.focus());
   };
 
   const save = async () => {
-    if (!base || disabled) return;
+    if (!base || disabled) {
+      return;
+    }
     setError("");
     const updated = await onSave(base, name, appearance, imageUrl);
     setBase(updated);
@@ -136,7 +135,9 @@ export function AssetItemWorkspace({
   };
 
   const create = async (generateAfterCreate: boolean) => {
-    if (disabled) return;
+    if (disabled) {
+      return;
+    }
     await onCreate(creationVersion, name, appearance, imageUrl, generateAfterCreate);
   };
 
@@ -145,137 +146,29 @@ export function AssetItemWorkspace({
       await create(true);
       return;
     }
-    if (base && dirty) await save();
+    if (base && dirty) {
+      await save();
+    }
     onGenerate();
   };
 
   return (
-    <section className="grid min-h-[360px] min-w-0 bg-[radial-gradient(circle_at_18%_20%,color-mix(in_oklab,var(--primary)_5%,transparent),transparent_32%)] xl:grid-cols-[minmax(330px,0.9fr)_minmax(420px,1.1fr)]">
-      <div className="min-w-0 p-5">
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <h3 className="text-sm font-semibold">资产图</h3>
-            <span
-              className={cn(
-                "rounded-md px-1.5 py-0.5 text-[10px] font-medium",
-                imageUrl
-                  ? "bg-emerald-500/10 text-emerald-600"
-                  : "bg-amber-500/10 text-amber-600",
-              )}
-            >
-              {imageUrl ? "已添加" : "待添加"}
-            </span>
-          </div>
-          {imageUrl && (
-            <Button
-              variant="ghost"
-              size="xs"
-              onClick={() => setImageUrl("")}
-            >
-              移除图片
-            </Button>
-          )}
-        </div>
-
-        <div
-          role="button"
-          tabIndex={0}
-          onClick={() => !imageUrl && inputRef.current?.click()}
-          onKeyDown={(event) => {
-            if (!imageUrl && (event.key === "Enter" || event.key === " ")) {
-              event.preventDefault();
-              inputRef.current?.click();
-            }
-          }}
-          onDragEnter={(event) => {
-            event.preventDefault();
-            setDragging(true);
-          }}
-          onDragOver={(event) => event.preventDefault()}
-          onDragLeave={() => setDragging(false)}
-          onDrop={(event) => {
-            event.preventDefault();
-            setDragging(false);
-            const file = event.dataTransfer.files?.[0];
-            if (file) void upload(file);
-          }}
-          className={cn(
-            "group relative mx-auto aspect-[16/10] w-full max-w-[480px] overflow-hidden rounded-2xl border bg-muted/15 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/50",
-            dragging
-              ? "border-primary bg-primary/5 ring-2 ring-primary/15"
-              : "border-border/50",
-            !imageUrl && "cursor-pointer border-dashed hover:border-primary/35 hover:bg-primary/[0.025]",
-          )}
-        >
-          {imageUrl ? (
-            <SafeImage
-              src={resolveMediaUrl(imageUrl) || undefined}
-              alt={name || "子资产"}
-              className="h-full w-full object-contain p-3"
-              fallbackType={fallbackType}
-            />
-          ) : (
-            <div className="flex h-full flex-col items-center justify-center text-center text-muted-foreground">
-              <span className="grid h-12 w-12 place-items-center rounded-2xl bg-primary/8 text-primary/65 transition-transform group-hover:scale-105">
-                {uploading ? (
-                  <Loader2 className="h-5 w-5 animate-spin" />
-                ) : (
-                  <Images className="h-5 w-5" />
-                )}
-              </span>
-              <p className="mt-3 text-sm font-medium text-foreground/75">
-                {dragging ? "松开即可上传" : "拖入图片或点击上传"}
-              </p>
-            </div>
-          )}
-        </div>
-
-        {error && <p className="mt-2 text-xs text-destructive">{error}</p>}
-
-        <div className="mx-auto mt-3 grid w-full max-w-[480px] grid-cols-2 gap-2">
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => inputRef.current?.click()}
-            disabled={saving || uploading}
-          >
-            {uploading ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Upload className="h-3.5 w-3.5" />
-            )}
-            {imageUrl ? "替换图片" : "上传图片"}
-          </Button>
-          <Button
-            size="sm"
-            variant="image"
-            disabled={disabled}
-            onClick={() => void generate().catch(failure => setError(getApiErrorMessage(failure)))}
-          >
-            {saving ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <ImagePlus className="h-3.5 w-3.5" />
-            )}
-            {mode === "create"
-              ? "创建并生图"
-              : dirty
-                ? "保存并生图"
-                : "生成图片"}
-          </Button>
-        </div>
-        <input
-          ref={inputRef}
-          hidden
-          type="file"
-          accept="image/*"
-          onChange={(event) => {
-            const file = event.target.files?.[0];
-            if (file) void upload(file);
-            event.target.value = "";
-          }}
-        />
-      </div>
+    <section className="grid min-h-[360px] min-w-0 bg-[radial-gradient(circle_at_18%_20%,color-mix(in_oklab,var(--primary)_5%,transparent),transparent_32%)] xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+      <AssetItemMedia
+        item={item}
+        references={item ? assetReferences(asset).filter((reference) => reference.itemId === item.id) : []}
+        assetType={assetType}
+        name={name}
+        imageUrl={imageUrl}
+        saving={saving}
+        uploading={uploading}
+        generationDisabled={disabled}
+        generationLabel={mode === "create" ? "创建并生图" : dirty ? "保存并生图" : "生成图片"}
+        error={error}
+        onImageChange={setImageUrl}
+        onUpload={upload}
+        onGenerate={() => void generate().catch((failure) => setError(getApiErrorMessage(failure)))}
+      />
 
       <div className="flex min-w-0 flex-col border-t border-border/40 bg-background/35 p-5 xl:border-l xl:border-t-0">
         <div className="flex items-start justify-between gap-3">
@@ -296,7 +189,11 @@ export function AssetItemWorkspace({
             variant={mode === "create" ? "ghost" : "destructive-ghost"}
             size="icon-sm"
             disabled={saving || uploading}
-            onClick={mode === "create" ? onCancelCreate : () => { if (base) onDelete(base); }}
+            onClick={mode === "create" ? onCancelCreate : () => {
+              if (base) {
+                onDelete(base);
+              }
+            }}
             title={mode === "create" ? "取消新建" : "删除子资产"}
             aria-label={mode === "create" ? "取消新建" : "删除子资产"}
           >
@@ -307,6 +204,17 @@ export function AssetItemWorkspace({
             )}
           </Button>
         </div>
+
+        {mode === "edit" && item && (
+          <div className="mt-4">
+            <AssetGenerationActions
+              asset={asset}
+              itemId={item.id}
+              blockedReason={navigationBlockedReason || (saving ? "正在保存，请稍候" : uploading
+                ? "图片上传中，请稍候" : dirty ? "请先保存修改，再用于生成" : null)}
+            />
+          </div>
+        )}
 
         <div className="mt-4 space-y-3.5">
           <div className="space-y-1.5">

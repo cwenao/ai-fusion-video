@@ -18,6 +18,7 @@ import { OverlayScrollArea } from "@/components/dashboard/overlay-scroll-area";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+import type { GenerationAssetReferenceField } from "./generation-asset-inputs";
 import { GenerationModelPicker } from "./generation-model-picker";
 import { GenerationOutputSettings } from "./generation-output-settings";
 import { GenerationReferenceField } from "./generation-reference-field";
@@ -37,6 +38,8 @@ interface GenerationAdvancedPanelProps {
   onFormChange: (patch: Partial<GenerationFormState>) => void;
   onSubmit: () => void;
   onSimple: () => void;
+  onChooseAssets: (field: GenerationAssetReferenceField) => void;
+  assetPickerDisabled: boolean;
   referenceImageUploadAvailability: ReferenceImageUploadAvailability;
 }
 
@@ -53,6 +56,8 @@ export function GenerationAdvancedPanel({
   onFormChange,
   onSubmit,
   onSimple,
+  onChooseAssets,
+  assetPickerDisabled,
   referenceImageUploadAvailability,
 }: GenerationAdvancedPanelProps) {
   const outputLimit = parseLimit(capabilities?.maxCount || 0, 4);
@@ -235,24 +240,20 @@ export function GenerationAdvancedPanel({
           {hasReferenceFields && capabilities && (
             <section className="rounded-[18px] border border-border/45 bg-background/38 p-3.5">
               <div className="flex items-center justify-between gap-3">
-                <div>
-                  <h4 className="text-xs font-semibold">参考素材</h4>
-                  <p className="mt-0.5 text-[10px] text-muted-foreground">
-                    上传图片或粘贴 URL / Data URI
-                  </p>
-                </div>
+                <h4 className="text-xs font-semibold">参考素材</h4>
                 <span className="rounded-md bg-muted px-2 py-1 text-[10px] text-muted-foreground">
                   {imageInputCount} 个图片输入
                 </span>
               </div>
-              <div className="mt-3 space-y-2.5">
+              <div className="mt-3 flex flex-col gap-3">
                 {capabilities.supportsFirstFrame && (
                   <GenerationReferenceField
-                    label="首帧图"
+                    field="firstFrame"
                     hint="视频开场画面"
                     values={form.firstFrame}
                     maxCount={1}
-                    mediaType="image"
+                    onChooseAssets={onChooseAssets}
+                    assetPickerDisabled={assetPickerDisabled}
                     uploadDisabledReason={
                       !referenceImageUploadAvailability.supported
                         ? referenceImageUploadAvailability.reason
@@ -267,11 +268,12 @@ export function GenerationAdvancedPanel({
                 )}
                 {capabilities.supportsLastFrame && (
                   <GenerationReferenceField
-                    label="尾帧图"
+                    field="lastFrame"
                     hint="视频结束画面"
                     values={form.lastFrame}
                     maxCount={1}
-                    mediaType="image"
+                    onChooseAssets={onChooseAssets}
+                    assetPickerDisabled={assetPickerDisabled}
                     uploadDisabledReason={
                       !referenceImageUploadAvailability.supported
                         ? referenceImageUploadAvailability.reason
@@ -286,11 +288,12 @@ export function GenerationAdvancedPanel({
                 )}
                 {capabilities.supportsReferenceImages && (
                   <GenerationReferenceField
-                    label="参考图片"
+                    field="referenceImages"
                     hint="主体、构图、风格或场景参考"
                     values={form.referenceImages}
                     maxCount={parseLimit(capabilities.maxReferenceImages, 12)}
-                    mediaType="image"
+                    onChooseAssets={onChooseAssets}
+                    assetPickerDisabled={assetPickerDisabled}
                     uploadDisabledReason={
                       !referenceImageUploadAvailability.supported
                         ? referenceImageUploadAvailability.reason
@@ -307,11 +310,12 @@ export function GenerationAdvancedPanel({
                 )}
                 {mode === "video" && capabilities.supportsReferenceVideos && (
                   <GenerationReferenceField
-                    label="参考视频"
+                    field="referenceVideos"
                     hint="动作、运镜或特效参考"
                     values={form.referenceVideos}
                     maxCount={parseLimit(capabilities.maxReferenceVideos, 3)}
-                    mediaType="video"
+                    onChooseAssets={onChooseAssets}
+                    assetPickerDisabled={assetPickerDisabled}
                     onChange={(referenceVideos) =>
                       onFormChange({ referenceVideos })
                     }
@@ -319,11 +323,12 @@ export function GenerationAdvancedPanel({
                 )}
                 {mode === "video" && capabilities.supportsReferenceAudios && (
                   <GenerationReferenceField
-                    label="参考音频"
+                    field="referenceAudios"
                     hint="节奏、音乐、声音或对白参考"
                     values={form.referenceAudios}
                     maxCount={parseLimit(capabilities.maxReferenceAudios, 3)}
-                    mediaType="audio"
+                    onChooseAssets={onChooseAssets}
+                    assetPickerDisabled={assetPickerDisabled}
                     onChange={(referenceAudios) =>
                       onFormChange({ referenceAudios })
                     }

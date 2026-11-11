@@ -17,9 +17,11 @@ export function generationSubmitRequest(
   form: GenerationFormState,
   modelId: number,
   capabilities?: GenerationCapabilities | null,
+  projectId?: number | null,
 ): GenerationInput {
   const referenceImages = clean(form.referenceImages);
   const common = {
+    projectId: projectId ?? undefined,
     prompt: form.prompt.trim(),
     modelId,
     ratio: form.ratio || undefined,

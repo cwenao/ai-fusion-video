@@ -6,28 +6,29 @@ import {
   CircleHelp,
   FileVideo2,
   ImageIcon,
+  Library,
   Link2,
   Loader2,
   Music2,
   Plus,
-  Trash2,
 } from "lucide-react";
-import { uploadFile } from "@/lib/api/storage";
+import { uploadMedia } from "@/lib/api/media";
 import { getApiErrorMessage } from "@/lib/api/api-error";
-import { resolveMediaUrl } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { SafeImage } from "@/components/media/managed-image";
+import { GENERATION_ASSET_REFERENCE_FIELDS, type GenerationAssetReferenceField } from "./generation-asset-inputs";
+import { GenerationReferenceStrip } from "./generation-reference-strip";
 
 type ReferenceMediaType = "image" | "video" | "audio";
 
 interface GenerationReferenceFieldProps {
-  label: string;
+  field: GenerationAssetReferenceField;
   hint?: string;
   values: string[];
   maxCount: number;
-  mediaType: ReferenceMediaType;
   onChange: (values: string[]) => void;
+  onChooseAssets: (field: GenerationAssetReferenceField) => void;
+  assetPickerDisabled: boolean;
   uploadDisabledReason?: string;
   manualInputAllowed?: boolean;
 }
@@ -54,15 +55,17 @@ const MEDIA_CONFIG: Record<
 };
 
 export function GenerationReferenceField({
-  label,
+  field,
   hint,
   values,
   maxCount,
-  mediaType,
   onChange,
+  onChooseAssets,
+  assetPickerDisabled,
   uploadDisabledReason,
   manualInputAllowed = true,
 }: GenerationReferenceFieldProps) {
+  const { label, mediaType } = GENERATION_ASSET_REFERENCE_FIELDS[field];
   const config = MEDIA_CONFIG[mediaType];
   const inputRef = useRef<HTMLInputElement>(null);
   const [url, setUrl] = useState("");
@@ -72,35 +75,46 @@ export function GenerationReferenceField({
   const canUpload = canAdd && !uploadDisabledReason;
 
   const uploadFiles = async (files: File[]) => {
-    if (!canUpload) return;
+    if (!canUpload) {
+      return;
+    }
     const remaining = maxCount - values.length;
     const selected = files.slice(0, remaining);
-    if (!selected.length) return;
+    if (!selected.length) {
+      return;
+    }
 
     setUploading(true);
     try {
       const urls = await Promise.all(
-        selected.map((file) => uploadFile(file, config.folder)),
+        selected.map(async (file) => {
+          const media = await uploadMedia(file, { requestId: crypto.randomUUID() });
+          return `media://${media.id}`;
+        }),
       );
       onChange([...values, ...urls]);
     } catch (error) {
       toast.error(getApiErrorMessage(error));
     } finally {
       setUploading(false);
-      if (inputRef.current) inputRef.current.value = "";
+      if (inputRef.current) {
+        inputRef.current.value = "";
+      }
     }
   };
 
   const addUrl = () => {
     const value = url.trim();
-    if (!value || !canAdd) return;
+    if (!value || !canAdd) {
+      return;
+    }
     onChange([...values, value]);
     setUrl("");
     setShowUrl(false);
   };
 
   return (
-    <section className="rounded-xl border border-border/40 bg-background/52 p-3">
+    <section aria-label={label} className="rounded-xl border border-border/40 bg-background/52 p-3">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-1.5">
           <h4 className="text-xs font-semibold">{label}</h4>
@@ -115,58 +129,42 @@ export function GenerationReferenceField({
         </span>
       </div>
 
-      <div className="mt-2.5 flex gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {values.map((value, index) => (
-          <div
-            key={`${value}-${index}`}
-            className="group relative grid h-16 w-16 shrink-0 place-items-center overflow-hidden rounded-xl border border-border/45 bg-muted/25"
-          >
-            {mediaType === "image" ? (
-              <SafeImage
-                src={resolveMediaUrl(value) || undefined}
-                alt={`${label}${index + 1}`}
-                className="h-full w-full object-cover"
-                fallbackType="image"
-              />
-            ) : mediaType === "video" ? (
-              <FileVideo2 className="h-6 w-6 text-cyan-500/70" />
-            ) : (
-              <Music2 className="h-6 w-6 text-violet-500/70" />
-            )}
-            <button
+      <div className="mt-2 flex min-w-0 flex-col gap-2">
+        <GenerationReferenceStrip
+          items={values.map((url) => ({ url, label, mediaType }))}
+          onRemove={(index) => onChange(values.filter((_, itemIndex) => itemIndex !== index))}
+          onMove={(index, direction) => {
+            const ordered = [...values];
+            [ordered[index], ordered[index + direction]] = [ordered[index + direction], ordered[index]];
+            onChange(ordered);
+          }}
+        />
+        <div className="flex flex-wrap gap-2">
+          {canAdd && (
+            <Button
               type="button"
-              onClick={() =>
-                onChange(values.filter((_, itemIndex) => itemIndex !== index))
-              }
-              title={`移除${label}`}
-              aria-label={`移除${label}`}
-              className="absolute right-1 top-1 grid h-6 w-6 place-items-center rounded-lg bg-black/60 text-white opacity-0 transition-opacity group-hover:opacity-100"
+              variant="outline"
+              className="grow"
+              disabled={!canUpload || uploading}
+              onClick={() => inputRef.current?.click()}
+              title={uploadDisabledReason}
             >
-              <Trash2 className="h-3 w-3" />
-            </button>
-          </div>
-        ))}
-
-        {canAdd && (
-          <button
+              {uploading ? <Loader2 className="animate-spin" /> : mediaType === "image" ? <ImageIcon /> : mediaType === "video" ? <FileVideo2 /> : <Music2 />}
+              {config.emptyLabel}
+            </Button>
+          )}
+          <Button
             type="button"
-            disabled={!canUpload}
-            onClick={() => inputRef.current?.click()}
-            title={uploadDisabledReason}
-            className="flex h-16 w-16 shrink-0 flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-border/55 text-[10px] text-muted-foreground transition-colors hover:border-primary/35 hover:bg-primary/[0.035] hover:text-primary disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:border-border/55 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
+            variant="outline"
+            className="grow"
+            disabled={!canAdd || uploading || assetPickerDisabled}
+            onClick={() => onChooseAssets(field)}
+            title={!canAdd ? `${label}数量已达上限` : undefined}
           >
-            {uploading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : mediaType === "image" ? (
-              <ImageIcon className="h-4 w-4" />
-            ) : mediaType === "video" ? (
-              <FileVideo2 className="h-4 w-4" />
-            ) : (
-              <Music2 className="h-4 w-4" />
-            )}
-            {config.emptyLabel}
-          </button>
-        )}
+            <Library />
+            从资产库选择
+          </Button>
+        </div>
       </div>
 
       {uploadDisabledReason && (
@@ -177,7 +175,7 @@ export function GenerationReferenceField({
       )}
 
       {showUrl ? (
-        <div className="mt-3 flex gap-2">
+        <div className="mt-3 flex min-w-0 gap-2 p-1">
           <Input
             value={url}
             onChange={(event) => setUrl(event.target.value)}
@@ -190,10 +188,10 @@ export function GenerationReferenceField({
             placeholder={
               mediaType === "image" ? "输入图片 URL 或 Data URI" : "输入媒体 URL"
             }
-            className="h-8 rounded-lg text-xs"
+            className="min-w-0"
             autoFocus
           />
-          <Button size="xs" onClick={addUrl} disabled={!url.trim()}>
+          <Button onClick={addUrl} disabled={!url.trim()}>
             <Plus className="h-3 w-3" />
             添加
           </Button>

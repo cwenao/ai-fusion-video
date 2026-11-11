@@ -48,6 +48,8 @@ export const canvasFieldLabels: Record<string, string> = {
   fps: "帧率",
   separator: "分隔文字",
   ratio: "画面比例",
+  aspectRatio: "画面比例",
+  megapixels: "百万像素（MP）",
   resolution: "分辨率",
   count: "候选数量",
   width: "宽度",

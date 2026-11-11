@@ -24,6 +24,7 @@ import com.stonewu.fusion.service.ai.AiModelService;
 import com.stonewu.fusion.service.ai.comfyui.ComfyUiExecutionContext;
 import com.stonewu.fusion.service.ai.comfyui.ComfyUiGenerationExecutor;
 import com.stonewu.fusion.service.ai.comfyui.ComfyUiBoundInputs;
+import com.stonewu.fusion.service.ai.comfyui.ComfyUiResolutionSelector;
 import com.stonewu.fusion.service.ai.comfyui.ComfyUiPreparedSubmission;
 import com.stonewu.fusion.service.ai.comfyui.ComfyUiStoredOutput;
 import com.stonewu.fusion.service.ai.comfyui.ComfyUiWorkflowService;
@@ -63,7 +64,9 @@ public class ComfyUiVideoStrategy implements VideoGenerationStrategy {
     }
 
     @Override
-    public int batchSize(VideoTask task, AiModel model, ApiConfig apiConfig) { return task.getCount(); }
+    public int batchSize(VideoTask task, AiModel model, ApiConfig apiConfig) {
+        return task.getCount();
+    }
 
     @Override
     public PreparedGenerationCall prepare(VideoTask task, AiModel model, ApiConfig apiConfig) {
@@ -115,10 +118,15 @@ public class ComfyUiVideoStrategy implements VideoGenerationStrategy {
         values.put("count", Math.max(1, task.getCount()));
         values.put("seed", task.getSeed() != null && task.getSeed() >= 0 ? task.getSeed() : randomSeed());
         values.put("generateAudio", task.getGenerateAudio());
-        int[] resolution = parseResolution(task.getResolution());
-        if (resolution != null) {
-            values.put("width", resolution[0]);
-            values.put("height", resolution[1]);
+        JSONObject config = StrUtil.isBlank(model.getConfig()) ? new JSONObject() : JSONUtil.parseObj(model.getConfig());
+        if (config.containsKey("comfyuiResolutionSelector")) {
+            values.putAll(ComfyUiResolutionSelector.taskValues(task, config));
+        } else {
+            int[] resolution = parseResolution(task.getResolution());
+            if (resolution != null) {
+                values.put("width", resolution[0]);
+                values.put("height", resolution[1]);
+            }
         }
         Integer fps = configInt(model, "defaultFps");
         if (fps != null) values.put("fps", fps);

@@ -28,9 +28,10 @@ public class ComfyUiWorkflowDocumentService {
     private static final Set<String> COMMON_FIELDS = Set.of(
             "prompt", "negativePrompt", "seed", "count");
     private static final Set<String> IMAGE_FIELDS = Set.of(
-            "width", "height", "referenceImages");
+            "width", "height", "aspectRatio", "megapixels", "resolutionMultiple", "referenceImages");
     private static final Set<String> VIDEO_FIELDS = Set.of(
-            "width", "height", "duration", "fps", "firstFrame", "lastFrame",
+            "width", "height", "duration", "fps", "aspectRatio", "megapixels", "resolutionMultiple",
+            "upscaleMegapixels", "firstFrame", "lastFrame",
             "referenceImages", "referenceVideos", "referenceAudios", "generateAudio");
     private static final Set<String> VALUE_TYPES = Set.of(
             "string", "integer", "number", "boolean", "string_list",
@@ -165,6 +166,17 @@ public class ComfyUiWorkflowDocumentService {
                 if (!VALUE_TYPES.contains(valueType)) {
                     throw invalid("不支持的输入绑定 valueType: " + valueType);
                 }
+                if (valueType.startsWith("uploaded_")) {
+                    String expected = switch (businessField) {
+                        case "referenceImages", "firstFrame", "lastFrame" -> "uploaded_image";
+                        case "referenceVideos" -> "uploaded_video";
+                        case "referenceAudios" -> "uploaded_audio";
+                        default -> null;
+                    };
+                    if (!valueType.equals(expected)) {
+                        throw invalid("上传媒体绑定类型与业务字段不匹配: " + businessField + "/" + valueType);
+                    }
+                }
                 JsonNode node = workflow.get(nodeId);
                 if (node == null) {
                     throw invalid("输入绑定引用不存在的节点: " + nodeId);
@@ -175,18 +187,58 @@ public class ComfyUiWorkflowDocumentService {
                 if (index != null && index < 0) {
                     throw invalid("输入绑定 index 不能小于 0");
                 }
+                if (binding.has("optional") && !binding.get("optional").isBoolean()) {
+                    throw invalid("输入绑定 optional 必须是布尔值");
+                }
+                boolean optional = binding.path("optional").asBoolean(false);
+                if (optional) {
+                    validateOptionalMediaBinding(workflow, node, businessField, valueType, index, inputName);
+                }
                 String targetKey = nodeId + "\u0000" + inputName;
                 if (!targets.add(targetKey)) {
                     throw invalid("同一个节点输入不能重复绑定: " + nodeId + "." + inputName);
                 }
                 resolved.add(new ComfyUiInputBinding(
-                        businessField, nodeId, inputName, valueType, index));
+                        businessField, nodeId, inputName, valueType, index, optional));
                 if (resolved.size() > MAX_BINDINGS) {
                     throw invalid("输入绑定数量不能超过 " + MAX_BINDINGS);
                 }
             }
         }
+        ComfyUiResolutionSelector.renderValues(workflow, resolved, Map.of());
         return resolved;
+    }
+
+    /**
+     * 可选素材绑定：带索引的上传输入，直接连到对应加载节点的文件输出槽位 0。
+     * 图片连 LoadImage，视频连 VHS_LoadVideo，音频连 VHS_LoadAudioUpload。
+     */
+    private void validateOptionalMediaBinding(ObjectNode workflow,
+                                              JsonNode consumer,
+                                              String businessField,
+                                              String valueType,
+                                              Integer index,
+                                              String inputName) {
+        String requirement = switch (businessField + "/" + valueType) {
+            case "referenceImages/uploaded_image" -> "LoadImage/image";
+            case "referenceVideos/uploaded_video" -> "VHS_LoadVideo/video";
+            case "referenceAudios/uploaded_audio" -> "VHS_LoadAudioUpload/audio";
+            default -> null;
+        };
+        if (requirement == null) {
+            throw invalid("可选素材绑定只支持参考图、参考视频、参考音频的上传输入: " + businessField);
+        }
+        String loaderClass = requirement.substring(0, requirement.indexOf('/'));
+        String fileInput = requirement.substring(requirement.indexOf('/') + 1);
+        JsonNode link = consumer.path("inputs").path(inputName);
+        String label = ComfyUiWorkflowCapabilities.inputLabel(businessField);
+        if (index == null || !link.isArray() || link.size() != 2
+                || !link.get(0).isTextual() || !link.get(1).isInt() || link.get(1).asInt() != 0
+                || !loaderClass.equals(workflow.path(link.get(0).asText()).path("class_type").asText())
+                || !workflow.path(link.get(0).asText()).path("inputs").path(fileInput).isTextual()) {
+            throw invalid("可选" + label + "必须使用带索引的 " + valueType
+                    + "，绑定到 " + loaderClass + " 的文件连线输入");
+        }
     }
 
     private List<ComfyUiOutputBinding> validateOutputBindings(int modelType,

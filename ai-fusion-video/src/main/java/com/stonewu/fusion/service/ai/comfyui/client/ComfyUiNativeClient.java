@@ -93,19 +93,23 @@ public class ComfyUiNativeClient {
         return response;
     }
 
-    public ComfyUiUploadResult uploadImage(ApiConfig apiConfig,
+    /**
+     * 通过 ComfyUI /upload/image 上传输入文件；图片、参考视频、参考音频共用该官方端点。
+     */
+    public ComfyUiUploadResult uploadMedia(ApiConfig apiConfig,
                                            byte[] bytes,
                                            String fileName,
                                            String contentType,
-                                           String subfolder) {
+                                           String subfolder,
+                                           ComfyUiUploadMediaKind kind) {
         if (bytes == null || bytes.length == 0) {
-            throw new BusinessException(400, "上传到 ComfyUI 的图片不能为空");
+            throw new BusinessException(400, "上传到 ComfyUI 的" + kind.label() + "不能为空");
         }
         String safeFileName = safeFileName(fileName);
         MultipartBody.Builder body = new MultipartBody.Builder()
                 .setType(MultipartBody.FORM)
                 .addFormDataPart("image", safeFileName,
-                        RequestBody.create(bytes, MediaType.get(normalizeContentType(contentType))))
+                        RequestBody.create(bytes, MediaType.get(normalizeContentType(contentType, kind))))
                 .addFormDataPart("type", "input")
                 .addFormDataPart("overwrite", "false");
         if (StrUtil.isNotBlank(subfolder)) {
@@ -114,7 +118,7 @@ public class ComfyUiNativeClient {
         Request request = request(apiConfig, "/upload/image")
                 .post(body.build())
                 .build();
-        JsonNode response = executeJson(apiConfig, request, "上传输入图片", 200);
+        JsonNode response = executeJson(apiConfig, request, "上传输入" + kind.label(), 200);
         String name = requiredText(response, "name", "ComfyUI 上传响应缺少 name");
         String returnedSubfolder = requiredString(
                 response, "subfolder", "ComfyUI 上传响应缺少 subfolder");
@@ -423,13 +427,14 @@ public class ComfyUiNativeClient {
         return subfolder;
     }
 
-    private String normalizeContentType(String value) {
+    private String normalizeContentType(String value, ComfyUiUploadMediaKind kind) {
         if (StrUtil.isBlank(value)) {
-            throw new BusinessException(400, "ComfyUI 上传图片缺少 Content-Type");
+            throw new BusinessException(400, "ComfyUI 上传" + kind.label() + "缺少 Content-Type");
         }
         String contentType = value.split(";", 2)[0].trim();
-        if (!contentType.startsWith("image/")) {
-            throw new BusinessException(400, "ComfyUI /upload/image 只接受图片");
+        if (!contentType.startsWith(kind.typePrefix())) {
+            throw new BusinessException(400,
+                    "ComfyUI /upload/image 不接受该" + kind.label() + "类型: " + contentType);
         }
         return contentType;
     }

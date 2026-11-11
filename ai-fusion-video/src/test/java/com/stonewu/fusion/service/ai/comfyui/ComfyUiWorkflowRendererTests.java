@@ -33,6 +33,7 @@ class ComfyUiWorkflowRendererTests {
                           "1":{"class_type":"Text","inputs":{"text":"old"}},
                           "2":{"class_type":"Sampler","inputs":{"seed":0,"batch_size":1}},
                           "3":{"class_type":"LoadImage","inputs":{"image":"old.png"}},
+                          "4":{"class_type":"LoadImage","inputs":{"image":"first-old.png"}},
                           "9":{"class_type":"SaveImage","inputs":{"images":["2",0]}}
                         }
                         """,
@@ -41,7 +42,9 @@ class ComfyUiWorkflowRendererTests {
                           "prompt":[{"nodeId":"1","inputName":"text","valueType":"string"}],
                           "seed":[{"nodeId":"2","inputName":"seed","valueType":"integer"}],
                           "count":[{"nodeId":"2","inputName":"batch_size","valueType":"integer"}],
-                          "referenceImages":[{"nodeId":"3","inputName":"image","valueType":"uploaded_image","index":1}]
+                          "referenceImages":[
+                            {"nodeId":"4","inputName":"image","valueType":"uploaded_image","index":0},
+                            {"nodeId":"3","inputName":"image","valueType":"uploaded_image","index":1}]
                         }
                         """);
 
@@ -55,6 +58,7 @@ class ComfyUiWorkflowRendererTests {
         assertThat(result.at("/2/inputs/seed").asLong()).isEqualTo(42L);
         assertThat(result.at("/2/inputs/batch_size").asInt()).isEqualTo(3);
         assertThat(result.at("/3/inputs/image").asText()).isEqualTo("second.png");
+        assertThat(result.at("/4/inputs/image").asText()).isEqualTo("first.png");
     }
 
     @Test
@@ -105,7 +109,7 @@ class ComfyUiWorkflowRendererTests {
     void rejectsLoadImageMaskOutput() {
         assertThatThrownBy(() -> renderer.render(2, linkedVersion("LoadImage", 1),
                 Map.of("referenceImages", List.of("new.png"))))
-                .isInstanceOf(BusinessException.class).hasMessageContaining("IMAGE 输出");
+                .isInstanceOf(BusinessException.class).hasMessageContaining("槽位 0 输出");
     }
 
     @Test

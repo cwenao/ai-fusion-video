@@ -17,6 +17,7 @@ import com.stonewu.fusion.service.generation.job.RemoteGenerationResult;
 import com.stonewu.fusion.service.media.GenerationMediaService;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -89,6 +90,25 @@ class ComfyUiVideoStrategyTests {
         assertThat((Long) values.getValue().get("seed")).isGreaterThanOrEqualTo(0L);
         assertThat(parameters.path("seed").asLong()).isEqualTo(-1L);
         verify(executor, never()).submit(any());
+    }
+
+    @Test void carriesRatioAndMegapixelsTierIntoPreparedWorkflowValues() {
+        when(executor.resolveContext(model, 20L, api)).thenReturn(context);
+        var prepared = new ComfyUiPreparedSubmission(context, UUID.randomUUID().toString(), new ObjectMapper().createObjectNode());
+        when(executor.prepare(eq(context), eq(claim.id()), any(Map.class))).thenReturn(prepared);
+        model.setConfig("{\"comfyuiResolutionSelector\":{\"multiple\":32},\"comfyuiResolutionTiers\":{\"0.8MP\":0.8},"
+                + "\"defaultResolution\":\"0.8MP\",\"defaultAspectRatio\":\"16:9\",\"supportedAspectRatios\":[\"16:9\"]}");
+        task.setResolution("0.8MP");
+        task.setRatio("16:9");
+        try (var ignored = GenerationLeaseScope.enter(claim)) {
+            strategy.prepare(task, model, api);
+        }
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, Object>> values = ArgumentCaptor.forClass(Map.class);
+        verify(executor).prepare(eq(context), eq(claim.id()), values.capture());
+        assertThat(values.getValue()).containsEntry("aspectRatio", "16:9")
+                .containsEntry("megapixels", new BigDecimal("0.8"))
+                .doesNotContainKeys("width", "height");
     }
 
     @Test void completedQueryReturnsNamedMediaWithoutPublishingPrematurely() {

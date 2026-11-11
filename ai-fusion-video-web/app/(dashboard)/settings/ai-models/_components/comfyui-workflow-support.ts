@@ -17,10 +17,21 @@ export interface FlatComfyUiInputBinding extends ComfyUiInputBinding {
 }
 
 export const COMFYUI_COMMON_INPUTS = ["prompt", "negativePrompt", "seed", "count"] as const;
-export const COMFYUI_IMAGE_INPUTS = ["width", "height", "referenceImages"] as const;
+export const COMFYUI_IMAGE_INPUTS = [
+  "width",
+  "height",
+  "aspectRatio",
+  "megapixels",
+  "resolutionMultiple",
+  "referenceImages",
+] as const;
 export const COMFYUI_VIDEO_INPUTS = [
   "width",
   "height",
+  "aspectRatio",
+  "megapixels",
+  "resolutionMultiple",
+  "upscaleMegapixels",
   "duration",
   "fps",
   "firstFrame",
@@ -63,7 +74,9 @@ export function getComfyUiBusinessFields(modelType: ComfyUiWorkflowModelType): s
 }
 
 export function parseComfyUiNodes(apiWorkflowJson: string): ComfyUiNodeOption[] {
-  if (!apiWorkflowJson.trim()) return [];
+  if (!apiWorkflowJson.trim()) {
+    return [];
+  }
   const parsed = JSON.parse(apiWorkflowJson) as Record<string, unknown>;
   if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") {
     throw new Error("API-format 工作流必须是 JSON 对象");
@@ -113,7 +126,9 @@ export function groupInputBindings(rows: FlatComfyUiInputBinding[]): ComfyUiInpu
 }
 
 export function parseInputBindingsJson(value: string): ComfyUiInputBindings {
-  if (!value.trim()) return {};
+  if (!value.trim()) {
+    return {};
+  }
   const parsed = JSON.parse(value) as ComfyUiInputBindings;
   if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") {
     throw new Error("输入绑定必须是 JSON 对象");
@@ -122,8 +137,12 @@ export function parseInputBindingsJson(value: string): ComfyUiInputBindings {
 }
 
 export function parseOutputBindingsJson(value: string): ComfyUiOutputBinding[] {
-  if (!value.trim()) return [];
+  if (!value.trim()) {
+    return [];
+  }
   const parsed = JSON.parse(value) as ComfyUiOutputBinding[];
-  if (!Array.isArray(parsed)) throw new Error("输出绑定必须是 JSON 数组");
+  if (!Array.isArray(parsed)) {
+    throw new Error("输出绑定必须是 JSON 数组");
+  }
   return parsed;
 }

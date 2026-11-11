@@ -11,6 +11,7 @@ import com.stonewu.fusion.service.ai.ApiConfigService;
 import com.stonewu.fusion.service.ai.comfyui.client.ComfyUiDownloadedFile;
 import com.stonewu.fusion.service.ai.comfyui.client.ComfyUiJobResult;
 import com.stonewu.fusion.service.ai.comfyui.client.ComfyUiNativeClient;
+import com.stonewu.fusion.service.ai.comfyui.client.ComfyUiUploadMediaKind;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -76,7 +77,8 @@ public class ComfyUiGenerationExecutor {
                                              String taskKey,
                                              Map<String, Object> rawValues) {
         Map<String, Object> values = new LinkedHashMap<>(rawValues == null ? Map.of() : rawValues);
-        uploadBoundImages(context, taskKey, values);
+        renderer.validateDimensions(context.model().getModelType(), context.version(), values);
+        uploadBoundMedia(context, taskKey, values);
         ObjectNode prompt = renderer.render(context.model().getModelType(), context.version(), values);
         return new ComfyUiPreparedSubmission(context, UUID.randomUUID().toString(), prompt);
     }
@@ -121,71 +123,32 @@ public class ComfyUiGenerationExecutor {
         return nativeClient.cancelJob(context.apiConfig(), promptId);
     }
 
-    private void uploadBoundImages(ComfyUiExecutionContext context,
+    private void uploadBoundMedia(ComfyUiExecutionContext context,
                                    String taskKey,
                                    Map<String, Object> values) {
         List<ComfyUiInputBinding> bindings = documentService.parseInputBindings(
                 context.model().getModelType(), context.version().getApiWorkflowJson(),
                 context.version().getInputBindingsJson());
-        validateMediaCoverage(bindings, values);
-        Set<String> imageFields = new LinkedHashSet<>();
+        Map<String, ComfyUiUploadMediaKind> mediaFields = new LinkedHashMap<>();
         for (ComfyUiInputBinding binding : bindings) {
-            if ("uploaded_video".equals(binding.valueType())
-                    || "uploaded_audio".equals(binding.valueType())) {
-                throw new BusinessException(400,
-                        "Native API 第一版不支持视频/音频文件上传绑定: " + binding.businessField());
-            }
-            if ("uploaded_image".equals(binding.valueType())) {
-                imageFields.add(binding.businessField());
+            ComfyUiUploadMediaKind kind = switch (binding.valueType()) {
+                case "uploaded_image" -> ComfyUiUploadMediaKind.IMAGE;
+                case "uploaded_video" -> ComfyUiUploadMediaKind.VIDEO;
+                case "uploaded_audio" -> ComfyUiUploadMediaKind.AUDIO;
+                default -> null;
+            };
+            if (kind != null) {
+                mediaFields.put(binding.businessField(), kind);
             }
         }
-        for (String field : imageFields) {
-            Object raw = values.get(field);
+        for (Map.Entry<String, ComfyUiUploadMediaKind> field : mediaFields.entrySet()) {
+            Object raw = values.get(field.getKey());
             if (raw == null) {
                 continue;
             }
-            List<String> sources = toStringList(raw, field);
-            values.put(field, inputResourceService.uploadImages(
-                    context.apiConfig(), taskKey, field, sources));
-        }
-    }
-
-    private void validateMediaCoverage(List<ComfyUiInputBinding> bindings, Map<String, Object> values) {
-        for (String field : List.of("referenceImages", "firstFrame", "lastFrame",
-                "referenceVideos", "referenceAudios")) {
-            Object raw = values.get(field);
-            if (raw == null) {
-                continue;
-            }
-            int count = raw instanceof List<?> items ? items.size() : 1;
-            Set<Integer> covered = new HashSet<>();
-            boolean wholeList = false;
-            for (ComfyUiInputBinding binding : bindings) {
-                if (!field.equals(binding.businessField())) {
-                    continue;
-                }
-                if (binding.index() == null) {
-                    if ("string_list".equals(binding.valueType())) {
-                        wholeList = true;
-                    } else {
-                        covered.add(0);
-                    }
-                } else {
-                    if (binding.index() >= count) {
-                        throw new BusinessException(400, "工作流输入 " + field + " 缺少索引 " + binding.index());
-                    }
-                    covered.add(binding.index());
-                }
-            }
-            if (wholeList) {
-                continue;
-            }
-            for (int index = 0; index < count; index++) {
-                if (!covered.contains(index)) {
-                    throw new BusinessException(400, "ComfyUI 工作流输入 " + field + " 的索引 " + index
-                            + "（第 " + (index + 1) + " 项）未绑定，不能忽略素材；请扩展工作流绑定或减少输入");
-                }
-            }
+            List<String> sources = toStringList(raw, field.getKey());
+            values.put(field.getKey(), inputResourceService.uploadMedia(
+                    context.apiConfig(), taskKey, field.getKey(), sources, field.getValue()));
         }
     }
 
@@ -193,13 +156,13 @@ public class ComfyUiGenerationExecutor {
         if (raw instanceof List<?> list) {
             return list.stream().map(value -> {
                 if (value == null || value.toString().isBlank()) {
-                    throw new BusinessException(400, "ComfyUI 图片输入包含空值: " + field);
+                    throw new BusinessException(400, "ComfyUI 媒体输入包含空值: " + field);
                 }
                 return value.toString();
             }).toList();
         }
         if (raw.toString().isBlank()) {
-            throw new BusinessException(400, "ComfyUI 图片输入不能为空: " + field);
+            throw new BusinessException(400, "ComfyUI 媒体输入不能为空: " + field);
         }
         return List.of(raw.toString());
     }

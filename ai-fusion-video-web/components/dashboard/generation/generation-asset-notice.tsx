@@ -1,0 +1,27 @@
+"use client";
+
+import { FolderOpen, Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import type { useGenerationAssetReferences } from "./use-generation-asset-references";
+
+export function GenerationAssetNotice({ assets }: { assets: ReturnType<typeof useGenerationAssetReferences> }) {
+  return (
+    <div className="flex min-w-0 flex-col gap-2" aria-live="polite">
+      {assets.busy && <p className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" />正在载入资产参考…</p>}
+      {assets.context && (
+        <div className="flex min-w-0 flex-wrap items-center gap-2 rounded-lg border border-border/30 bg-card/50 p-2">
+          <FolderOpen className="size-4 shrink-0 text-muted-foreground" />
+          <span className="min-w-0 flex-1 truncate text-sm">{assets.context.id === null ? assets.context.name : `项目：${assets.context.name}`}</span>
+          <Button type="button" variant="ghost" onClick={assets.clear} disabled={assets.busy} title="清空参考素材并退出当前项目">清空参考</Button>
+        </div>
+      )}
+      {assets.error && (
+        <div role="alert" className="flex min-w-0 flex-wrap items-center gap-2 py-2">
+          <p className="min-w-0 flex-1 text-sm text-destructive">{assets.error}</p>
+          <Button type="button" variant="outline" onClick={assets.retryImport}>重试带入</Button>
+          <Button type="button" variant="ghost" onClick={assets.dismissError}>关闭提示</Button>
+        </div>
+      )}
+    </div>
+  );
+}

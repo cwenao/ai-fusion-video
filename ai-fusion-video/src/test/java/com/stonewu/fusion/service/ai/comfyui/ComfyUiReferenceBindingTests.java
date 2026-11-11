@@ -7,6 +7,7 @@ import com.stonewu.fusion.entity.ai.ApiConfig;
 import com.stonewu.fusion.entity.ai.ComfyUiWorkflowVersion;
 import com.stonewu.fusion.service.ai.ApiConfigService;
 import com.stonewu.fusion.service.ai.comfyui.client.ComfyUiNativeClient;
+import com.stonewu.fusion.service.ai.comfyui.client.ComfyUiUploadMediaKind;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeEach;
 
@@ -35,13 +36,14 @@ class ComfyUiReferenceBindingTests {
 
     @BeforeEach
     void preserveUploadedInputs() {
-        when(resources.uploadImages(eq(api), eq("task"), eq("referenceImages"), anyList()))
+        when(resources.uploadMedia(eq(api), eq("task"), eq("referenceImages"), anyList(),
+                eq(ComfyUiUploadMediaKind.IMAGE)))
                 .thenAnswer(call -> call.getArgument(3));
     }
 
     @Test
     void preparesAllFourReferencesInOrderWithoutSubmittingGeneration() {
-        when(resources.uploadImages(api, "task", "referenceImages", sources))
+        when(resources.uploadMedia(api, "task", "referenceImages", sources, ComfyUiUploadMediaKind.IMAGE))
                 .thenReturn(List.of("uploaded-father.png", "uploaded-mother.png", "uploaded-son.png", "uploaded-room.png"));
 
         var prepared = executor.prepare(context(0, 1, 2, 3), "task", Map.of("referenceImages", sources));

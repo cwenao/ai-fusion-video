@@ -9,6 +9,7 @@ import com.stonewu.fusion.entity.ai.ApiConfig;
 import com.stonewu.fusion.entity.generation.ImageTask;
 import com.stonewu.fusion.service.ai.AiModelService;
 import com.stonewu.fusion.service.ai.comfyui.ComfyUiBoundInputs;
+import com.stonewu.fusion.service.ai.comfyui.ComfyUiResolutionSelector;
 import com.stonewu.fusion.service.ai.comfyui.ComfyUiGenerationExecutor;
 import com.stonewu.fusion.service.ai.comfyui.ComfyUiWorkflowService;
 import com.stonewu.fusion.service.generation.GenerationKind;
@@ -57,9 +58,16 @@ public class ComfyUiImageStrategy implements ImageGenerationStrategy {
     @Override
     public PreparedGenerationCall prepare(ImageTask task, AiModel model, ApiConfig apiConfig) {
         var context = executor.resolveContext(model, task.getWorkflowVersionId(), apiConfig);
-        int[] size = resolveDefaultSize(model, task);
-        var values = imageValues(task.getPrompt(), size[0], size[1], task.getCount(),
+        JSONObject config = StrUtil.isBlank(model.getConfig()) ? new JSONObject() : JSONUtil.parseObj(model.getConfig());
+        var values = imageValues(task.getPrompt(), task.getCount(),
                 parseRefImageUrls(task.getRefImageUrls()), randomSeed());
+        if (config.containsKey("comfyuiResolutionSelector")) {
+            values.putAll(ComfyUiResolutionSelector.taskValues(task, config));
+        } else {
+            int[] size = resolveDefaultSize(model, task);
+            values.put("width", size[0]);
+            values.put("height", size[1]);
+        }
         ComfyUiBoundInputs.overlay(values, task.getWorkflowInputs(), task.getCount());
         var prepared = executor.prepare(context, GenerationLeaseScope.require().id(), values);
         return new PreparedGenerationCall(new GenerationPreparedRequest(prepared.promptId(), prepared.prompt()), () -> {
@@ -95,15 +103,11 @@ public class ComfyUiImageStrategy implements ImageGenerationStrategy {
 
 
     private Map<String, Object> imageValues(String prompt,
-                                            int width,
-                                            int height,
                                             int count,
                                             List<String> references,
                                             long seed) {
         Map<String, Object> values = new LinkedHashMap<>();
         values.put("prompt", StrUtil.blankToDefault(prompt, ""));
-        values.put("width", width);
-        values.put("height", height);
         values.put("count", Math.max(1, count));
         values.put("seed", seed);
         if (references != null && !references.isEmpty()) {

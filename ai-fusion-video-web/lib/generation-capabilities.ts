@@ -141,7 +141,9 @@ export function resolveGenerationCapabilities(
   };
   const mappedRatios = "imageSizes" in output && output.imageSizes
     ? [...new Set(Object.values(output.imageSizes).flatMap((sizes) => Object.keys(sizes)))] : [];
-  const ratios = strings(config, mappedRatios.length ? mappedRatios : ["1:1", "4:3", "3:4", "16:9", "9:16"], "supportedAspectRatios");
+  const ratioDefaults = imageModel && config.comfyuiWorkflowVersionId
+    ? [] : mappedRatios.length ? mappedRatios : ["1:1", "4:3", "3:4", "16:9", "9:16"];
+  const ratios = strings(config, ratioDefaults, "supportedAspectRatios");
   const videoRules = videoRulesOf(config);
   const referenceImageInputFormats = strings(
     config,

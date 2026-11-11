@@ -10,6 +10,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.List;
 import java.util.Map;
 
@@ -32,8 +34,19 @@ public class ComfyUiWorkflowRenderer {
         ObjectNode workflow = documentService.parseApiWorkflow(version.getApiWorkflowJson()).deepCopy();
         List<ComfyUiInputBinding> bindings = documentService.parseInputBindings(
                 modelType, version.getApiWorkflowJson(), version.getInputBindingsJson());
+        values = dimensionValues(workflow, bindings, values);
+        validateRequiredMedia(bindings, values);
         Map<String, JsonNode> writtenInputs = new HashMap<>();
+        Set<String> detachedLoaders = new HashSet<>();
         for (ComfyUiInputBinding binding : bindings) {
+            Object supplied = values == null ? null : values.get(binding.businessField());
+            if (binding.optional() && (supplied == null
+                    || supplied instanceof List<?> items && binding.index() >= items.size())) {
+                ObjectNode slotInputs = (ObjectNode) workflow.path(binding.nodeId()).path("inputs");
+                detachedLoaders.add(slotInputs.get(binding.inputName()).get(0).asText());
+                slotInputs.remove(binding.inputName());
+                continue;
+            }
             if (values == null || !values.containsKey(binding.businessField())) {
                 continue;
             }
@@ -49,17 +62,18 @@ public class ComfyUiWorkflowRenderer {
             JsonNode current = nodeInputs.get(binding.inputName());
             if (isUploadedMedia(binding.valueType()) && isLink(current)) {
                 JsonNode sourceNode = workflow.path(current.get(0).asText());
-                // 只支持内置 LoadImage 的 IMAGE 输出；其他链路必须明确绑定加载节点的文件字段。
-                if (!"uploaded_image".equals(binding.valueType())
-                        || current.get(1).asInt() != 0
-                        || !"LoadImage".equals(sourceNode.path("class_type").asText())
-                        || !sourceNode.path("inputs").path("image").isTextual()) {
+                // 上传媒体连线只支持对应加载节点的槽位 0；其他链路必须明确绑定加载节点的文件字段。
+                String fileInput = loaderFileInput(binding.valueType(),
+                        sourceNode.path("class_type").asText());
+                if (fileInput == null || current.get(1).asInt() != 0
+                        || !sourceNode.path("inputs").path(fileInput).isTextual()) {
                     throw new BusinessException(400,
-                            "上传媒体请直接绑定加载节点的文件输入；图片连线仅支持 LoadImage 的 IMAGE 输出: "
+                            "上传媒体请直接绑定加载节点的文件输入；连线仅支持 LoadImage/VHS_LoadVideo/"
+                                    + "VHS_LoadAudioUpload 的槽位 0 输出: "
                                     + binding.nodeId() + "." + binding.inputName());
                 }
                 targetNodeId = current.get(0).asText();
-                targetInputName = "image";
+                targetInputName = fileInput;
                 nodeInputs = (ObjectNode) sourceNode.get("inputs");
             }
             String targetKey = targetNodeId + "." + targetInputName;
@@ -69,13 +83,117 @@ public class ComfyUiWorkflowRenderer {
             }
             nodeInputs.set(targetInputName, renderedValue);
         }
+        // Remove only detached loaders without another consumer; never leave placeholder images in the prompt.
+        for (String loader : detachedLoaders) {
+            boolean referenced = false;
+            for (JsonNode node : workflow) {
+                for (JsonNode input : node.path("inputs")) {
+                    if (isLink(input) && loader.equals(input.get(0).asText())) {
+                        referenced = true;
+                    }
+                }
+            }
+            if (!referenced) {
+                workflow.remove(loader);
+            }
+        }
         return workflow;
+    }
+
+    public void validateDimensions(int modelType, ComfyUiWorkflowVersion version, Map<String, Object> values) {
+        ObjectNode workflow = documentService.parseApiWorkflow(version.getApiWorkflowJson());
+        var bindings = documentService.parseInputBindings(modelType,
+                version.getApiWorkflowJson(), version.getInputBindingsJson());
+        dimensionValues(workflow, bindings, values);
+        validateRequiredMedia(bindings, values);
+    }
+
+    private void validateMediaCoverage(List<ComfyUiInputBinding> bindings, Map<String, Object> values) {
+        for (String field : List.of("referenceImages", "firstFrame", "lastFrame",
+                "referenceVideos", "referenceAudios")) {
+            Object raw = values.get(field);
+            if (raw == null) {
+                continue;
+            }
+            int count = raw instanceof List<?> items ? items.size() : 1;
+            Set<Integer> covered = new HashSet<>();
+            boolean wholeList = false;
+            for (ComfyUiInputBinding binding : bindings) {
+                if (!field.equals(binding.businessField())) {
+                    continue;
+                }
+                if (binding.index() == null) {
+                    if ("string_list".equals(binding.valueType())) {
+                        wholeList = true;
+                    } else {
+                        covered.add(0);
+                    }
+                } else {
+                    if (binding.index() >= count) {
+                        if (binding.optional()) {
+                            continue;
+                        }
+                        throw new BusinessException(400, "工作流输入 " + field + " 缺少索引 " + binding.index());
+                    }
+                    covered.add(binding.index());
+                }
+            }
+            if (wholeList) {
+                continue;
+            }
+            for (int index = 0; index < count; index++) {
+                if (!covered.contains(index)) {
+                    throw new BusinessException(400, "ComfyUI 工作流输入 " + field + " 的索引 " + index
+                            + "（第 " + (index + 1) + " 项）未绑定，不能忽略素材；请扩展工作流绑定或减少输入");
+                }
+            }
+        }
+    }
+
+    private void validateRequiredMedia(List<ComfyUiInputBinding> bindings, Map<String, Object> values) {
+        validateMediaCoverage(bindings, values);
+        for (var binding : bindings) {
+            if (!binding.optional() && binding.index() != null && isUploadedMedia(binding.valueType())
+                    && (values == null || values.get(binding.businessField()) == null)) {
+                throw new BusinessException(400, "工作流输入 " + binding.businessField() + " 缺少索引 " + binding.index());
+            }
+        }
+    }
+
+    private Map<String, Object> dimensionValues(ObjectNode workflow, List<ComfyUiInputBinding> bindings,
+                                                Map<String, Object> supplied) {
+        var values = ComfyUiResolutionSelector.renderValues(workflow, bindings, supplied);
+        for (var binding : bindings) {
+            if (("width".equals(binding.businessField()) || "height".equals(binding.businessField()))
+                    && values.get(binding.businessField()) != null
+                    && isLink(workflow.path(binding.nodeId()).path("inputs").path(binding.inputName()))) {
+                throw new BusinessException(400, "图片宽高绑定不能覆盖工作流连线，请绑定选择器的比例和百万像素参数: "
+                        + binding.nodeId() + "." + binding.inputName());
+            }
+        }
+        return values;
     }
 
     private static boolean isUploadedMedia(String valueType) {
         return "uploaded_image".equals(valueType)
                 || "uploaded_video".equals(valueType)
                 || "uploaded_audio".equals(valueType);
+    }
+
+    /**
+     * 每种上传类型允许重定向的加载节点与文件输入；其他加载器必须直接绑定文件字段。
+     */
+    private static String loaderFileInput(String valueType, String classType) {
+        if ("uploaded_image".equals(valueType) && "LoadImage".equals(classType)) {
+            return "image";
+        }
+        if ("uploaded_video".equals(valueType) && "VHS_LoadVideo".equals(classType)) {
+            return "video";
+        }
+        if ("uploaded_audio".equals(valueType) && "VHS_LoadAudioUpload".equals(classType)) {
+            return "audio";
+        }
+        return null;
     }
 
     /**

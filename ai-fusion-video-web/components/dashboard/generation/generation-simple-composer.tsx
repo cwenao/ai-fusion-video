@@ -4,22 +4,18 @@ import { useRef, useState, type ClipboardEvent, type DragEvent } from "react";
 import { toast } from "sonner";
 import {
   CircleAlert,
-  FileVideo2,
   ImagePlus,
   Loader2,
-  Music2,
+  Library,
   SlidersHorizontal,
   Sparkles,
-  X,
 } from "lucide-react";
 import type { AiModel } from "@/lib/api/ai-model";
 import type { GenerationCapabilities } from "@/lib/generation-capabilities";
 import { videoInputState, videoPromptReady } from "@/lib/video-model-rules";
-import { uploadFile } from "@/lib/api/storage";
+import { uploadMedia } from "@/lib/api/media";
 import { getApiErrorMessage } from "@/lib/api/api-error";
-import { resolveMediaUrl } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
-import { SafeImage } from "@/components/media/managed-image";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import type {
@@ -32,6 +28,7 @@ import type {
 } from "./generation-types";
 import { GenerationAttachmentUploadMenu } from "./generation-attachment-upload-menu";
 import { GenerationQuickSettings } from "./generation-quick-settings";
+import { GenerationReferenceStrip } from "./generation-reference-strip";
 
 const MEDIA_UPLOAD_CONFIG: Record<
   SimpleAttachmentMediaType,
@@ -60,6 +57,9 @@ interface GenerationSimpleComposerProps {
   onFormChange: (patch: Partial<GenerationFormState>) => void;
   onAddAttachments: (urls: string[], kind?: SimpleAttachmentKind) => void;
   onRemoveAttachment: (url: string) => void;
+  onReorderAttachment: (index: number, direction: -1 | 1) => void;
+  onChooseAssets: () => void;
+  assetPickerDisabled: boolean;
   onSubmit: () => void;
   onAdvanced: () => void;
   attachmentDisabledReason?: string;
@@ -83,6 +83,9 @@ export function GenerationSimpleComposer({
   onFormChange,
   onAddAttachments,
   onRemoveAttachment,
+  onReorderAttachment,
+  onChooseAssets,
+  assetPickerDisabled,
   onSubmit,
   onAdvanced,
   attachmentDisabledReason = "",
@@ -128,7 +131,6 @@ export function GenerationSimpleComposer({
     option?: SimpleAttachmentUploadOption,
   ) => {
     const mediaType = option?.mediaType || "image";
-    const config = MEDIA_UPLOAD_CONFIG[mediaType];
     const remaining =
       option?.remaining ??
       Math.max(0, maxImageAttachments - imageAttachmentCount);
@@ -143,7 +145,10 @@ export function GenerationSimpleComposer({
     setError("");
     try {
       const urls = await Promise.all(
-        selected.map((file) => uploadFile(file, config.folder)),
+        selected.map(async (file) => {
+          const media = await uploadMedia(file, { requestId: crypto.randomUUID() });
+          return `media://${media.id}`;
+        }),
       );
       onAddAttachments(urls, option?.kind);
     } catch (error) {
@@ -230,38 +235,12 @@ export function GenerationSimpleComposer({
         )}
 
         {attachments.length > 0 && (
-          <div className="flex gap-2 overflow-x-auto px-4 pr-32 pt-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {attachments.map((attachment) => (
-              <div
-                key={`${attachment.label}-${attachment.url}`}
-                className="group relative grid h-16 w-16 shrink-0 place-items-center overflow-hidden rounded-2xl border border-border/50 bg-muted/30"
-              >
-                {attachment.mediaType === "image" ? (
-                  <SafeImage
-                    src={resolveMediaUrl(attachment.url) || undefined}
-                    alt={attachment.label}
-                    className="h-full w-full object-cover"
-                    fallbackType="image"
-                  />
-                ) : attachment.mediaType === "video" ? (
-                  <FileVideo2 className="size-6 text-cyan-500/70" />
-                ) : (
-                  <Music2 className="size-6 text-violet-500/70" />
-                )}
-                <span className="absolute inset-x-1 bottom-1 truncate rounded-md bg-black/55 px-1 py-0.5 text-center text-[9px] text-white backdrop-blur-sm">
-                  {attachment.label}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => onRemoveAttachment(attachment.url)}
-                  title={`移除${attachment.label}`}
-                  aria-label={`移除${attachment.label}`}
-                  className="absolute right-1 top-1 grid h-5 w-5 place-items-center rounded-full bg-black/60 text-white opacity-0 transition-opacity group-hover:opacity-100"
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </div>
-            ))}
+          <div className="px-4 pr-32 pt-4">
+            <GenerationReferenceStrip
+              items={attachments.map((attachment) => ({ ...attachment, group: attachment.kind }))}
+              onRemove={(index) => onRemoveAttachment(attachments[index].url)}
+              onMove={onReorderAttachment}
+            />
           </div>
         )}
 
@@ -303,6 +282,10 @@ export function GenerationSimpleComposer({
               disabledReason={attachmentDisabledReason}
               onSelect={handleSelectUpload}
             />
+            <Button type="button" variant="ghost" onClick={onChooseAssets} disabled={assetPickerDisabled}>
+              <Library />
+              从资产库选择
+            </Button>
             <GenerationQuickSettings
               mode={mode}
               models={models}

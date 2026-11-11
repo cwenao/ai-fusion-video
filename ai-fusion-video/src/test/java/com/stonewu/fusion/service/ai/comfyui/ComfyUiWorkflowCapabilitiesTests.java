@@ -235,6 +235,34 @@ class ComfyUiWorkflowCapabilitiesTests {
         assertThatThrownBy(() -> capabilities.getMergedModelConfig(model)).hasMessageContaining("索引必须从 0 连续绑定");
     }
 
+    @Test
+    void selectorCapabilitiesRejectPixelConflictsAtTheSubmissionBoundary() throws Exception {
+        var fixture = json.readTree(getClass().getResourceAsStream("/comfyui/qwen-selector-version.json"));
+        var selectorVersion = ComfyUiWorkflowVersion.builder().id(20L).workflowId(12L).versionNo(1)
+                .published(true).apiWorkflowJson(fixture.path("api").toString())
+                .inputBindingsJson(fixture.path("bindings").toString())
+                .outputBindingsJson(fixture.path("outputs").toString()).build();
+        when(workflows.requireVersion(20L)).thenReturn(selectorVersion);
+        model.setConfig("{\"defaultWidth\":512,\"defaultHeight\":512,\"comfyuiResolutionTiers\":{\"1MP\":1,\"2MP\":2}}");
+
+        var resolved = capabilities.getMergedModelConfig(model);
+        assertThat(resolved.getStr("defaultResolution")).isEqualTo("2MP");
+        assertThat(resolved.getJSONArray("supportedAspectRatios").toList(String.class)).contains("9:16", "16:9", "1:1");
+        assertThat(resolved.containsKey("defaultWidth")).isFalse();
+        var task = ImageTask.builder().ratio("9:16").resolution("1MP").build();
+        capabilities.validateImageTask(model, task);
+        assertThat(task.getAspectRatio()).isEqualTo("9:16");
+        assertThat(task.getWidth()).isNull();
+        assertThat(task.getHeight()).isNull();
+
+        var conflicting = ImageTask.builder().ratio("16:9").resolution("2MP").width(512).height(512).build();
+        assertThatThrownBy(() -> capabilities.validateImageTask(model, conflicting))
+                .isInstanceOf(BusinessException.class).hasMessageContaining("宽高");
+        var unsupported = ImageTask.builder().ratio("16:9").resolution("512x512").build();
+        assertThatThrownBy(() -> capabilities.validateImageTask(model, unsupported))
+                .isInstanceOf(BusinessException.class).hasMessageContaining("分辨率");
+    }
+
     private ImageTask image(int count) {
         var refs = new ArrayList<String>();
         for (int index = 0; index < count; index++) {

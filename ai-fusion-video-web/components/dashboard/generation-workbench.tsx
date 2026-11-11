@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { ImageIcon, Settings2, Video } from "lucide-react";
+import { ImageIcon, Loader2, Settings2, Video } from "lucide-react";
 import { toast } from "sonner";
 import { aiModelApi, type AiModel, type ModelPreset } from "@/lib/api/ai-model";
 import { resolveGenerationCapabilities, workflowInputIssue } from "@/lib/generation-capabilities";
@@ -43,6 +43,12 @@ import { useGenerationHistory } from "./generation/use-generation-history";
 import { generationSubmitRequest } from "./generation/generation-submit-request";
 import { resolutionChoices } from "@/lib/image-output-sizes";
 import { useReferenceImageUploadAvailability } from "./generation/use-reference-image-upload-availability";
+import { useGenerationAssetReferences } from "./generation/use-generation-asset-references";
+import { GenerationAssetNotice } from "./generation/generation-asset-notice";
+import { AssetReferencePickerDialog } from "@/components/assets/asset-reference-picker-dialog";
+import { getApiErrorMessage } from "@/lib/api/api-error";
+import { useConfirm } from "@/components/ui/confirm-dialog";
+import { generationReferenceUrls } from "./generation/generation-asset-inputs";
 
 interface GenerationWorkbenchProps {
   mode: WorkbenchMode;
@@ -55,10 +61,15 @@ function clean(values: string[]) {
 export default function GenerationWorkbench({
   mode,
 }: GenerationWorkbenchProps) {
-  return <GenerationWorkbenchContent key={mode} mode={mode} />;
+  return (
+    <Suspense fallback={<div role="status" className="flex items-center justify-center p-6"><Loader2 className="size-5 animate-spin" aria-label="加载生成工作区" /></div>}>
+      <GenerationWorkbenchContent key={mode} mode={mode} />
+    </Suspense>
+  );
 }
 
 function GenerationWorkbenchContent({ mode }: GenerationWorkbenchProps) {
+  const { confirm } = useConfirm();
   const modelType = mode === "image" ? 2 : 3;
   const [composerMode, setComposerMode] = useState<ComposerMode>("simple");
   const [models, setModels] = useState<AiModel[]>([]);
@@ -79,7 +90,11 @@ function GenerationWorkbenchContent({ mode }: GenerationWorkbenchProps) {
     cancel: cancelTask,
     remove: deleteTask,
   } = historyState;
-  const submitting = submission.busy;
+  const [validatingAssets, setValidatingAssets] = useState(false);
+  const submitGuard = useRef(false);
+  const formSnapshot = useRef(form);
+  formSnapshot.current = form;
+  const submitting = submission.busy || validatingAssets;
   const [assetTarget, setAssetTarget] = useState<GenerationAssetTarget | null>(
     null,
   );
@@ -141,11 +156,29 @@ function GenerationWorkbenchContent({ mode }: GenerationWorkbenchProps) {
     capabilities,
   );
 
-  const changeModel = (id: number) => {
+  const assets = useGenerationAssetReferences({
+    mode, form, setForm, models, presets, modelId, setModelId, loadingModels, capabilities,
+    imageAvailability: referenceImageUploadAvailability,
+  });
+
+  const changeModel = async (id: number) => {
+    if (id === modelId) {
+      return;
+    }
     const model = models.find((candidate) => candidate.id === id);
     if (!model) {
       toast.error("所选模型已不可用，请刷新模型列表");
       return;
+    }
+    if (generationReferenceUrls(form).length > 0) {
+      const accepted = await confirm({
+        title: "切换生成模型",
+        description: "切换模型会清空当前参考素材，提示词会保留。",
+        confirmText: "清空并切换",
+      });
+      if (!accepted) {
+        return;
+      }
     }
     setModelId(id);
     setForm((current) =>
@@ -506,6 +539,23 @@ function GenerationWorkbenchContent({ mode }: GenerationWorkbenchProps) {
     }));
   };
 
+  const reorderSimpleAttachment = (index: number, direction: -1 | 1) => {
+    const attachment = simpleAttachments[index];
+    const neighbor = simpleAttachments[index + direction];
+    if (!neighbor || neighbor.kind !== attachment.kind) {
+      return;
+    }
+    const fields = { firstFrame: "firstFrame", lastFrame: "lastFrame", referenceImage: "referenceImages", referenceVideo: "referenceVideos", referenceAudio: "referenceAudios" } as const;
+    const field = fields[attachment.kind];
+    setForm((current) => {
+      const values = [...current[field]];
+      const from = values.indexOf(attachment.url);
+      const to = from + direction;
+      [values[from], values[to]] = [values[to], values[from]];
+      return { ...current, [field]: values };
+    });
+  };
+
   const validate = () => {
     if (!modelId || !capabilities) {
       return "请选择生成模型";
@@ -550,6 +600,9 @@ function GenerationWorkbenchContent({ mode }: GenerationWorkbenchProps) {
   };
 
   const submit = async () => {
+    if (submitGuard.current || assets.busy) {
+      return;
+    }
     const error = validate();
     if (error) {
       toast.error(error);
@@ -558,30 +611,30 @@ function GenerationWorkbenchContent({ mode }: GenerationWorkbenchProps) {
     if (!modelId) {
       return;
     }
-
+    submitGuard.current = true;
+    setValidatingAssets(true);
     const originalForm = form;
-    const receipt = await submission.submit(
-      generationSubmitRequest(mode, form, modelId, capabilities),
-      selectedModel!.name,
-    );
-    if (!receipt) {
-      return;
+    try {
+      await assets.validateForSubmit();
+      if (formSnapshot.current !== originalForm) {
+        throw new Error("生成参数已变化，请重新提交");
+      }
+      const receipt = await submission.submit(
+        generationSubmitRequest(mode, originalForm, modelId, capabilities, assets.projectId),
+        selectedModel!.name,
+      );
+      if (!receipt) {
+        return;
+      }
+      setForm((current) => current === originalForm ? { ...current, prompt: "", referenceImages: [], firstFrame: [], lastFrame: [], referenceVideos: [], referenceAudios: [] } : current);
+      setHistoryLimit(10);
+      await loadHistory(10);
+    } catch (cause) {
+      toast.error(getApiErrorMessage(cause));
+    } finally {
+      submitGuard.current = false;
+      setValidatingAssets(false);
     }
-    setForm((current) =>
-      current === originalForm
-        ? {
-            ...current,
-            prompt: "",
-            referenceImages: [],
-            firstFrame: [],
-            lastFrame: [],
-            referenceVideos: [],
-            referenceAudios: [],
-          }
-        : current,
-    );
-    setHistoryLimit(10);
-    await loadHistory(10);
   };
 
   const focusComposer = () => {
@@ -670,6 +723,7 @@ function GenerationWorkbenchContent({ mode }: GenerationWorkbenchProps) {
           submission={submission}
           onConfirmed={() => void loadHistory(historyLimit)}
         />
+        <GenerationAssetNotice assets={assets} />
         {capabilities?.unavailable && (
           <p role="alert" className="text-sm text-destructive">{capabilities.unavailable}</p>
         )}
@@ -694,6 +748,8 @@ function GenerationWorkbenchContent({ mode }: GenerationWorkbenchProps) {
             onFormChange={updateForm}
             onSubmit={() => void submit()}
             onSimple={() => setComposerMode("simple")}
+            onChooseAssets={assets.openPicker}
+            assetPickerDisabled={loadingModels || assets.busy || submitting || !capabilities || Boolean(capabilities.unavailable)}
             referenceImageUploadAvailability={referenceImageUploadAvailability}
           />
         }
@@ -787,6 +843,9 @@ function GenerationWorkbenchContent({ mode }: GenerationWorkbenchProps) {
                   onFormChange={updateForm}
                   onAddAttachments={addSimpleAttachments}
                   onRemoveAttachment={removeSimpleAttachment}
+                  onReorderAttachment={reorderSimpleAttachment}
+                  onChooseAssets={() => assets.openPicker("mixed")}
+                  assetPickerDisabled={loadingModels || assets.busy || submitting || !capabilities || Boolean(capabilities.unavailable)}
                   onSubmit={() => void submit()}
                   onAdvanced={() => setComposerMode("advanced")}
                   attachmentDisabledReason={simpleAttachmentDisabledReason}
@@ -796,6 +855,17 @@ function GenerationWorkbenchContent({ mode }: GenerationWorkbenchProps) {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <AssetReferencePickerDialog
+        open={assets.open}
+        onOpenChange={assets.onPickerOpenChange}
+        targetLabel={assets.targetLabel}
+        projectId={assets.projectId}
+        projectLocked={assets.projectLocked}
+        mediaTypes={assets.mediaTypes}
+        selectionIssue={assets.selectionIssue}
+        onConfirm={assets.confirm}
+      />
 
       {assetTarget && (
         <GenerationAssetDialog

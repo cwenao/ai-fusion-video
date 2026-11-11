@@ -7,25 +7,13 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { getApiErrorMessage } from "@/lib/api/api-error";
-import { uploadFile } from "@/lib/api/storage";
-import type { ComfyUiBindingValueType } from "@/lib/api/comfyui-workflow";
-
-export interface ComfyUiTestField {
-  name: string;
-  type: ComfyUiBindingValueType;
-}
-const labels: Record<string, string> = {
-  prompt: "提示词",
-  negativePrompt: "负面提示词",
-  width: "宽度",
-  height: "高度",
-  seed: "随机种子",
-  count: "数量",
-  duration: "时长",
-  referenceImageUrls: "参考图片",
-  firstFrameUrl: "首帧",
-  lastFrameUrl: "尾帧",
-};
+import { uploadMedia } from "@/lib/api/media";
+import {
+  getComfyUiTestFieldLabel,
+  getComfyUiTestMediaPolicy,
+  validateComfyUiTestUpload,
+  type ComfyUiTestField,
+} from "@/lib/comfyui-test-media";
 
 export function ComfyUiTestFields({
   fields,
@@ -43,7 +31,7 @@ export function ComfyUiTestFields({
   onUploading: (field: string, uploading: boolean) => void;
 }) {
   return (
-    <div className="grid gap-4 md:grid-cols-2">
+    <div className="grid min-w-0 gap-4 p-1 md:grid-cols-2">
       {fields.map((field) => (
         <TestField
           key={field.name}
@@ -78,23 +66,27 @@ function TestField({
   const input = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const list =
-    field.type === "string_list" || field.type.startsWith("uploaded_");
-  const label = labels[field.name] ?? field.name;
+  const media = getComfyUiTestMediaPolicy(field.type);
+  const list = field.type === "string_list" || !!media;
+  const label = getComfyUiTestFieldLabel(field.name);
+  const requirement = field.requiredCount === 1
+    ? "（第 1 项必填）"
+    : field.requiredCount > 1 ? `（前 ${field.requiredCount} 项必填）` : "（可选）";
+  const describedBy = [media && `${id}-help`, error && `${id}-error`]
+    .filter(Boolean).join(" ");
   const upload = async (files: File[]) => {
+    if (files.length === 0) {
+      return;
+    }
     setUploading(true);
     onUploading(true);
     setError(null);
     try {
-      if (
-        files.length > 64 ||
-        files.some(
-          (file) =>
-            !file.type.startsWith("image/") || file.size > 20 * 1024 * 1024,
-        )
-      )
-        throw new Error("每次最多上传 64 张不超过 20MB 的图片。");
-      for (const file of files) onAppend([await uploadFile(file, "images")]);
+      validateComfyUiTestUpload(field, value, files);
+      for (const file of files) {
+        const resource = await uploadMedia(file, { requestId: crypto.randomUUID() });
+        onAppend([`media://${resource.id}`]);
+      }
     } catch (failure) {
       setError(getApiErrorMessage(failure));
     } finally {
@@ -103,44 +95,53 @@ function TestField({
     }
   };
   return (
-    <div className="space-y-2">
-      <Label htmlFor={id}>{label}</Label>
+    <div className="flex min-w-0 flex-col gap-2">
+      <Label htmlFor={id}>{label}{media && requirement}</Label>
       {list ? (
         <Textarea
           id={id}
           value={value}
           disabled={disabled || uploading}
-          onChange={(event) => onChange(event.target.value)}
-          placeholder="每行一项，可填写媒体引用、URL 或 Data URI"
+          aria-required={field.requiredCount > 0}
+          aria-invalid={!!error}
+          aria-describedby={describedBy || undefined}
+          onChange={(event) => {
+            setError(null);
+            onChange(event.target.value);
+          }}
+          placeholder={media ? "每行一项，可填写媒体引用、URL 或 Data URI" : "每行一项"}
         />
       ) : (
         <Input
           id={id}
-          type={
-            field.type === "integer" || field.type === "number"
-              ? "number"
-              : "text"
-          }
+          type={field.type === "integer" || field.type === "number" ? "number" : "text"}
           step={field.type === "integer" ? "1" : "any"}
           value={value}
           disabled={disabled}
-          placeholder={
-            field.type === "boolean"
-              ? "true 或 false"
-              : "留空使用工作流中保存的值"
-          }
+          placeholder={field.type === "boolean"
+            ? "true 或 false"
+            : field.name === "aspectRatio"
+              ? "例如 16:9，留空使用已保存值"
+              : field.name === "resolutionMultiple"
+                ? "例如 32，留空使用已保存值"
+                : "留空使用工作流中保存的值"}
           onChange={(event) => onChange(event.target.value)}
         />
       )}
-      {field.type === "uploaded_image" && (
+      {media && (
         <>
+          <p id={`${id}-help`} className="text-xs text-muted-foreground">
+            最多 {field.maximumCount} 项，每项不超过 {media.maxMegabytes}MB。
+            {field.requiredCount > 0 && field.requiredCount < field.maximumCount && "其余可选。"}
+          </p>
           <input
             ref={input}
             type="file"
-            multiple
-            accept="image/*"
+            multiple={field.maximumCount !== 1}
+            accept={`${media.mimePrefix}*`}
             className="hidden"
             aria-label={`上传${label}`}
+            disabled={disabled || uploading}
             onChange={(event) => {
               const files = Array.from(event.target.files ?? []);
               event.target.value = "";
@@ -150,16 +151,17 @@ function TestField({
           <Button
             variant="outline"
             size="sm"
+            className="self-start"
             disabled={disabled || uploading}
             onClick={() => input.current?.click()}
           >
             <Upload />
-            {uploading ? "上传中…" : "上传图片"}
+            {uploading ? "上传中…" : `上传${media.label}`}
           </Button>
         </>
       )}
       {error && (
-        <p role="alert" className="text-xs text-destructive">
+        <p id={`${id}-error`} role="alert" className="text-xs text-destructive">
           {error}
         </p>
       )}

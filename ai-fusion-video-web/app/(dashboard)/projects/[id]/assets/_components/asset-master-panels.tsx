@@ -26,6 +26,7 @@ interface MasterAssetHeaderProps {
     description: string;
   }) => Promise<void>;
   onDelete: (base: AssetWithItems) => void;
+  onEditingChange: (editing: boolean) => void;
 }
 
 export function MasterAssetHeader({
@@ -33,6 +34,7 @@ export function MasterAssetHeader({
   saving,
   onSave,
   onDelete,
+  onEditingChange,
 }: MasterAssetHeaderProps) {
   const [error, setError] = React.useState("");
   const [base, setBase] = React.useState(asset);
@@ -42,6 +44,13 @@ export function MasterAssetHeader({
   const [description, setDescription] = React.useState(asset.description || "");
   const assetType = getAssetType(asset.type);
   const TypeIcon = assetType.icon;
+
+  React.useEffect(() => {
+    onEditingChange(editing);
+    return () => {
+      onEditingChange(false);
+    };
+  }, [editing, onEditingChange]);
 
   const cancel = () => {
     setBase(asset);
@@ -56,7 +65,9 @@ export function MasterAssetHeader({
       setError("");
       await onSave(base, { name, type, description });
       setEditing(false);
-    } catch (failure) { setError(getApiErrorMessage(failure)); }
+    } catch (failure) {
+      setError(getApiErrorMessage(failure));
+    }
   };
 
   return (
@@ -87,7 +98,10 @@ export function MasterAssetHeader({
             size="sm"
             disabled={saving}
             onClick={() => {
-              if (editing) { setEditing(false); return; }
+              if (editing) {
+                setEditing(false);
+                return;
+              }
               setBase(asset);
               setName(asset.name);
               setType(asset.type);

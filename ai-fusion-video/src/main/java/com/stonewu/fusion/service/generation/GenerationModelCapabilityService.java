@@ -11,6 +11,7 @@ import com.stonewu.fusion.entity.generation.ImageTask;
 import com.stonewu.fusion.entity.generation.VideoTask;
 import com.stonewu.fusion.service.ai.ModelPresetService;
 import com.stonewu.fusion.service.ai.comfyui.ComfyUiWorkflowCapabilities;
+import com.stonewu.fusion.service.ai.comfyui.ComfyUiResolutionSelector;
 import com.stonewu.fusion.service.ai.model.AiModelMetadata;
 import com.stonewu.fusion.service.ai.model.AiModelMetadataResolver;
 import com.stonewu.fusion.service.ai.model.GptImageModel;
@@ -184,6 +185,8 @@ public class GenerationModelCapabilityService {
                     && "openai".equalsIgnoreCase(StrUtil.isNotBlank(model.getModelProtocol())
                     ? model.getModelProtocol().trim() : aiModelMetadataResolver.resolve(model, platform).modelProtocol());
             ImageOutputDimensions.normalize(task, config, openAiImage);
+        } else {
+            ComfyUiResolutionSelector.validateTask(task, config);
         }
         ImageModelCapability capability = imageCapability(config);
         List<String> referenceImages = parseJsonUrls(task.getRefImageUrls(), "refImageUrls");
@@ -218,6 +221,7 @@ public class GenerationModelCapabilityService {
             return;
         }
         JSONObject config = getMergedModelConfig(model);
+        ComfyUiResolutionSelector.validateTask(task, config);
         VideoModelRules.normalizeTask(config, task);
         VideoModelCapability capability = videoCapability(config);
         List<String> referenceImages = parseJsonUrls(task.getReferenceImageUrls(), "referenceImageUrls");
@@ -372,6 +376,8 @@ public class GenerationModelCapabilityService {
                 .set("supportedSizes", copyJsonObject(config, "supportedSizes"))
                 .set("defaultWidth", getInteger(config, "defaultWidth"))
                 .set("defaultHeight", getInteger(config, "defaultHeight"))
+                .set("comfyuiResolutionSelector", copyJsonObject(config, "comfyuiResolutionSelector"))
+                .set("comfyuiResolutionTiers", copyJsonObject(config, "comfyuiResolutionTiers"))
                 .set(ComfyUiWorkflowCapabilities.VERSION_KEY, config.get(ComfyUiWorkflowCapabilities.VERSION_KEY))
                 .set(ComfyUiWorkflowCapabilities.INPUTS_KEY, config.get(ComfyUiWorkflowCapabilities.INPUTS_KEY))
                 .set("summary", describeImageCapability(model, capability));
@@ -462,6 +468,8 @@ public class GenerationModelCapabilityService {
                 .set("promptExtend", config.getBool("promptExtend"))
                 .set(ComfyUiWorkflowCapabilities.VERSION_KEY, config.get(ComfyUiWorkflowCapabilities.VERSION_KEY))
                 .set(ComfyUiWorkflowCapabilities.INPUTS_KEY, config.get(ComfyUiWorkflowCapabilities.INPUTS_KEY))
+                .set("comfyuiResolutionSelector", config.get("comfyuiResolutionSelector"))
+                .set("comfyuiResolutionTiers", config.get("comfyuiResolutionTiers"))
                 .set("summary", describeVideoCapability(model, capability));
     }
 
