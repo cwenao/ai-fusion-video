@@ -143,6 +143,14 @@ https://github.com/user-attachments/assets/acd181a0-541c-4163-a000-fa9ed72a5106
 
 你可以在「智能体配置」中设置常用指令、可用工具和默认技能（Skill）。助手会按会话中的授权方式使用工具，也可调用通过 MCP 接入的外部工具，或将分项任务交给子智能体。执行进度会显示在对话里。
 
+### 外部 Agent 接入项目
+
+融光提供 `/api/mcp` 的 Streamable HTTP 入口。外部 Agent 可在授权项目中创建、读取和更新剧本、分镜、提示词和资产，提交后在原项目继续编辑。
+
+在后端配置 `PROJECT_MCP_ENABLED=true`，并将 `PROJECT_MCP_ALLOWED_HOSTS` 设置为接入域名。用网页登录令牌调用 `POST /api/project/{projectId}/mcp-credentials`，提供 `label` 和 `scope`。`read` 用于读取，`read_write` 还可提交内容和上传文件。将响应中的项目凭证作为外部 MCP 客户端的 Bearer 令牌。
+
+从 `fusion_workspace_get` 读取项目结构和上传入口。先在系统设置中启用一项默认存储配置，再通过同域 HTTP 上传图片、视频和音频原件。取得媒体 ID 后用 `fusion_media_bind` 绑定。更新前读回对象版本，网络重试沿用原业务 `requestId`。可通过同一项目的凭证管理接口查询和撤销授权。
+
 ### ComfyUI 工作流
 
 在「系统设置 → AI 配置」连接 ComfyUI 服务，导入从 ComfyUI 导出的 API 格式 JSON，指定提示词、参考素材和输出结果对应的工作流节点。完成校验和试运行后，发布工作流并将它关联到图片或视频模型。

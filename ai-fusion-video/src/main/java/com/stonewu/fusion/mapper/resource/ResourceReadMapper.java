@@ -1,5 +1,6 @@
 package com.stonewu.fusion.mapper.resource;
 
+import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.stonewu.fusion.service.canvas.model.CanvasValueType;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -23,7 +24,7 @@ public interface ResourceReadMapper {
     Long currentStoryboard(@Param("projectId") long projectId);
 
     List<Long> storyboardChildren(@Param("type") CanvasValueType type, @Param("parentType") CanvasValueType parentType,
-                                  @Param("parentId") long parentId);
+                                  @Param("parentId") long parentId, @Param("page") IPage<Long> page);
 
     long countStoryboardChildren(@Param("type") CanvasValueType type, @Param("storyboardId") long storyboardId);
 

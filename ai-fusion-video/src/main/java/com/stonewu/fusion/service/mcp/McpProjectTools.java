@@ -1,0 +1,321 @@
+package com.stonewu.fusion.service.mcp;
+
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.stonewu.fusion.common.BusinessException;
+import com.stonewu.fusion.service.canvas.CanvasJson;
+import com.stonewu.fusion.service.canvas.model.CanvasException;
+import com.stonewu.fusion.service.canvas.model.CanvasValueType;
+import com.stonewu.fusion.service.mcp.McpProjectCredentials.Grant;
+import com.stonewu.fusion.service.mcp.McpProjectResources.PageRequest;
+import com.stonewu.fusion.service.media.model.MediaException;
+import com.stonewu.fusion.service.resource.ResourceCommandService;
+import com.stonewu.fusion.service.resource.model.*;
+import io.modelcontextprotocol.spec.McpSchema.CallToolResult;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.stereotype.Component;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import static com.stonewu.fusion.service.canvas.model.CanvasValueType.*;
+import static com.stonewu.fusion.service.mcp.McpProjectValues.id;
+
+@Slf4j
+@Component
+@RequiredArgsConstructor
+@ConditionalOnProperty(name = "app.project-mcp.enabled", havingValue = "true")
+class McpProjectTools {
+    private static final Set<String> SHOT_PROMPTS = Set.of("firstFramePrompt", "lastFramePrompt", "videoPrompt");
+
+    private final McpProjectCredentials credentials;
+    private final McpProjectToolSchemas schemas;
+    private final McpProjectResources resources;
+    private final McpProjectMedia media;
+    private final ResourceCommandService commands;
+    private final CanvasJson json;
+
+    private record Outcome(ObjectNode data, ResourceCommandReceipt receipt) {
+        static Outcome read(ObjectNode data) {
+            return new Outcome(data, null);
+        }
+    }
+
+    CallToolResult call(McpProjectTool tool, Grant grant, Map<String, Object> arguments) {
+        String requestId = null;
+        ObjectNode args = json.object(arguments == null ? Map.of() : arguments);
+        try {
+            McpProjectToolSchemas.validate(schemas.contract(tool).validator(), args, "arguments");
+            long projectId = id(args, "projectId");
+            credentials.requireProject(grant, projectId, tool.write);
+            if (tool.write) {
+                requestId = args.path("requestId").asText();
+            }
+            String key = tool.write ? McpProjectValues.requestKey(json, projectId, tool.toolName(), requestId) : null;
+            var outcome = execute(tool, grant, args, key);
+            var output = json.object(Map.of("ok", true, "data", outcome.data()));
+            String commandId = null;
+            if (outcome.receipt() != null) {
+                commandId = outcome.receipt().commandId();
+                output.put("requestId", requestId).put("commandId", commandId);
+                var versions = output.putArray("versions");
+                for (ResourceChange change : outcome.receipt().changes()) {
+                    versions.addObject().put("kind", change.resourceType().code())
+                            .put("id", Long.toString(change.resourceId())).put("version", change.version());
+                }
+            }
+            audit(grant, tool, requestId, commandId, "OK");
+            return result(output, false);
+        } catch (BusinessException exception) {
+            var error = failure(tool, args, exception);
+            audit(grant, tool, requestId, null, error.getErrorCode());
+            return error(error);
+        } catch (RuntimeException unexpected) {
+            log.error("MCP 工具异常 credentialId={} projectId={} tool={} type={}", grant.credentialId(),
+                    grant.projectId(), tool.toolName(), unexpected.getClass().getSimpleName());
+            audit(grant, tool, requestId, null, "INTERNAL_ERROR");
+            return error(new McpProjectFailure(500, "INTERNAL_ERROR", "工具执行未完成", Map.of()));
+        }
+    }
+
+    private Outcome execute(McpProjectTool tool, Grant grant, ObjectNode args, String key) {
+        String kind = args.path("kind").asText();
+        return switch (tool) {
+            case WORKSPACE_GET -> Outcome.read(resources.workspace(grant, credentials.canWrite(grant)));
+            case WORKSPACE_INITIALIZE -> initialize(grant, args, key);
+            case SCRIPT_LIST -> list(grant, McpProjectValues.script(kind), args, null);
+            case SCRIPT_GET -> scriptDetail(grant, McpProjectValues.script(kind), args);
+            case SCRIPT_CREATE -> create(grant, McpProjectValues.script(kind), args, key);
+            case SCRIPT_UPDATE -> update(grant, McpProjectValues.script(kind), args, key);
+            case STORYBOARD_LIST -> list(grant, McpProjectValues.storyboard(kind), args,
+                    McpProjectValues.storyboard(args.path("parentKind").asText()));
+            case STORYBOARD_GET -> Outcome.read(resources.detail(grant, McpProjectValues.storyboard(kind),
+                    id(args, "id"), false));
+            case STORYBOARD_CREATE -> create(grant, McpProjectValues.storyboard(kind), args, key);
+            case STORYBOARD_UPDATE -> update(grant, McpProjectValues.storyboard(kind), args, key);
+            case STORYBOARD_APPEND_SHOTS -> appendShots(grant, args, key);
+            case PROMPT_GET -> prompt(grant, args, null);
+            case PROMPT_SET -> prompt(grant, args, key);
+            case ASSET_LIST -> assetList(grant, CanvasValueType.fromCode(kind), args);
+            case ASSET_GET -> Outcome.read(resources.detail(grant, CanvasValueType.fromCode(kind), id(args, "id"),
+                    false));
+            case ASSET_CREATE -> create(grant, CanvasValueType.fromCode(kind), args, key);
+            case ASSET_UPDATE -> update(grant, CanvasValueType.fromCode(kind), args, key);
+            case MEDIA_GET -> Outcome.read(media.get(grant, args.path("mediaResourceId").asText()));
+            case MEDIA_BIND -> bindMedia(grant, args, key);
+        };
+    }
+
+    private Outcome initialize(Grant grant, ObjectNode args, String key) {
+        var receipt = submit(grant, new InitializeProjectWorkspaceCommand(key, grant.projectId(),
+                args.path("expectedVersion").intValue()));
+        return new Outcome(resources.workspaceView(grant, receipt.result(), true), receipt);
+    }
+
+    private Outcome scriptDetail(Grant grant, CanvasValueType type, ObjectNode args) {
+        if (type == SCRIPT_SCENE && args.has("includeRawContent")) {
+            throw McpProjectFailure.invalid("includeRawContent", "原稿参数适用于剧本主档或分集");
+        }
+        return Outcome.read(resources.detail(grant, type, id(args, "id"), args.path("includeRawContent").asBoolean()));
+    }
+
+    private Outcome list(Grant grant, CanvasValueType child, ObjectNode args, CanvasValueType selectedParent) {
+        var parent = selectedParent == null ? McpProjectValues.parent(child) : selectedParent;
+        return Outcome.read(resources.children(grant, child, parent, id(args, "parentId"), PageRequest.from(args)));
+    }
+
+    private Outcome assetList(Grant grant, CanvasValueType type, ObjectNode args) {
+        if (type == ASSET) {
+            if (args.has("parentId")) {
+                throw McpProjectFailure.invalid("parentId", "项目资产列表直接按项目读取");
+            }
+            return Outcome.read(resources.assets(grant, args.path("assetType").asText(null),
+                    args.path("keyword").asText(null), PageRequest.from(args)));
+        }
+        if (args.has("assetType") || args.has("keyword")) {
+            throw McpProjectFailure.invalid(args.has("assetType") ? "assetType" : "keyword",
+                    "资产类型和关键词筛选用于资产主档列表");
+        }
+        return list(grant, type, args, null);
+    }
+
+    private Outcome create(Grant grant, CanvasValueType type, ObjectNode args, String key) {
+        var input = (ObjectNode) args.path("fields");
+        schemas.validateFields(type, true, input);
+        var fields = McpProjectValues.internalFields(input);
+        requireReferences(grant, List.of(fields));
+        Long projectId = null;
+        if (type == ASSET) {
+            if (args.has("parentId") || args.has("expectedParentVersion")) {
+                throw McpProjectFailure.invalid("parentId", "项目资产主档直接创建在项目中");
+            }
+            projectId = grant.projectId();
+        } else {
+            long parentId = id(args, "parentId");
+            if (!args.has("expectedParentVersion")) {
+                throw McpProjectFailure.invalid("expectedParentVersion", "创建子对象需要父版本");
+            }
+            resources.requireHeader(grant, McpProjectValues.parent(type), parentId);
+            fields.put(McpProjectValues.parentField(type), parentId)
+                    .put("parentVersion", args.path("expectedParentVersion").intValue());
+        }
+        var receipt = submit(grant, new ResourceCreateCommand(key, type, projectId, fields));
+        var output = written(grant, type, receipt);
+        if (type == ASSET) {
+            var initial = (ObjectNode) receipt.result().path("items").get(0);
+            output.set("initialItem", resources.written(grant, ASSET_ITEM, initial, receipt.changes()));
+        }
+        return new Outcome(output, receipt);
+    }
+
+    private Outcome update(Grant grant, CanvasValueType type, ObjectNode args, String key) {
+        var input = (ObjectNode) args.path("patch");
+        schemas.validateFields(type, false, input);
+        long target = id(args, "id");
+        var fields = McpProjectValues.internalFields(input);
+        requireReferences(grant, List.of(fields));
+        var receipt = patch(grant, type, target, args, key, fields);
+        return new Outcome(written(grant, type, receipt), receipt);
+    }
+
+    private Outcome appendShots(Grant grant, ObjectNode args, String key) {
+        long sceneId = id(args, "sceneId");
+        resources.requireHeader(grant, STORYBOARD_SCENE, sceneId);
+        var shots = new ArrayList<ObjectNode>();
+        args.path("shots").forEach(shot -> shots.add(McpProjectValues.internalFields((ObjectNode) shot)));
+        requireReferences(grant, shots);
+        var receipt = submit(grant, new StoryboardChildrenCommand(key, STORYBOARD_SCENE, sceneId,
+                args.path("expectedParentVersion").intValue(), StoryboardChildrenCommand.Mode.APPEND, shots,
+                List.of()));
+        var result = json.object(Map.of("parent", resources.written(grant, STORYBOARD_SCENE,
+                (ObjectNode) receipt.result().path("parent"), receipt.changes())));
+        var items = result.putArray("created");
+        var children = receipt.result().path("children");
+        for (int index = children.size() - shots.size(); index < children.size(); index++) {
+            items.add(resources.written(grant, SHOT, (ObjectNode) children.get(index), receipt.changes()));
+        }
+        return new Outcome(result, receipt);
+    }
+
+    private Outcome prompt(Grant grant, ObjectNode args, String key) {
+        var type = CanvasValueType.fromCode(args.path("targetKind").asText());
+        long target = id(args, "targetId");
+        String slot = args.path("slot").asText();
+        if (type == SHOT ? !SHOT_PROMPTS.contains(slot) : !"aiPrompt".equals(slot)) {
+            throw McpProjectFailure.invalid("slot", "提示词槽位与对象类型不匹配");
+        }
+        if (key == null) {
+            return Outcome.read(resources.prompt(grant, type, target, slot));
+        }
+        var fields = json.object(Map.of());
+        fields.set(slot, args.get("text"));
+        var receipt = patch(grant, type, target, args, key, fields);
+        return new Outcome(resources.promptView(type, receipt.result(), slot), receipt);
+    }
+
+    private Outcome bindMedia(Grant grant, ObjectNode args, String key) {
+        var type = CanvasValueType.fromCode(args.path("targetKind").asText());
+        long target = id(args, "targetId");
+        resources.requireHeader(grant, type, target);
+        var parentVersion = parentVersion(type, args);
+        var bindings = media.checkedBindings(grant, type, args.path("bindings"));
+        var receipt = submit(grant, new ResourceBindMediaCommand(key, type, target,
+                args.path("expectedVersion").intValue(), parentVersion, bindings));
+        var data = written(grant, type, receipt);
+        data.set("bindings", args.path("bindings"));
+        return new Outcome(data, receipt);
+    }
+
+    private ResourceCommandReceipt patch(Grant grant, CanvasValueType type, long id, ObjectNode args, String key,
+                                         ObjectNode patch) {
+        resources.requireHeader(grant, type, id);
+        return submit(grant, new ResourcePatchCommand(key, type, id, args.path("expectedVersion").intValue(), patch,
+                parentVersion(type, args)));
+    }
+
+    private Integer parentVersion(CanvasValueType type, ObjectNode args) {
+        boolean supplied = args.has("expectedParentVersion");
+        if (type == ASSET_ITEM && !supplied) {
+            throw McpProjectFailure.invalid("expectedParentVersion", "资产项写入需要所属资产版本");
+        }
+        if (type != ASSET_ITEM && supplied) {
+            throw McpProjectFailure.invalid("expectedParentVersion", "此对象更新只接受目标版本");
+        }
+        return supplied ? args.path("expectedParentVersion").intValue() : null;
+    }
+
+    private ResourceCommandReceipt submit(Grant grant, ResourceCommand command) {
+        return commands.execute(command, ResourceCommandContext.user(grant.actor(), null));
+    }
+
+    private void requireReferences(Grant grant, List<ObjectNode> fields) {
+        for (var reference : McpProjectValues.references(fields)) {
+            resources.requireHeader(grant, reference.type(), reference.id());
+        }
+    }
+
+    private ObjectNode written(Grant grant, CanvasValueType type, ResourceCommandReceipt receipt) {
+        return json.object(Map.of("resource", resources.written(grant, type, receipt.result(), receipt.changes())));
+    }
+
+    private McpProjectFailure failure(McpProjectTool tool, ObjectNode args, BusinessException failure) {
+        if (failure instanceof McpProjectFailure direct) {
+            return direct;
+        }
+        if (failure.getCode() == 404 || failure.getCode() == 410) {
+            return McpProjectFailure.missing();
+        }
+        if (failure.getCode() == 403) {
+            return McpProjectFailure.denied();
+        }
+        if (failure instanceof CanvasException canvas) {
+            return switch (canvas.getErrorCode()) {
+                case VERSION_CONFLICT -> versionFailure(tool, args, canvas);
+                case REQUEST_CONFLICT -> new McpProjectFailure(409, "REQUEST_CONFLICT", canvas.getMessage(), Map.of());
+                default -> McpProjectFailure.invalid("arguments", canvas.getMessage());
+            };
+        }
+        if (failure instanceof MediaException mediaFailure && failure.getCode() != 400) {
+            return new McpProjectFailure(failure.getCode(), mediaFailure.getErrorCode(), failure.getMessage(), Map.of());
+        }
+        return McpProjectFailure.invalid("arguments", failure.getMessage());
+    }
+
+    private McpProjectFailure versionFailure(McpProjectTool tool, ObjectNode args, CanvasException failure) {
+        var source = failure.getDetails();
+        var details = new LinkedHashMap<String, Object>();
+        String resourceKind = (String) source.get("resourceType");
+        if (resourceKind != null) {
+            details.put("resourceKind", resourceKind);
+            details.put("resourceId", source.get("resourceId").toString());
+            details.put("currentVersion", source.get("currentVersion"));
+        }
+        String field = args.has("expectedParentVersion")
+                && (tool == McpProjectTool.SCRIPT_CREATE || tool == McpProjectTool.STORYBOARD_CREATE
+                    || tool == McpProjectTool.ASSET_CREATE || tool == McpProjectTool.STORYBOARD_APPEND_SHOTS
+                    || "asset".equals(resourceKind)) ? "expectedParentVersion" : "expectedVersion";
+        if (args.has(field)) {
+            details.put("expectedVersion", args.path(field).intValue());
+        }
+        return new McpProjectFailure(409, "VERSION_CONFLICT", failure.getMessage(), details);
+    }
+
+    private CallToolResult error(McpProjectFailure failure) {
+        return result(json.object(Map.of("ok", false, "error", Map.of("code", failure.getErrorCode(),
+                "message", failure.getMessage(), "details", failure.getDetails()))), true);
+    }
+
+    private CallToolResult result(ObjectNode value, boolean error) {
+        return CallToolResult.builder().isError(error).structuredContent(value).addTextContent(json.write(value)).build();
+    }
+
+    private void audit(Grant grant, McpProjectTool tool, String requestId, String commandId, String code) {
+        log.info("项目 MCP credentialId={} userId={} projectId={} tool={} requestId={} commandId={} result={}",
+                grant.credentialId(), grant.actor().userId(), grant.projectId(), tool.toolName(), requestId, commandId,
+                code);
+    }
+}

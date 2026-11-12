@@ -77,7 +77,15 @@ class FlywayMigrationNamingTests {
             Map.entry("V1.1.0.0.7__agent_state_store.sql", 1255028557),
             Map.entry("V1.1.0.0.8__agent_state_retention.sql", 1567974926),
             Map.entry("V1.1.1.0.0__comfyui_workflow_support.sql", 1507480516),
-            Map.entry("V1.1.2.0.0__add_episode_bgm_fields.sql", -1120549424));
+            Map.entry("V1.1.2.0.0__add_episode_bgm_fields.sql", -1120549424),
+            // v1.3.0 正式发布提交 e793bd0。
+            Map.entry("V1.1.3.0.0__create_canvas_documents.sql", -955420203),
+            Map.entry("V1.1.3.0.1__create_resource_commands_and_membership.sql", 1181096009),
+            Map.entry("V1.1.3.0.2__create_managed_media_registry.sql", -1030045972),
+            Map.entry("V1.1.3.0.3__create_generation_and_media_jobs.sql", 393170419),
+            Map.entry("V1.1.3.0.4__create_canvas_execution_and_delivery.sql", 1770912913),
+            Map.entry("V1.1.3.0.5__extend_agent_and_provider_configuration.sql", -1432568841),
+            Map.entry("V1.1.3.0.6__create_media_reference_views.sql", -1175647704));
 
     @Test
     void migrationsUseProductVersionAndContinuousSequence() throws Exception {

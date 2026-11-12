@@ -137,7 +137,10 @@ public class ProjectWorkspaceRepository {
 
     private ObjectNode overview(long projectId, Long scriptId, Long storyboardId) {
         Map<String, Object> result = new LinkedHashMap<>();
-        result.put("projectVersion", resources.require(CanvasValueType.PROJECT, projectId, false).version());
+        var project = resources.require(CanvasValueType.PROJECT, projectId, false);
+        result.put("projectVersion", project.version());
+        result.put("project", Map.of("id", projectId, "name", resources.data(project).path("name").asText(),
+                "version", project.version()));
         result.put("script",
                 scriptId == null ? null : resources.data(resources.require(CanvasValueType.SCRIPT, scriptId, false)));
         result.put("scriptEpisodeCount", scriptId == null ? 0 : episodes.selectCount(

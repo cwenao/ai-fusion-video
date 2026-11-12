@@ -1,0 +1,209 @@
+package com.stonewu.fusion.service.mcp;
+
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.stonewu.fusion.repository.resource.AssetReadRepository;
+import com.stonewu.fusion.repository.resource.ResourceReadRepository;
+import com.stonewu.fusion.repository.resource.StoryboardReadRepository;
+import com.stonewu.fusion.service.canvas.CanvasJson;
+import com.stonewu.fusion.service.canvas.model.CanvasValueType;
+import com.stonewu.fusion.service.mcp.McpProjectCredentials.Grant;
+import com.stonewu.fusion.service.resource.ResourceQueryService;
+import com.stonewu.fusion.service.resource.model.ResourceChange;
+import com.stonewu.fusion.service.resource.model.ResourceHeader;
+import lombok.RequiredArgsConstructor;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+
+import static com.stonewu.fusion.service.canvas.model.CanvasValueType.*;
+
+@Component
+@RequiredArgsConstructor
+@ConditionalOnProperty(name = "app.project-mcp.enabled", havingValue = "true")
+class McpProjectResources {
+    private final ResourceReadRepository resources;
+    private final StoryboardReadRepository storyboards;
+    private final AssetReadRepository assets;
+    private final ResourceQueryService queries;
+    private final McpProjectToolSchemas schemas;
+    private final McpProjectMedia media;
+    private final CanvasJson json;
+
+    record PageRequest(int number, int size) {
+        static PageRequest from(ObjectNode args) {
+            return new PageRequest(args.path("page").asInt(1), args.path("pageSize").asInt(20));
+        }
+    }
+
+    private record Parent(CanvasValueType type, long id) {
+    }
+
+    ResourceHeader requireHeader(Grant grant, CanvasValueType type, long id) {
+        return resources.find(type, id, false, false)
+                .filter(header -> Objects.equals(header.projectId(), grant.projectId()))
+                .orElseThrow(McpProjectFailure::missing);
+    }
+
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public ObjectNode workspace(Grant grant, boolean writable) {
+        return workspaceView(grant, queries.workspace(grant.projectId(), grant.actor()), writable);
+    }
+
+    ObjectNode workspaceView(Grant grant, ObjectNode snapshot, boolean writable) {
+        var result = json.object(Map.of("project", Map.of("id", Long.toString(grant.projectId()),
+                "name", snapshot.path("project").path("name").asText(),
+                "version", snapshot.path("projectVersion").intValue())));
+        for (String key : List.of("script", "storyboard")) {
+            var node = snapshot.path(key);
+            if (node.isNull()) {
+                result.putNull(key);
+            } else {
+                result.putObject(key).put("id", node.path("id").asText())
+                        .put("version", node.path("version").intValue());
+            }
+        }
+        if (writable) {
+            result.set("mediaUpload", media.uploadOptions(grant.projectId()));
+        }
+        return result;
+    }
+
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public ObjectNode detail(Grant grant, CanvasValueType type, long id, boolean rawContent) {
+        requireHeader(grant, type, id);
+        var source = queries.get(type, id, grant.actor()).data();
+        var result = view(grant, type, source, false, rawContent);
+        var parent = parent(type, source);
+        if (parent != null) {
+            result.put("parentVersion", requireHeader(grant, parent.type(), parent.id()).version());
+        }
+        if (media.hasBindingFields(type)) {
+            media.readBindings(grant, type, source, result.putArray("mediaBindings"));
+        }
+        return result;
+    }
+
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public ObjectNode children(Grant grant, CanvasValueType child, CanvasValueType parentType, long parentId,
+                               PageRequest page) {
+        var header = requireHeader(grant, parentType, parentId);
+        IPage<Long> found = switch (child) {
+            case SCRIPT_EPISODE, SCRIPT_SCENE -> resources.pageScriptChildren(child, parentId, page.number(), page.size());
+            case ASSET_ITEM -> assets.pageItems(parentId, page.number(), page.size());
+            default -> storyboards.pageChildren(child, parentType, parentId, page.number(), page.size());
+        };
+        var result = page(grant, child, found.getRecords(), found.getTotal(), page);
+        return result.put("parentId", Long.toString(parentId)).put("parentVersion", header.version());
+    }
+
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public ObjectNode assets(Grant grant, String type, String keyword, PageRequest page) {
+        long projectId = grant.projectId();
+        var allowed = List.of(projectId);
+        var ids = assets.ids(grant.actor(), allowed, projectId, type, keyword, page.number(), page.size());
+        return page(grant, ASSET, ids, assets.count(grant.actor(), allowed, projectId, type, keyword), page);
+    }
+
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public ObjectNode prompt(Grant grant, CanvasValueType type, long id, String slot) {
+        requireHeader(grant, type, id);
+        var data = queries.get(type, id, grant.actor()).data();
+        return promptView(type, data, slot);
+    }
+
+    ObjectNode promptView(CanvasValueType type, ObjectNode data, String slot) {
+        var result = json.object(Map.of("targetKind", type.code(), "targetId", data.path("id").asText(),
+                "slot", slot, "version", data.path("version").intValue()));
+        var text = data.get(slot);
+        if (text == null) {
+            result.putNull("text");
+        } else {
+            result.set("text", text);
+        }
+        if (type == ASSET_ITEM) {
+            result.put("parentId", data.path("assetId").asText())
+                    .put("parentVersion", data.path("assetVersion").intValue());
+        }
+        return result;
+    }
+
+    ObjectNode written(Grant grant, CanvasValueType type, ObjectNode source, List<ResourceChange> changes) {
+        var result = view(grant, type, source, false, false);
+        var parent = parent(type, source);
+        if (parent != null) {
+            changes.stream().filter(change -> change.resourceType() == parent.type() && change.resourceId() == parent.id())
+                    .findFirst().ifPresent(change -> result.put("parentVersion", change.version()));
+            if (type == ASSET_ITEM) {
+                result.put("parentVersion", source.path("assetVersion").intValue());
+            }
+        }
+        return result;
+    }
+
+    private ObjectNode page(Grant grant, CanvasValueType type, List<Long> ids, long total, PageRequest page) {
+        var result = json.object(Map.of("page", page.number(), "pageSize", page.size(),
+                "hasMore", (long) page.number() * page.size() < total));
+        var items = result.putArray("items");
+        for (long id : ids) {
+            items.add(view(grant, type, queries.get(type, id, grant.actor()).data(), true, false));
+        }
+        return result;
+    }
+
+    private ObjectNode view(Grant grant, CanvasValueType type, ObjectNode source, boolean summary, boolean raw) {
+        var result = json.object(Map.of("id", source.path("id").asText(), "kind", McpProjectValues.kind(type),
+                "projectId", Long.toString(grant.projectId()), "version", source.path("version").intValue()));
+        var parent = parent(type, source);
+        if (parent != null) {
+            result.put("parentId", Long.toString(parent.id()));
+        }
+        var fields = result.putObject("fields");
+        copy(source, fields, List.of("title", "name", "type", "itemType", "episodeNumber", "sceneNumber",
+                "sceneHeading", "shotNumber", "shotType", "duration", "sortOrder", "totalEpisodes", "totalScenes"));
+        if (!summary) {
+            copy(source, fields, schemas.readFields(type));
+            copy(source, fields, List.of("aiPrompt", "firstFramePrompt", "lastFramePrompt", "videoPrompt"));
+        }
+        if (!raw) {
+            fields.remove("rawContent");
+        } else if (source.has("rawContent")) {
+            fields.set("rawContent", source.get("rawContent"));
+        }
+        return result;
+    }
+
+    private void copy(ObjectNode source, ObjectNode target, Iterable<String> names) {
+        for (String name : names) {
+            JsonNode value = source.get(name);
+            if (value != null) {
+                target.set(name, McpProjectValues.externalField(name, value));
+            }
+        }
+    }
+
+    private Parent parent(CanvasValueType type, ObjectNode data) {
+        return switch (type) {
+            case SCRIPT_EPISODE, SCRIPT_SCENE, STORYBOARD_EPISODE, STORYBOARD_SCENE, ASSET_ITEM ->
+                    new Parent(McpProjectValues.parent(type), data.path(McpProjectValues.parentField(type)).longValue());
+            case SHOT -> shotParent(data);
+            default -> null;
+        };
+    }
+
+    private Parent shotParent(ObjectNode data) {
+        if (data.hasNonNull("storyboardSceneId")) {
+            return new Parent(STORYBOARD_SCENE, data.path("storyboardSceneId").longValue());
+        }
+        if (data.hasNonNull("storyboardEpisodeId")) {
+            return new Parent(STORYBOARD_EPISODE, data.path("storyboardEpisodeId").longValue());
+        }
+        return new Parent(STORYBOARD, data.path("storyboardId").longValue());
+    }
+}
