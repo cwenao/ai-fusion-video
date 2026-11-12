@@ -21,6 +21,7 @@ export interface MediaAccess {
   url: string;
   expiresAt: string;
   download: boolean;
+  playbackUrl?: string;
 }
 
 export function mediaId(reference: string | null | undefined): string | null {

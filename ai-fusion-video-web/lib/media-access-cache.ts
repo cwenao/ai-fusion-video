@@ -1,6 +1,9 @@
 import { accessMedia } from "@/lib/api/media";
 import { resolveMediaUrl } from "@/lib/api/client";
 import { getApiErrorMessage } from "@/lib/api/api-error";
+import { tosMediaPlaybackUrl } from "@/lib/tos-media-playback";
+
+export type MediaAccessMode = "link" | "download" | "playback";
 
 export interface MediaAccessSnapshot { url: string | null; error: string | null; loading: boolean }
 export const EMPTY_MEDIA_ACCESS: MediaAccessSnapshot = { url: null, error: null, loading: false };
@@ -17,7 +20,7 @@ export function mediaAccessSnapshot(key: string) {
   return key ? active.get(key)?.snapshot ?? PENDING : EMPTY_MEDIA_ACCESS;
 }
 
-export function subscribeMediaAccess(key: string, id: string | null, download: boolean, notify: () => void) {
+export function subscribeMediaAccess(key: string, id: string | null, mode: MediaAccessMode, notify: () => void) {
   if (!key || !id) return () => {};
   let entry = active.get(key);
   if (!entry) {
@@ -28,11 +31,16 @@ export function subscribeMediaAccess(key: string, id: string | null, download: b
   const current = entry;
   const issue = async () => {
     try {
-      const access = await accessMedia(id, download, current.controller.signal);
-      if (current.controller.signal.aborted) return;
+      const access = await accessMedia(id, mode === "download", current.controller.signal);
+      const playback = mode === "playback" ? resolveMediaUrl(access.playbackUrl) : null;
+      const url = playback ? await tosMediaPlaybackUrl(playback) : resolveMediaUrl(access.url);
+      if (current.controller.signal.aborted) {
+        return;
+      }
       const remaining = Date.parse(access.expiresAt) - Date.now();
-      const url = resolveMediaUrl(access.url);
-      if (!url || !Number.isFinite(remaining) || remaining <= 1000) throw new Error("媒体访问凭据已失效");
+      if (!url || !Number.isFinite(remaining) || remaining <= 1000) {
+        throw new Error("媒体访问凭据已失效");
+      }
       current.snapshot = { url, loading: false, error: null };
       current.timer = setTimeout(issue, Math.max(1000, remaining - 30000));
     } catch (error) {

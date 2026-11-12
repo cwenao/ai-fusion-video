@@ -1,8 +1,10 @@
 package com.stonewu.fusion.service.media;
 
 import com.google.crypto.tink.*;
+import com.google.crypto.tink.streamingaead.AesGcmHkdfStreamingKey;
 import com.google.crypto.tink.streamingaead.PredefinedStreamingAeadParameters;
 import com.google.crypto.tink.streamingaead.StreamingAeadConfig;
+import com.google.crypto.tink.subtle.Hkdf;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
@@ -13,9 +15,10 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.GeneralSecurityException;
+import java.util.Arrays;
 
 /**
- * 使用标准流式认证加密；存储端即使公开也只能得到密文。密钥只在服务端数据库保存。
+ * 使用标准流式认证加密；存储端即使公开也只能得到密文。长期密钥只在服务端数据库保存。
  */
 @Component
 public class MediaCryptor {
@@ -65,9 +68,32 @@ public class MediaCryptor {
         }
     }
 
+    byte[] playbackKey(byte[] keyset, byte[] header, String resourceId) throws IOException {
+        try {
+            var key = parseKeyset(keyset).getPrimary().getKey();
+            if (!(key instanceof AesGcmHkdfStreamingKey streamingKey)
+                    || !PredefinedStreamingAeadParameters.AES128_GCM_HKDF_1MB.equals(streamingKey.getParameters())
+                    || header.length != 24 || header[0] != 24) {
+                throw new IOException("媒体加密格式不支持浏览器直读");
+            }
+            byte[] material = streamingKey.getInitialKeyMaterial().toByteArray(InsecureSecretKeyAccess.get());
+            try {
+                return Hkdf.computeHkdf("HmacSHA256", material, Arrays.copyOfRange(header, 1, 17),
+                        context(resourceId), 16);
+            } finally {
+                Arrays.fill(material, (byte) 0);
+            }
+        } catch (GeneralSecurityException failure) {
+            throw new IOException("媒体播放密钥生成失败", failure);
+        }
+    }
+
     private StreamingAead primitive(byte[] keyset) throws GeneralSecurityException {
-        return TinkProtoKeysetFormat.parseKeyset(keyset, InsecureSecretKeyAccess.get(), RegistryConfiguration.get())
-                .getPrimitive(RegistryConfiguration.get(), StreamingAead.class);
+        return parseKeyset(keyset).getPrimitive(RegistryConfiguration.get(), StreamingAead.class);
+    }
+
+    private KeysetHandle parseKeyset(byte[] keyset) throws GeneralSecurityException {
+        return TinkProtoKeysetFormat.parseKeyset(keyset, InsecureSecretKeyAccess.get(), RegistryConfiguration.get());
     }
 
     private byte[] context(String id) {

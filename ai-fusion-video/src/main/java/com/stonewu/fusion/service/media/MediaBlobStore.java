@@ -139,7 +139,7 @@ public class MediaBlobStore {
         }
     }
 
-    private StorageConfig configuration(MediaBlob blob) {
+    StorageConfig configuration(MediaBlob blob) {
         // 密钥与配置不能从可回填旧值的内容缓存中取得。
         StorageConfig config = configurations.selectById(blob.storageConfigId());
         if (config == null || !Objects.equals(config.getStatus(), 1)
@@ -173,7 +173,7 @@ public class MediaBlobStore {
         return target;
     }
 
-    private String objectKey(StorageConfig config, String key) {
+    String objectKey(StorageConfig config, String key) {
         validateKey(key);
         String base = config.getBasePath();
         if (base == null || base.isBlank()) {

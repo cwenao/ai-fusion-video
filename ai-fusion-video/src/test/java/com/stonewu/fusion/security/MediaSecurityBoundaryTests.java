@@ -4,8 +4,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.stonewu.fusion.config.CorsProperties;
 import com.stonewu.fusion.controller.media.MediaContentController;
 import com.stonewu.fusion.controller.media.MediaExceptionHandler;
+import com.stonewu.fusion.controller.media.MediaPlaybackController;
+import com.stonewu.fusion.entity.media.MediaAccessTicketEntity;
+import com.stonewu.fusion.mapper.media.MediaAccessTicketMapper;
 import com.stonewu.fusion.service.media.MediaAccessTickets;
 import com.stonewu.fusion.service.media.MediaContentWriter;
+import com.stonewu.fusion.service.media.TosMediaPlayback;
 import com.stonewu.fusion.service.media.model.MediaException;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.annotation.Bean;
@@ -15,7 +19,9 @@ import org.springframework.security.web.FilterChainProxy;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.support.AnnotationConfigWebApplicationContext;
 import org.springframework.web.servlet.config.annotation.EnableWebMvc;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -36,8 +42,20 @@ class MediaSecurityBoundaryTests {
         @Bean MediaAccessTickets tickets() {
             var tickets = mock(MediaAccessTickets.class);
             when(tickets.authorize(anyString(), anyString())).thenThrow(new MediaException(403, "MEDIA_TICKET_INVALID", "无效凭据"));
+            when(tickets.authorizePlayback(anyString(), anyString()))
+                    .thenThrow(new MediaException(403, "MEDIA_TICKET_INVALID", "无效凭据"));
             return tickets;
         }
+        @Bean
+        TosMediaPlayback playback() {
+            return mock(TosMediaPlayback.class);
+        }
+
+        @Bean
+        MediaPlaybackController playbackController(MediaAccessTickets tickets, TosMediaPlayback playback) {
+            return new MediaPlaybackController(tickets, playback);
+        }
+
         @Bean MediaContentController content(MediaAccessTickets tickets) {
             return new MediaContentController(tickets, mock(MediaContentWriter.class));
         }
@@ -56,9 +74,29 @@ class MediaSecurityBoundaryTests {
             verify(context.getBean(MediaAccessTickets.class)).authorize("test-id", "bad");
             http.perform(head("/api/media-content/test-id").param("ticket", "bad")).andExpect(status().isForbidden());
             http.perform(post("/api/media-content/test-id").param("ticket", "bad")).andExpect(status().isUnauthorized());
+            http.perform(get("/api/media-content/test-id/playback").param("ticket", "bad"))
+                    .andExpect(status().isForbidden());
+            verify(context.getBean(MediaAccessTickets.class)).authorizePlayback("test-id", "bad");
+            verifyNoInteractions(context.getBean(TosMediaPlayback.class));
+            http.perform(post("/api/media-content/test-id/playback").param("ticket", "bad"))
+                    .andExpect(status().isUnauthorized());
             http.perform(post("/api/media-resources/test-id/access")).andExpect(status().isUnauthorized());
             http.perform(post("/api/media-resources/upload")).andExpect(status().isUnauthorized());
             http.perform(get("/api/media-resources/test-id")).andExpect(status().isUnauthorized());
         }
+    }
+
+    @Test
+    void generationAndDownloadTicketsCannotAuthorizeBrowserDecryption() {
+        var mapper = mock(MediaAccessTicketMapper.class);
+        var playback = mock(TosMediaPlayback.class);
+        var tickets = new MediaAccessTickets(mapper, null, null, null, null, playback);
+        String token = "a".repeat(43);
+        when(mapper.authorize(anyString(), anyString())).thenReturn(
+                MediaAccessTicketEntity.builder().purpose("GENERATION").download(false).build(),
+                MediaAccessTicketEntity.builder().purpose("BROWSER").download(true).build());
+        assertThatThrownBy(() -> tickets.authorizePlayback("id", token)).isInstanceOf(MediaException.class);
+        assertThatThrownBy(() -> tickets.authorizePlayback("id", token)).isInstanceOf(MediaException.class);
+        verifyNoInteractions(playback);
     }
 }
