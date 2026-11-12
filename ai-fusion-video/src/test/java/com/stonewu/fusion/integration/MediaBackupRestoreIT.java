@@ -15,8 +15,8 @@ import com.stonewu.fusion.service.media.MediaCryptor;
 import com.stonewu.fusion.service.media.lifecycle.MediaBlobLocks;
 import com.stonewu.fusion.mapper.canvas.CanvasExportBlobMapper;
 import org.springframework.integration.redis.util.RedisLockRegistry;
-import com.stonewu.fusion.service.storage.S3ClientFactory;
-import com.stonewu.fusion.service.storage.S3StorageConfigResolver;
+import com.stonewu.fusion.service.storage.ObjectStorageClients;
+import com.stonewu.fusion.service.storage.ObjectStorageConfigResolver;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -108,8 +108,8 @@ class MediaBackupRestoreIT extends MediaResourceTestContext {
             var configurations = mock(StorageConfigMapper.class);
             when(configurations.selectById(71L)).thenReturn(storage);
             var cryptor = new MediaCryptor();
-            var restoredStore = new MediaBlobStore(configurations, mock(S3StorageConfigResolver.class),
-                    mock(S3ClientFactory.class),
+            var restoredStore = new MediaBlobStore(configurations, mock(ObjectStorageConfigResolver.class),
+                    mock(ObjectStorageClients.class),
                     cryptor, new MediaBlobLocks(restoredSession.getMapper(MediaBlobMapper.class),
                     restoredSession.getMapper(CanvasExportBlobMapper.class), context.getBean(RedisLockRegistry.class)));
             try (var channel = restoredStore.open(restoredBlob)) {

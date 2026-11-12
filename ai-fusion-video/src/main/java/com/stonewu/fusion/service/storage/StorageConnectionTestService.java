@@ -9,12 +9,9 @@ import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
 import org.springframework.stereotype.Service;
-import software.amazon.awssdk.core.sync.RequestBody;
-import software.amazon.awssdk.services.s3.S3Client;
-import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
-import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -30,8 +27,8 @@ public class StorageConnectionTestService {
 
     private static final String LOCAL_DEFAULT_BASE_PATH = "./data/media";
 
-    private final S3StorageConfigResolver configResolver;
-    private final S3ClientFactory s3ClientFactory;
+    private final ObjectStorageConfigResolver configResolver;
+    private final ObjectStorageClients clients;
     private final StorageUrlResolver storageUrlResolver;
 
     private final OkHttpClient httpClient = new OkHttpClient.Builder()
@@ -46,7 +43,7 @@ public class StorageConnectionTestService {
             return testLocal(config);
         }
         if (StorageTypes.S3.equals(type)) {
-            return testS3(config);
+            return testObjectStorage(config);
         }
         return StorageConnectionTestResult.failure("不支持的存储类型: " + config.getType(), null);
     }
@@ -68,23 +65,24 @@ public class StorageConnectionTestService {
         }
     }
 
-    private StorageConnectionTestResult testS3(StorageConfig config) {
-        ResolvedS3StorageConfig resolved = configResolver.resolve(config);
-        String objectKey = ".healthcheck/" + IdUtil.fastSimpleUUID() + ".txt";
-        String publicUrl = null;
-        S3Client client = s3ClientFactory.getClient(resolved);
-
+    private StorageConnectionTestResult testObjectStorage(StorageConfig config) {
+        var resolved = configResolver.resolve(config);
         try {
-            client.putObject(PutObjectRequest.builder()
-                            .bucket(resolved.bucketName())
-                            .key(objectKey)
-                            .contentType("text/plain; charset=utf-8")
-                            .contentLength(2L)
-                            .build(),
-                    RequestBody.fromString("ok"));
+            return clients.withProbeClient(resolved, client -> probe(resolved, client));
+        } catch (RuntimeException failure) {
+            return StorageConnectionTestResult.failure("对象存储测试失败: " + failure.getMessage(), null);
+        }
+    }
 
-            publicUrl = storageUrlResolver.resolvePublicUrl(resolved, objectKey);
-            StorageConnectionTestResult publicResult = verifyPublicUrl(resolved, publicUrl);
+    private StorageConnectionTestResult probe(ResolvedObjectStorageConfig config, ObjectStorageClient client) {
+        String prefix = StrUtil.isBlank(config.basePath()) ? ""
+                : config.basePath().replace('\\', '/').replaceAll("^/+|/+$", "") + "/";
+        String objectKey = prefix + ".healthcheck/" + IdUtil.fastSimpleUUID() + ".txt";
+        String publicUrl = null;
+        try {
+            client.putBytes(objectKey, "text/plain; charset=utf-8", "ok".getBytes(StandardCharsets.UTF_8));
+            publicUrl = storageUrlResolver.resolvePublicUrl(config, objectKey);
+            StorageConnectionTestResult publicResult = verifyPublicUrl(config, publicUrl);
             if (!publicResult.success()) {
                 return publicResult;
             }
@@ -93,17 +91,14 @@ public class StorageConnectionTestService {
             return StorageConnectionTestResult.failure("对象存储测试失败: " + e.getMessage(), publicUrl);
         } finally {
             try {
-                client.deleteObject(DeleteObjectRequest.builder()
-                        .bucket(resolved.bucketName())
-                        .key(objectKey)
-                        .build());
+                client.delete(objectKey);
             } catch (Exception e) {
                 log.warn("[StorageTest] 删除健康检查对象失败: key={}, error={}", objectKey, e.getMessage());
             }
         }
     }
 
-    private StorageConnectionTestResult verifyPublicUrl(ResolvedS3StorageConfig config,
+    private StorageConnectionTestResult verifyPublicUrl(ResolvedObjectStorageConfig config,
                                                         String publicUrl) throws IOException {
         Request head = new Request.Builder().url(publicUrl).head().build();
         try (Response response = httpClient.newCall(head).execute()) {
@@ -125,11 +120,11 @@ public class StorageConnectionTestService {
         }
     }
 
-    private String publicAccessFailureMessage(ResolvedS3StorageConfig config, int statusCode) {
+    private String publicAccessFailureMessage(ResolvedObjectStorageConfig config, int statusCode) {
         if (statusCode == 403) {
             return "对象已上传，但公开访问失败（HTTP 403）。当前使用公有 Bucket/CDN 直链模式，请确认 "
                     + config.profile().label()
-                    + " 的 Bucket 或对象允许匿名读取，或填写已放行的公开域名/CDN；如果要使用私有 Bucket，需要改用签名 URL 模式。";
+                    + " 的 Bucket 或对象允许匿名读取，或填写已放行的公开域名/CDN。";
         }
         if (statusCode == 404) {
             return "对象已上传，但公开访问地址返回 HTTP 404。请检查公开域名/CDN 是否指向当前 Bucket，或等待 CDN/权限配置生效后重试。";

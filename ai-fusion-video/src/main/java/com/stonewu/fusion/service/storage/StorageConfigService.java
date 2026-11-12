@@ -28,7 +28,8 @@ import java.util.List;
 public class StorageConfigService {
 
     private final StorageConfigMapper storageConfigMapper;
-    private final S3ClientFactory s3ClientFactory;
+    private final ObjectStorageClients objectStorageClients;
+    private final ObjectStorageConfigResolver objectStorageConfigResolver;
     private final ObjectProvider<StorageConfigReferenceGuard> referenceGuards;
     private final ObjectProvider<StorageConfigUpdateGuard> updateGuards;
 
@@ -91,7 +92,7 @@ public class StorageConfigService {
         }
         updateGuards.orderedStream().forEach(guard -> guard.assertUpdatable(current, config));
         storageConfigMapper.updateById(config);
-        s3ClientFactory.invalidate(config.getId());
+        objectStorageClients.invalidate(config.getId());
         // 如果设为默认，清除其他默认
         if (Boolean.TRUE.equals(config.getIsDefault())) {
             clearOtherDefaults(config.getId());
@@ -105,7 +106,7 @@ public class StorageConfigService {
             throw new BusinessException(404, "存储配置不存在");
         }
         referenceGuards.orderedStream().forEach(guard -> guard.assertDeletable(id));
-        s3ClientFactory.invalidate(id);
+        objectStorageClients.invalidate(id);
         storageConfigMapper.deleteById(id);
     }
 
@@ -150,6 +151,10 @@ public class StorageConfigService {
                 config.setProvider(legacyProvider);
             } else if (StrUtil.isBlank(config.getProvider())) {
                 config.setProvider(StorageProviderRegistry.GENERIC_S3);
+            }
+            if (StorageProviderRegistry.VOLCENGINE_TOS.equals(config.getProvider())) {
+                objectStorageConfigResolver.resolve(config);
+                config.setOptions("{}");
             }
         } else if (StorageTypes.LOCAL.equals(type)) {
             config.setProvider(null);

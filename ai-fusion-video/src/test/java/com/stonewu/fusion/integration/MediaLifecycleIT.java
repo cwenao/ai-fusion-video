@@ -18,8 +18,9 @@ import com.stonewu.fusion.service.media.lifecycle.MediaOrphanCleanup;
 import com.stonewu.fusion.service.media.model.MediaBlob;
 import com.stonewu.fusion.service.media.model.MediaResource;
 import com.stonewu.fusion.service.media.model.MediaException;
+import com.stonewu.fusion.service.storage.ObjectStorageClients;
 import com.stonewu.fusion.service.storage.S3ClientFactory;
-import com.stonewu.fusion.service.storage.S3StorageConfigResolver;
+import com.stonewu.fusion.service.storage.ObjectStorageConfigResolver;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -228,8 +229,8 @@ class MediaLifecycleIT extends MediaResourceTestContext {
         var remoteRegistry = new RedisLockRegistry(context.getBean(RedisConnectionFactory.class), "afv:media:blob");
         var remoteLocks = new MediaBlobLocks(context.getBean(MediaBlobMapper.class),
                 context.getBean(CanvasExportBlobMapper.class), remoteRegistry);
-        var store = new MediaBlobStore(storageMapper, context.getBean(S3StorageConfigResolver.class),
-                context.getBean(S3ClientFactory.class), cryptor, remoteLocks);
+        var store = new MediaBlobStore(storageMapper, context.getBean(ObjectStorageConfigResolver.class),
+                context.getBean(ObjectStorageClients.class), cryptor, remoteLocks);
         var remoteWorker = new MediaCleanupWorker(mock(AgentWorkspaceMediaIndexer.class), jobs, store,
                 mock(CanvasExportCleanup.class));
         var writer = CompletableFuture.supplyAsync(() -> {
@@ -279,7 +280,7 @@ class MediaLifecycleIT extends MediaResourceTestContext {
         var claim = registry.admit(request, null, "对象上传.png", facts, USER);
         var blob = repository.blob(claim.blobId());
         var actual = context.getBean(S3ClientFactory.class)
-                .getClient(context.getBean(S3StorageConfigResolver.class).resolve(config(72)));
+                .getClient(context.getBean(ObjectStorageConfigResolver.class).resolve(config(72)));
         var client = spy(actual);
         var entered = new CountDownLatch(1);
         var release = new CountDownLatch(1);
@@ -325,7 +326,7 @@ class MediaLifecycleIT extends MediaResourceTestContext {
         jobs.discover();
         var claim = jobs.claim(id()).orElseThrow();
         var actual = context.getBean(S3ClientFactory.class)
-                .getClient(context.getBean(S3StorageConfigResolver.class).resolve(config(72)));
+                .getClient(context.getBean(ObjectStorageConfigResolver.class).resolve(config(72)));
         var client = spy(actual);
         var entered = new CountDownLatch(1);
         var release = new CountDownLatch(1);
@@ -428,7 +429,7 @@ class MediaLifecycleIT extends MediaResourceTestContext {
         jdbc.update("UPDATE afv_storage_config SET is_default=(id=72)");
         var orphan = orphan(true);
         var client = context.getBean(S3ClientFactory.class)
-                .getClient(context.getBean(S3StorageConfigResolver.class).resolve(config(72)));
+                .getClient(context.getBean(ObjectStorageConfigResolver.class).resolve(config(72)));
         String key = "test/.afv-managed/" + orphan.blob().objectKey();
         assertThat(client.headObject(request -> request.bucket("media-test").key(key)).contentLength()).isPositive();
         jobs.discover();

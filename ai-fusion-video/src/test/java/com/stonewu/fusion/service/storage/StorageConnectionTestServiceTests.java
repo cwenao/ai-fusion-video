@@ -7,16 +7,17 @@ import org.junit.jupiter.api.Test;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
-import software.amazon.awssdk.services.s3.model.DeleteObjectResponse;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectResponse;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.util.function.Consumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import org.mockito.ArgumentMatchers;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -41,12 +42,10 @@ class StorageConnectionTestServiceTests {
         when(factory.getClient(any())).thenReturn(s3Client);
         when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
                 .thenReturn(PutObjectResponse.builder().build());
-        when(s3Client.deleteObject(any(DeleteObjectRequest.class)))
-                .thenReturn(DeleteObjectResponse.builder().build());
 
         StorageConnectionTestService service = new StorageConnectionTestService(
-                new S3StorageConfigResolver(new StorageProviderRegistry()),
-                factory,
+                new ObjectStorageConfigResolver(new StorageProviderRegistry()),
+                new ObjectStorageClients(factory),
                 new StorageUrlResolver()
         );
         StorageConfig config = StorageConfig.builder()
@@ -67,7 +66,7 @@ class StorageConnectionTestServiceTests {
         assertThat(result.success()).isTrue();
         assertThat(result.publicUrl()).startsWith(publicBaseUrl + "/.healthcheck/");
         verify(s3Client).putObject(any(PutObjectRequest.class), any(RequestBody.class));
-        verify(s3Client).deleteObject(any(DeleteObjectRequest.class));
+        verify(s3Client).deleteObject(ArgumentMatchers.<Consumer<DeleteObjectRequest.Builder>>any());
     }
 
     @Test
@@ -79,12 +78,10 @@ class StorageConnectionTestServiceTests {
         when(factory.getClient(any())).thenReturn(s3Client);
         when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
                 .thenReturn(PutObjectResponse.builder().build());
-        when(s3Client.deleteObject(any(DeleteObjectRequest.class)))
-                .thenReturn(DeleteObjectResponse.builder().build());
 
         StorageConnectionTestService service = new StorageConnectionTestService(
-                new S3StorageConfigResolver(new StorageProviderRegistry()),
-                factory,
+                new ObjectStorageConfigResolver(new StorageProviderRegistry()),
+                new ObjectStorageClients(factory),
                 new StorageUrlResolver()
         );
         StorageConfig config = StorageConfig.builder()
@@ -103,9 +100,8 @@ class StorageConnectionTestServiceTests {
         assertThat(result.message())
                 .contains("对象已上传")
                 .contains("HTTP 403")
-                .contains("允许匿名读取")
-                .contains("签名 URL");
-        verify(s3Client).deleteObject(any(DeleteObjectRequest.class));
+                .contains("允许匿名读取");
+        verify(s3Client).deleteObject(ArgumentMatchers.<Consumer<DeleteObjectRequest.Builder>>any());
     }
 
     private String startPublicServer(int statusCode) throws IOException {

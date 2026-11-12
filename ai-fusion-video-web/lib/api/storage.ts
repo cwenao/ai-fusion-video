@@ -61,12 +61,12 @@ export interface StorageConfigTestResult {
 
 export const STORAGE_TYPE_OPTIONS = [
   { value: "local", label: "本地存储", description: "文件保存在服务器本地磁盘" },
-  { value: "s3", label: "对象存储", description: "S3 兼容：阿里云 OSS / 腾讯 COS / 七牛 / 天翼云等" },
+  { value: "s3", label: "对象存储", description: "火山引擎 TOS、阿里云 OSS、腾讯云 COS 等" },
 ] as const;
 
 export const STORAGE_TYPE_LABELS: Record<string, string> = {
   local: "本地存储",
-  s3: "S3 兼容",
+  s3: "对象存储",
 };
 
 export interface StorageProviderOption {
@@ -79,6 +79,8 @@ export interface StorageProviderOption {
   chunkedEncodingEnabled: boolean;
   endpointRequired: boolean;
 }
+
+export const VOLCENGINE_TOS = "volcengine_tos";
 
 export const STORAGE_PROVIDER_OPTIONS: StorageProviderOption[] = [
   {
@@ -104,6 +106,15 @@ export const STORAGE_PROVIDER_OPTIONS: StorageProviderOption[] = [
     label: "腾讯云 COS",
     description: "COS S3 兼容访问端点 (Endpoint)",
     endpointTemplate: "https://cos.{region}.myqcloud.com",
+    pathStyleAccessEnabled: false,
+    chunkedEncodingEnabled: false,
+    endpointRequired: false,
+  },
+  {
+    value: VOLCENGINE_TOS,
+    label: "火山引擎 TOS",
+    description: "使用存储桶所在地域的 TOS 访问端点",
+    endpointTemplate: "https://tos-{region}.volces.com",
     pathStyleAccessEnabled: false,
     chunkedEncodingEnabled: false,
     endpointRequired: false,

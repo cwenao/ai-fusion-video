@@ -7,7 +7,7 @@ import com.stonewu.fusion.service.media.model.MediaException;
 import com.stonewu.fusion.service.media.model.MediaKind;
 import com.stonewu.fusion.service.resource.model.ResourceCommandContext;
 import com.stonewu.fusion.service.storage.S3ClientFactory;
-import com.stonewu.fusion.service.storage.S3StorageConfigResolver;
+import com.stonewu.fusion.service.storage.ObjectStorageConfigResolver;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockMultipartFile;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -251,7 +251,7 @@ class MediaResourceIT extends MediaResourceTestContext {
         jdbc.update("UPDATE afv_storage_config SET is_default = (id = 72)");
         var resource = upload(id(), png, "s3.png", null, USER);
         var blob = repository.blob(repository.get(resource.id(), false).blobId());
-        var client = context.getBean(S3ClientFactory.class).getClient(context.getBean(S3StorageConfigResolver.class).resolve(config(72)));
+        var client = context.getBean(S3ClientFactory.class).getClient(context.getBean(ObjectStorageConfigResolver.class).resolve(config(72)));
         client.putBucketPolicy(request -> request.bucket("media-test").policy("""
                 {"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":"*","Action":["s3:GetObject"],"Resource":["arn:aws:s3:::media-test/*"]}]}
                 """));

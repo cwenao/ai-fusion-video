@@ -90,8 +90,9 @@ import com.stonewu.fusion.service.media.MediaStorageConfigGuard;
 import com.stonewu.fusion.service.media.model.MediaResource;
 import com.stonewu.fusion.service.resource.ResourceAgentFence;
 import com.stonewu.fusion.service.resource.model.ResourceCommandContext;
+import com.stonewu.fusion.service.storage.ObjectStorageClients;
 import com.stonewu.fusion.service.storage.S3ClientFactory;
-import com.stonewu.fusion.service.storage.S3StorageConfigResolver;
+import com.stonewu.fusion.service.storage.ObjectStorageConfigResolver;
 import com.stonewu.fusion.service.storage.StorageProviderRegistry;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterAll;
@@ -252,7 +253,7 @@ abstract class MediaResourceTestContext {
                 GenerationJobRepository.class, MediaJobFence.class, MediaJobRepository.class,
                 ComposeWritebackHandler.class,
                 MediaBlobLockConfiguration.class, MediaBlobLocks.class, MediaBlobStore.class,
-                S3StorageConfigResolver.class,
+                ObjectStorageConfigResolver.class, ObjectStorageClients.class,
                 StorageProviderRegistry.class, MediaProbe.class, MediaRegistryTransactions.class,
                 MediaIntakeService.class,
                 MediaMetadataCache.class, MediaResourceQueries.class, MediaAccessTickets.class,
@@ -275,7 +276,7 @@ abstract class MediaResourceTestContext {
         ImageIO.write(image, "png", bytes);
         png = bytes.toByteArray();
         context.getBean(S3ClientFactory.class)
-                .getClient(context.getBean(S3StorageConfigResolver.class).resolve(config(72)))
+                .getClient(context.getBean(ObjectStorageConfigResolver.class).resolve(config(72)))
                 .createBucket(request -> request.bucket("media-test"));
     }
 

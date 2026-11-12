@@ -1,7 +1,7 @@
 package com.stonewu.fusion.service.ai.agentscope.workspace;
 
-import com.stonewu.fusion.service.storage.S3ClientFactory;
-import com.stonewu.fusion.service.storage.S3StorageConfigResolver;
+import com.stonewu.fusion.service.storage.ObjectStorageClients;
+import com.stonewu.fusion.service.storage.ObjectStorageConfigResolver;
 import com.stonewu.fusion.service.storage.StorageConfigService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -55,8 +55,8 @@ class AgentWorkspacePayloadServiceTests {
     private AgentWorkspacePayloadService service() {
         return new AgentWorkspacePayloadService(
                 mock(StorageConfigService.class),
-                mock(S3StorageConfigResolver.class),
-                mock(S3ClientFactory.class),
+                mock(ObjectStorageConfigResolver.class),
+                mock(ObjectStorageClients.class),
                 temporaryDirectory.toString());
     }
 }

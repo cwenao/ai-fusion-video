@@ -7,9 +7,9 @@ import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-class S3StorageConfigResolverTests {
+class ObjectStorageConfigResolverTests {
 
-    private final S3StorageConfigResolver resolver = new S3StorageConfigResolver(new StorageProviderRegistry());
+    private final ObjectStorageConfigResolver resolver = new ObjectStorageConfigResolver(new StorageProviderRegistry());
 
     @Test
     void resolvesAliyunProfileEndpointAndDefaults() {
@@ -22,7 +22,7 @@ class S3StorageConfigResolverTests {
                 .region("cn-hangzhou")
                 .build();
 
-        ResolvedS3StorageConfig resolved = resolver.resolve(config);
+        ResolvedObjectStorageConfig resolved = resolver.resolve(config);
 
         assertThat(resolved.provider()).isEqualTo("aliyun_oss");
         assertThat(resolved.endpoint()).isEqualTo("https://s3.oss-cn-hangzhou.aliyuncs.com");
@@ -41,7 +41,7 @@ class S3StorageConfigResolverTests {
                 .region("ap-shanghai")
                 .build();
 
-        ResolvedS3StorageConfig resolved = resolver.resolve(config);
+        ResolvedObjectStorageConfig resolved = resolver.resolve(config);
 
         assertThat(resolved.provider()).isEqualTo("tencent_cos");
         assertThat(resolved.endpoint()).isEqualTo("https://cos.ap-shanghai.myqcloud.com");
@@ -62,11 +62,38 @@ class S3StorageConfigResolverTests {
                         """)
                 .build();
 
-        ResolvedS3StorageConfig resolved = resolver.resolve(config);
+        ResolvedObjectStorageConfig resolved = resolver.resolve(config);
 
         assertThat(resolved.pathStyleAccessEnabled()).isTrue();
         assertThat(resolved.chunkedEncodingEnabled()).isTrue();
         assertThat(resolved.signingRegion()).isEqualTo("oss-cn-hangzhou");
+    }
+
+    @Test
+    void derivesTosAccessDomainsFromTheBucketRegion() {
+        StorageConfig config = StorageConfig.builder().type("s3").provider(StorageProviderRegistry.VOLCENGINE_TOS)
+                .bucketName("my-bucket").accessKey("ak").secretKey("sk").region(" cn-beijing ").build();
+
+        var resolved = resolver.resolve(config);
+        var urls = new StorageUrlResolver();
+        assertThat(resolved.endpoint()).isEqualTo("https://tos-cn-beijing.volces.com");
+        assertThat(urls.resolvePublicUrl(resolved, "测试/图 片.png"))
+                .isEqualTo("https://my-bucket.tos-cn-beijing.volces.com/%E6%B5%8B%E8%AF%95/%E5%9B%BE%20%E7%89%87.png");
+
+        config.setEndpoint("tos-cn-beijing.ivolces.com/");
+        var intranet = resolver.resolve(config);
+        assertThat(intranet.endpoint()).isEqualTo("https://tos-cn-beijing.ivolces.com");
+        assertThat(urls.resolvePublicUrl(intranet, "video.mp4"))
+                .isEqualTo("https://my-bucket.tos-cn-beijing.volces.com/video.mp4");
+    }
+
+    @Test
+    void requiresTosRegionEvenWithAManualEndpoint() {
+        StorageConfig config = StorageConfig.builder().type("s3").provider(StorageProviderRegistry.VOLCENGINE_TOS)
+                .bucketName("bucket").accessKey("ak").secretKey("sk").endpoint("tos-cn-beijing.ivolces.com").build();
+
+        assertThatThrownBy(() -> resolver.resolve(config))
+                .isInstanceOf(BusinessException.class).hasMessageContaining("存储桶地域");
     }
 
     @Test

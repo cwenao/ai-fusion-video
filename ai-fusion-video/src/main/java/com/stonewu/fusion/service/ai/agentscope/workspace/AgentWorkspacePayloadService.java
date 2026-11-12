@@ -7,12 +7,6 @@ import com.stonewu.fusion.service.storage.*;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
-import software.amazon.awssdk.core.ResponseBytes;
-import software.amazon.awssdk.core.sync.RequestBody;
-import software.amazon.awssdk.services.s3.S3Client;
-import software.amazon.awssdk.services.s3.model.GetObjectRequest;
-import software.amazon.awssdk.services.s3.model.GetObjectResponse;
-import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -34,18 +28,18 @@ public class AgentWorkspacePayloadService {
     private static final String CONTENT_TYPE = "application/json; charset=utf-8";
 
     private final StorageConfigService storageConfigService;
-    private final S3StorageConfigResolver s3ConfigResolver;
-    private final S3ClientFactory s3ClientFactory;
+    private final ObjectStorageConfigResolver objectConfigResolver;
+    private final ObjectStorageClients objectClients;
     private final Path defaultLocalRoot;
 
     public AgentWorkspacePayloadService(
             StorageConfigService storageConfigService,
-            S3StorageConfigResolver s3ConfigResolver,
-            S3ClientFactory s3ClientFactory,
+            ObjectStorageConfigResolver objectConfigResolver,
+            ObjectStorageClients objectClients,
             @Value("${app.agent-workspace.local-base-path:./data/agent-workspace}") String localPath) {
         this.storageConfigService = Objects.requireNonNull(storageConfigService);
-        this.s3ConfigResolver = Objects.requireNonNull(s3ConfigResolver);
-        this.s3ClientFactory = Objects.requireNonNull(s3ClientFactory);
+        this.objectConfigResolver = Objects.requireNonNull(objectConfigResolver);
+        this.objectClients = Objects.requireNonNull(objectClients);
         this.defaultLocalRoot = Path.of(localPath).toAbsolutePath().normalize();
     }
 
@@ -89,10 +83,8 @@ public class AgentWorkspacePayloadService {
             if (AgentWorkspaceBackend.LOCAL.equals(stored.backendType())) {
                 Files.deleteIfExists(resolveLocal(stored.localPath(), stored.contentRef()));
             } else if (AgentWorkspaceBackend.OBJECT_STORAGE.equals(stored.backendType())) {
-                ResolvedS3StorageConfig config = resolveS3(stored.storageConfigId());
-                s3ClientFactory.getClient(config).deleteObject(builder -> builder
-                        .bucket(config.bucketName())
-                        .key(stored.contentRef()));
+                ResolvedObjectStorageConfig config = resolveObjectStorage(stored.storageConfigId());
+                objectClients.forConfig(config).delete(stored.contentRef());
             }
         } catch (Exception failure) {
             log.warn("清理智能体工作空间正文失败 [backend={}, ref={}]: {}",
@@ -146,20 +138,13 @@ public class AgentWorkspacePayloadService {
             byte[] bytes,
             AgentWorkspaceLocation location,
             String sha256) {
-        ResolvedS3StorageConfig config = resolveS3(location.storageConfigId());
+        ResolvedObjectStorageConfig config = resolveObjectStorage(location.storageConfigId());
         String relative = objectKey("agent-workspace/objects");
         String prefix = config.basePath() == null || config.basePath().isBlank()
                 ? ""
                 : config.basePath().replace('\\', '/').replaceAll("^/+|/+$", "") + "/";
         String key = prefix + relative;
-        S3Client client = s3ClientFactory.getClient(config);
-        client.putObject(PutObjectRequest.builder()
-                        .bucket(config.bucketName())
-                        .key(key)
-                        .contentType(CONTENT_TYPE)
-                        .contentLength((long) bytes.length)
-                        .build(),
-                RequestBody.fromBytes(bytes));
+        objectClients.forConfig(config).putBytes(key, CONTENT_TYPE, bytes);
         return new AgentWorkspaceStoredPayload(
                 AgentWorkspaceBackend.OBJECT_STORAGE,
                 location.storageConfigId(),
@@ -179,24 +164,23 @@ public class AgentWorkspacePayloadService {
     }
 
     private String readObject(AgentWorkspaceStoredPayload stored) {
-        ResolvedS3StorageConfig config = resolveS3(stored.storageConfigId());
-        ResponseBytes<GetObjectResponse> response = s3ClientFactory.getClient(config).getObjectAsBytes(
-                GetObjectRequest.builder()
-                        .bucket(config.bucketName())
-                        .key(stored.contentRef())
-                        .build());
-        return response.asUtf8String();
+        ResolvedObjectStorageConfig config = resolveObjectStorage(stored.storageConfigId());
+        try {
+            return new String(objectClients.forConfig(config).getBytes(stored.contentRef()), StandardCharsets.UTF_8);
+        } catch (IOException failure) {
+            throw new BusinessException("读取智能体工作空间对象失败: " + failure.getMessage());
+        }
     }
 
-    private ResolvedS3StorageConfig resolveS3(Long storageConfigId) {
+    private ResolvedObjectStorageConfig resolveObjectStorage(Long storageConfigId) {
         if (storageConfigId == null) {
             throw new BusinessException("对象存储模式必须选择存储配置");
         }
         StorageConfig storage = storageConfigService.getById(storageConfigId);
-        if (!Integer.valueOf(1).equals(storage.getStatus()) || !StorageTypes.isS3Like(storage.getType())) {
-            throw new BusinessException("智能体工作空间需要启用的 S3 兼容存储配置");
+        if (!Integer.valueOf(1).equals(storage.getStatus()) || !StorageTypes.isObjectStorage(storage.getType())) {
+            throw new BusinessException("智能体工作空间需要启用的对象存储配置");
         }
-        return s3ConfigResolver.resolve(storage);
+        return objectConfigResolver.resolve(storage);
     }
 
     private Path resolveLocal(String configuredRoot, String contentRef) {

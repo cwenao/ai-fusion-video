@@ -3,9 +3,9 @@ package com.stonewu.fusion.service.storage;
 import com.stonewu.fusion.entity.storage.StorageConfig;
 
 /**
- * Fully resolved S3-compatible storage settings.
+ * 对象存储配置及 S3 兼容厂商的协议选项。
  */
-public record ResolvedS3StorageConfig(
+public record ResolvedObjectStorageConfig(
         StorageConfig source,
         StorageProviderProfile profile,
         String provider,

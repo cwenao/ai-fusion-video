@@ -67,8 +67,8 @@ public class AgentWorkspaceConfigService {
             }
             StorageConfig storage = storageConfigService.getById(storageConfigId);
             if (!Integer.valueOf(1).equals(storage.getStatus())
-                    || !StorageTypes.isS3Like(storage.getType())) {
-                throw new BusinessException("请选择已启用的 S3 兼容存储配置");
+                    || !StorageTypes.isObjectStorage(storage.getType())) {
+                throw new BusinessException("请选择已启用的对象存储配置");
             }
             return new AgentWorkspaceLocation(type, storageConfigId, null);
         }

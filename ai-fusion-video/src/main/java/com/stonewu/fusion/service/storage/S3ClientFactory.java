@@ -26,7 +26,7 @@ public class S3ClientFactory {
 
     private final Map<ClientCacheKey, S3Client> clients = new ConcurrentHashMap<>();
 
-    public S3Client getClient(ResolvedS3StorageConfig config) {
+    public S3Client getClient(ResolvedObjectStorageConfig config) {
         ClientCacheKey key = ClientCacheKey.of(config);
         return clients.computeIfAbsent(key, ignored -> buildClient(config));
     }
@@ -49,7 +49,7 @@ public class S3ClientFactory {
         clients.clear();
     }
 
-    private S3Client buildClient(ResolvedS3StorageConfig config) {
+    private S3Client buildClient(ResolvedObjectStorageConfig config) {
         AwsBasicCredentials credentials = AwsBasicCredentials.create(config.accessKey(), config.secretKey());
 
         S3ClientBuilder builder = S3Client.builder()
@@ -104,7 +104,7 @@ public class S3ClientFactory {
             boolean chunkedEncodingEnabled,
             String checksumCalculation
     ) {
-        static ClientCacheKey of(ResolvedS3StorageConfig config) {
+        static ClientCacheKey of(ResolvedObjectStorageConfig config) {
             Long configId = config.source() != null ? config.source().getId() : null;
             return new ClientCacheKey(
                     configId,

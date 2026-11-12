@@ -68,7 +68,7 @@ export default function StoragePage() {
       <motion.div variants={itemVariants} className="mb-8">
         <h1 className={settingsTypography.pageTitle}>存储配置</h1>
         <p className={settingsTypography.pageDescription}>
-          管理文件存储后端，支持本地磁盘和 S3 兼容存储
+          管理本地存储和对象存储配置
         </p>
       </motion.div>
 
@@ -103,7 +103,7 @@ export default function StoragePage() {
             storageConfigs.map((sc) => {
               const isLocal = normalizeStorageType(sc) === "local";
               const providerLabel = !isLocal
-                ? STORAGE_PROVIDER_LABELS[sc.provider || "generic_s3"] || sc.provider || "S3 兼容"
+                ? STORAGE_PROVIDER_LABELS[sc.provider || "generic_s3"] || sc.provider || "对象存储"
                 : STORAGE_TYPE_LABELS[sc.type] || sc.type;
               return (
                 <div
