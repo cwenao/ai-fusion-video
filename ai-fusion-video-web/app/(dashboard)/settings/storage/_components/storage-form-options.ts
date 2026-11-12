@@ -1,10 +1,13 @@
-import { getStorageProviderOption, renderEndpointTemplate, type StorageConfig as StorageConfigType } from "@/lib/api/storage";
+import { getStorageProviderOption, renderEndpointTemplate, VOLCENGINE_TOS, type StorageConfig as StorageConfigType } from "@/lib/api/storage";
 
 export function getProviderOption(provider?: string) {
   return getStorageProviderOption(provider || "generic_s3");
 }
 
 export function getProviderDefaultOptions(provider?: string) {
+  if (provider === VOLCENGINE_TOS) {
+    return {};
+  }
   const option = getProviderOption(provider);
   return {
     pathStyleAccessEnabled: option.pathStyleAccessEnabled,

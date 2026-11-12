@@ -1,7 +1,7 @@
 package com.stonewu.fusion.service.storage;
 
 /**
- * Defaults and URL templates for an S3-compatible object storage provider.
+ * Defaults and URL templates for an object storage provider.
  */
 public record StorageProviderProfile(
         String provider,

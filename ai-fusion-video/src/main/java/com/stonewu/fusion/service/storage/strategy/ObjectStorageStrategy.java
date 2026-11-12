@@ -11,29 +11,27 @@ import okhttp3.Request;
 import okhttp3.Response;
 import okhttp3.ResponseBody;
 import org.springframework.stereotype.Component;
-import software.amazon.awssdk.core.sync.RequestBody;
-import software.amazon.awssdk.services.s3.S3Client;
-import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.Locale;
 import java.util.concurrent.TimeUnit;
 
 /**
- * S3-compatible storage strategy backed by AWS S3 SDK v2.
+ * 保存普通媒体并生成对象访问地址。
  */
 @Component
 @RequiredArgsConstructor
 @Slf4j
-public class S3StorageStrategy implements StorageStrategy {
+public class ObjectStorageStrategy implements StorageStrategy {
 
     private static final long REMOTE_STREAMING_UPLOAD_THRESHOLD = 32L * 1024 * 1024;
 
-    private final S3StorageConfigResolver configResolver;
-    private final S3ClientFactory s3ClientFactory;
+    private final ObjectStorageConfigResolver configResolver;
+    private final ObjectStorageClients clients;
     private final StorageUrlResolver storageUrlResolver;
 
     private final OkHttpClient httpClient = new OkHttpClient.Builder()
@@ -45,12 +43,12 @@ public class S3StorageStrategy implements StorageStrategy {
 
     @Override
     public String getType() {
-        return "s3";
+        return StorageTypes.S3;
     }
 
     @Override
     public String store(String remoteUrl, String subDir, StorageConfig config) {
-        ResolvedS3StorageConfig resolved = configResolver.resolve(config);
+        ResolvedObjectStorageConfig resolved = configResolver.resolve(config);
 
         Request request = new Request.Builder().url(remoteUrl).build();
         try (Response response = httpClient.newCall(request).execute()) {
@@ -66,16 +64,16 @@ public class S3StorageStrategy implements StorageStrategy {
 
             if (contentLength >= 0 && contentLength <= REMOTE_STREAMING_UPLOAD_THRESHOLD) {
                 try (InputStream inputStream = body.byteStream()) {
-                    uploadInputStream(resolved, objectKey, inputStream, contentLength, contentType);
+                    clients.forConfig(resolved).putStream(objectKey, contentType, inputStream, contentLength);
                 }
                 logUploaded(resolved, objectKey, contentLength);
             } else {
-                Path tempFile = Files.createTempFile("afv-s3-upload-", "." + extension);
+                Path tempFile = Files.createTempFile("afv-object-upload-", "." + extension);
                 try {
                     try (InputStream inputStream = body.byteStream()) {
-                        Files.copy(inputStream, tempFile, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                        Files.copy(inputStream, tempFile, StandardCopyOption.REPLACE_EXISTING);
                     }
-                    uploadFileToS3(resolved, objectKey, tempFile, contentType);
+                    clients.forConfig(resolved).putFile(objectKey, contentType, tempFile);
                     logUploaded(resolved, objectKey, Files.size(tempFile));
                 } finally {
                     Files.deleteIfExists(tempFile);
@@ -84,17 +82,17 @@ public class S3StorageStrategy implements StorageStrategy {
 
             return storageUrlResolver.resolvePublicUrl(resolved, objectKey);
         } catch (IOException e) {
-            throw new RuntimeException("S3 存储失败: " + e.getMessage(), e);
+            throw new RuntimeException("对象存储失败: " + e.getMessage(), e);
         }
     }
 
     @Override
     public String storeBytes(byte[] data, String subDir, String extension, StorageConfig config) {
-        ResolvedS3StorageConfig resolved = configResolver.resolve(config);
+        ResolvedObjectStorageConfig resolved = configResolver.resolve(config);
 
         String objectKey = buildObjectKey(resolved, subDir, extension);
         String contentType = guessContentType(extension);
-        uploadBytes(resolved, objectKey, data, contentType);
+        clients.forConfig(resolved).putBytes(objectKey, contentType, data);
 
         logUploaded(resolved, objectKey, data.length);
         return storageUrlResolver.resolvePublicUrl(resolved, objectKey);
@@ -102,58 +100,25 @@ public class S3StorageStrategy implements StorageStrategy {
 
     @Override
     public String storeFile(Path filePath, String subDir, String extension, StorageConfig config) {
-        ResolvedS3StorageConfig resolved = configResolver.resolve(config);
+        ResolvedObjectStorageConfig resolved = configResolver.resolve(config);
 
         String objectKey = buildObjectKey(resolved, subDir, extension);
         String contentType = guessContentType(extension);
-        uploadFileToS3(resolved, objectKey, filePath, contentType);
+        try {
+            clients.forConfig(resolved).putFile(objectKey, contentType, filePath);
+        } catch (IOException e) {
+            throw new RuntimeException("读取待上传文件失败: " + e.getMessage(), e);
+        }
 
         try {
             logUploaded(resolved, objectKey, Files.size(filePath));
         } catch (IOException e) {
-            log.info("[S3Storage] 文件已上传: provider={}, key={}", resolved.provider(), objectKey);
+            log.info("[ObjectStorage] 文件已上传: provider={}, key={}", resolved.provider(), objectKey);
         }
         return storageUrlResolver.resolvePublicUrl(resolved, objectKey);
     }
 
-    private void uploadBytes(ResolvedS3StorageConfig config, String objectKey, byte[] data, String contentType) {
-        S3Client s3 = s3ClientFactory.getClient(config);
-        s3.putObject(buildPutObjectRequest(config, objectKey, contentType, data.length),
-                RequestBody.fromBytes(data));
-    }
-
-    private void uploadInputStream(ResolvedS3StorageConfig config, String objectKey, InputStream inputStream,
-                                   long contentLength, String contentType) {
-        S3Client s3 = s3ClientFactory.getClient(config);
-        s3.putObject(buildPutObjectRequest(config, objectKey, contentType, contentLength),
-                RequestBody.fromInputStream(inputStream, contentLength));
-    }
-
-    private void uploadFileToS3(ResolvedS3StorageConfig config, String objectKey, Path filePath, String contentType) {
-        S3Client s3 = s3ClientFactory.getClient(config);
-        try {
-            s3.putObject(buildPutObjectRequest(config, objectKey, contentType, Files.size(filePath)),
-                    RequestBody.fromFile(filePath));
-        } catch (IOException e) {
-            throw new RuntimeException("读取待上传文件失败: " + e.getMessage(), e);
-        }
-    }
-
-    private PutObjectRequest buildPutObjectRequest(ResolvedS3StorageConfig config, String objectKey,
-                                                   String contentType, long contentLength) {
-        PutObjectRequest.Builder builder = PutObjectRequest.builder()
-                .bucket(config.bucketName())
-                .key(objectKey);
-        if (StrUtil.isNotBlank(contentType)) {
-            builder.contentType(contentType);
-        }
-        if (contentLength >= 0) {
-            builder.contentLength(contentLength);
-        }
-        return builder.build();
-    }
-
-    private String buildObjectKey(ResolvedS3StorageConfig config, String subDir, String extension) {
+    private String buildObjectKey(ResolvedObjectStorageConfig config, String subDir, String extension) {
         String prefix = StrUtil.isNotBlank(config.basePath())
                 ? config.basePath().replace("\\", "/").replaceAll("^/+|/+$", "") + "/"
                 : "";
@@ -192,8 +157,8 @@ public class S3StorageStrategy implements StorageStrategy {
         return value;
     }
 
-    private void logUploaded(ResolvedS3StorageConfig config, String objectKey, long size) {
-        log.info("[S3Storage] 文件已上传: provider={}, key={}, size={} bytes, url={}",
+    private void logUploaded(ResolvedObjectStorageConfig config, String objectKey, long size) {
+        log.info("[ObjectStorage] 文件已上传: provider={}, key={}, size={} bytes, url={}",
                 config.provider(), objectKey, size, storageUrlResolver.resolvePublicUrl(config, objectKey));
     }
 

@@ -8,12 +8,13 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Registry of built-in S3-compatible provider profiles.
+ * Registry of built-in object storage provider profiles.
  */
 @Component
 public class StorageProviderRegistry {
 
     public static final String GENERIC_S3 = "generic_s3";
+    public static final String VOLCENGINE_TOS = "volcengine_tos";
 
     private final Map<String, StorageProviderProfile> profiles;
 
@@ -57,6 +58,17 @@ public class StorageProviderRegistry {
                         "Tencent Cloud COS",
                         "https://cos.{region}.myqcloud.com",
                         "https://{bucket}.cos.{region}.myqcloud.com/{key}",
+                        null,
+                        false,
+                        false,
+                        false,
+                        true
+                ),
+                new StorageProviderProfile(
+                        VOLCENGINE_TOS,
+                        "火山引擎 TOS",
+                        "https://tos-{region}.volces.com",
+                        "https://{bucket}.tos-{region}.volces.com/{key}",
                         null,
                         false,
                         false,

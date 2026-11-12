@@ -6,40 +6,55 @@ import com.stonewu.fusion.common.BusinessException;
 import com.stonewu.fusion.entity.storage.StorageConfig;
 import org.springframework.stereotype.Component;
 
+import java.net.URI;
+
 /**
- * Resolves persisted storage configuration into concrete S3 SDK settings.
+ * Resolves persisted storage configuration into object storage client settings.
  */
 @Component
-public class S3StorageConfigResolver {
+public class ObjectStorageConfigResolver {
 
     private final StorageProviderRegistry providerRegistry;
 
-    public S3StorageConfigResolver(StorageProviderRegistry providerRegistry) {
+    public ObjectStorageConfigResolver(StorageProviderRegistry providerRegistry) {
         this.providerRegistry = providerRegistry;
     }
 
-    public ResolvedS3StorageConfig resolve(StorageConfig config) {
+    public ResolvedObjectStorageConfig resolve(StorageConfig config) {
         if (config == null) {
-            throw new BusinessException("S3 存储配置为空");
+            throw new BusinessException("对象存储配置为空");
         }
-        if (!StorageTypes.isS3Like(config.getType())) {
-            throw new BusinessException("不是 S3 兼容存储配置: " + config.getType());
+        if (!StorageTypes.isObjectStorage(config.getType())) {
+            throw new BusinessException("不是对象存储配置: " + config.getType());
         }
 
         String provider = resolveProvider(config);
         StorageProviderProfile profile = providerRegistry.get(provider);
-        JSONObject options = StorageConfigOptions.parseOrEmpty(config.getOptions());
 
         String region = StrUtil.blankToDefault(config.getRegion(), profile.defaultRegion());
+        boolean tos = StorageProviderRegistry.VOLCENGINE_TOS.equals(provider);
+        if (tos) {
+            if (region == null || !region.trim().matches("[a-z0-9]+(?:-[a-z0-9]+)+")) {
+                throw new BusinessException("火山引擎 TOS 需要填写存储桶地域，例如 cn-beijing");
+            }
+            region = region.trim();
+        }
         String endpoint = resolveEndpoint(config.getEndpoint(), profile, region);
+        validateRequired(config, endpoint, profile);
+        if (tos) {
+            validateTosEndpoint(endpoint);
+            return new ResolvedObjectStorageConfig(config, profile, provider, endpoint, config.getBucketName(),
+                    config.getAccessKey(), config.getSecretKey(), region, null, config.getBasePath(),
+                    config.getCustomDomain(), false, false, null);
+        }
+
+        JSONObject options = StorageConfigOptions.parseOrEmpty(config.getOptions());
         String signingRegion = StrUtil.blankToDefault(
                 StorageConfigOptions.getString(options, "signingRegion"),
                 StrUtil.blankToDefault(region, "us-east-1")
         );
 
-        validateRequired(config, endpoint, profile);
-
-        return new ResolvedS3StorageConfig(
+        return new ResolvedObjectStorageConfig(
                 config,
                 profile,
                 provider,
@@ -89,15 +104,28 @@ public class S3StorageConfigResolver {
         return value.replaceAll("/+$", "");
     }
 
+    private void validateTosEndpoint(String endpoint) {
+        URI uri;
+        try {
+            uri = URI.create(endpoint);
+        } catch (IllegalArgumentException failure) {
+            throw new BusinessException("火山引擎 TOS 访问端点格式无效");
+        }
+        if (uri.getHost() == null || uri.getUserInfo() != null || !uri.getPath().isEmpty()
+                || uri.getQuery() != null || uri.getFragment() != null) {
+            throw new BusinessException("火山引擎 TOS 访问端点应为地域服务域名");
+        }
+    }
+
     private void validateRequired(StorageConfig config, String endpoint, StorageProviderProfile profile) {
         if (StrUtil.isBlank(endpoint) && profile.endpointRequired()) {
             throw new BusinessException("S3 存储配置缺少 endpoint");
         }
         if (StrUtil.isBlank(config.getBucketName())) {
-            throw new BusinessException("S3 存储配置缺少 bucketName");
+            throw new BusinessException(profile.label() + " 缺少存储桶名称");
         }
         if (StrUtil.isBlank(config.getAccessKey()) || StrUtil.isBlank(config.getSecretKey())) {
-            throw new BusinessException("S3 存储配置缺少 accessKey 或 secretKey");
+            throw new BusinessException(profile.label() + " 缺少 Access Key 或 Secret Key");
         }
     }
 }

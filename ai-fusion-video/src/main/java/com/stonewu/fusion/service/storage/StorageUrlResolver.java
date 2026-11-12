@@ -15,7 +15,7 @@ import java.util.Arrays;
 @Component
 public class StorageUrlResolver {
 
-    public String resolvePublicUrl(ResolvedS3StorageConfig config, String objectKey) {
+    public String resolvePublicUrl(ResolvedObjectStorageConfig config, String objectKey) {
         String encodedKey = encodeObjectKey(objectKey);
 
         if (StrUtil.isNotBlank(config.customDomain())) {

@@ -1,5 +1,10 @@
 package com.stonewu.fusion.service.media;
 
+import com.stonewu.fusion.entity.storage.StorageConfig;
+import com.stonewu.fusion.service.storage.ObjectStorageClients;
+import com.stonewu.fusion.service.storage.ObjectStorageConfigResolver;
+import com.stonewu.fusion.service.storage.S3ClientFactory;
+import com.stonewu.fusion.service.storage.StorageProviderRegistry;
 import org.junit.jupiter.api.Test;
 import software.amazon.awssdk.core.ResponseInputStream;
 import software.amazon.awssdk.http.AbortableInputStream;
@@ -19,7 +24,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-class S3MediaReadChannelTests {
+class ObjectStorageReadChannelTests {
     @Test
     void abortsWhenStorageIgnoresRangeBeforeReadingTheBody() throws Exception {
         var client = mock(S3Client.class);
@@ -34,12 +39,19 @@ class S3MediaReadChannelTests {
         };
         when(client.getObject(any(GetObjectRequest.class))).thenReturn(new ResponseInputStream<>(
                 GetObjectResponse.builder().contentLength(20L).build(), AbortableInputStream.create(input, () -> aborted.set(true))));
-        try (var channel = new S3MediaReadChannel(client, "bucket", "object", 20)) {
+        var factory = mock(S3ClientFactory.class);
+        when(factory.getClient(any())).thenReturn(client);
+        var config = new ObjectStorageConfigResolver(new StorageProviderRegistry()).resolve(StorageConfig.builder()
+                .type("s3").endpoint("https://s3.example.com").bucketName("bucket").accessKey("ak").secretKey("sk").build());
+        var objectClient = new ObjectStorageClients(factory).forManagedMedia(config);
+        try (var channel = new ObjectStorageReadChannel(objectClient, "object", 20)) {
             assertThatThrownBy(() -> channel.read(ByteBuffer.allocate(10))).isInstanceOf(IOException.class);
         }
         assertThat(aborted).isTrue();
         assertThat(read).isFalse();
     }
     @SuppressWarnings("unchecked")
-    private Consumer<HeadObjectRequest.Builder> anyConsumer() { return any(Consumer.class); }
+    private Consumer<HeadObjectRequest.Builder> anyConsumer() {
+        return any(Consumer.class);
+    }
 }

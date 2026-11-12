@@ -1,7 +1,6 @@
 package com.stonewu.fusion.service.media;
 
-import software.amazon.awssdk.services.s3.S3Client;
-import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import com.stonewu.fusion.service.storage.ObjectStorageClient;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -12,10 +11,9 @@ import java.nio.channels.SeekableByteChannel;
 /**
  * 有界分段读取，不把整段视频载入堆内存；对象在整个读取过程中必须保持同一 ETag。
  */
-final class S3MediaReadChannel implements SeekableByteChannel {
+final class ObjectStorageReadChannel implements SeekableByteChannel {
     private static final int BLOCK_SIZE = 1024 * 1024;
-    private final S3Client client;
-    private final String bucket;
+    private final ObjectStorageClient client;
     private final String key;
     private final String etag;
     private final long size;
@@ -24,14 +22,13 @@ final class S3MediaReadChannel implements SeekableByteChannel {
     private long cachedStart = -1;
     private byte[] cached = new byte[0];
 
-    S3MediaReadChannel(S3Client client, String bucket, String key, long expectedSize) throws IOException {
+    ObjectStorageReadChannel(ObjectStorageClient client, String key, long expectedSize) throws IOException {
         this.client = client;
-        this.bucket = bucket;
         this.key = key;
         try {
-            var head = client.headObject(request -> request.bucket(bucket).key(key));
-            size = head.contentLength();
-            etag = head.eTag();
+            var head = client.head(key);
+            size = head.size();
+            etag = head.etag();
             if (size != expectedSize || etag == null) {
                 throw new IOException("托管媒体对象长度或版本不符");
             }
@@ -61,21 +58,8 @@ final class S3MediaReadChannel implements SeekableByteChannel {
     private void fetch() throws IOException {
         long start = (position / BLOCK_SIZE) * BLOCK_SIZE;
         long end = Math.min(size - 1, start + BLOCK_SIZE - 1);
-        int length = (int) (end - start + 1);
-        var request = GetObjectRequest.builder().bucket(bucket).key(key).ifMatch(etag)
-                .range("bytes=" + start + "-" + end).build();
-        try (var response = client.getObject(request)) {
-            String range = "bytes " + start + "-" + end + "/" + size;
-            if (!range.equals(response.response().contentRange()) || response.response().contentLength() != length) {
-                response.abort();
-                throw new IOException("媒体存储未按范围返回内容");
-            }
-            byte[] bytes = response.readNBytes(length + 1);
-            if (bytes.length != length) {
-                response.abort();
-                throw new IOException("媒体存储返回了不完整内容");
-            }
-            cached = bytes;
+        try {
+            cached = client.getRange(key, etag, start, end, size);
             cachedStart = start;
         } catch (RuntimeException failure) {
             throw new IOException("读取媒体分段失败", failure);

@@ -318,7 +318,7 @@ export function WorkspaceStorageSection({
                   onValueChange={(value) => setStorageConfigId(value || "")}
                   disabled={controlsDisabled}
                 >
-                  <SelectTrigger id="agent-workspace-object-storage" className="w-full"><SelectValue placeholder="选择已有 S3 兼容配置" /></SelectTrigger>
+                  <SelectTrigger id="agent-workspace-object-storage" className="w-full"><SelectValue placeholder="选择已有对象存储配置" /></SelectTrigger>
                   <SelectContent><SelectGroup>{objectStorageItems.map((item) => (
                     <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>
                   ))}</SelectGroup></SelectContent>

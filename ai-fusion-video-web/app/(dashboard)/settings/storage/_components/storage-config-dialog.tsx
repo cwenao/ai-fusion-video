@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useUnsavedDialog } from "@/components/settings/use-unsaved-dialog";
 import { storageUpdatePayload } from "@/lib/settings/storage-form";
 import { Cloud, Loader2, Eye, EyeOff, TestTube2, Settings2, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { storageConfigApi, STORAGE_PROVIDER_OPTIONS, STORAGE_TYPE_OPTIONS, type StorageConfig as StorageConfigType, type StorageConfigSaveReq } from "@/lib/api/storage";
+import { storageConfigApi, STORAGE_PROVIDER_OPTIONS, STORAGE_TYPE_OPTIONS, VOLCENGINE_TOS, type StorageConfig as StorageConfigType, type StorageConfigSaveReq } from "@/lib/api/storage";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectGroup, SelectItem } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
@@ -30,6 +30,8 @@ export function StorageConfigDialog({ open, onOpenChange, editingConfig, onSaved
   const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
   const [endpointManual, setEndpointManual] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [regionError, setRegionError] = useState(false);
+  const regionInput = useRef<HTMLInputElement>(null);
 
   const [original, setOriginal] = useState<StorageConfigSaveReq | null>(null);
   const changeOpen = useUnsavedDialog(open, !!original && JSON.stringify(form) !== JSON.stringify(original), saving, onOpenChange);
@@ -37,7 +39,11 @@ export function StorageConfigDialog({ open, onOpenChange, editingConfig, onSaved
   useEffect(() => {
     if (open) {
       setSaveError(null);
-      const initializeForm = (value: StorageConfigSaveReq) => { setForm(value); setOriginal(value); };
+      setRegionError(false);
+      const initializeForm = (value: StorageConfigSaveReq) => {
+        setForm(value);
+        setOriginal(value);
+      };
       if (editingConfig) {
         const type = normalizeStorageType(editingConfig);
         const provider = type === "s3" ? normalizeStorageProvider(editingConfig) : undefined;
@@ -57,9 +63,9 @@ export function StorageConfigDialog({ open, onOpenChange, editingConfig, onSaved
           region: editingConfig.region || "",
           basePath: editingConfig.basePath || "",
           customDomain: editingConfig.customDomain || "",
-          options: provider
+          options: provider && provider !== VOLCENGINE_TOS
             ? { ...getProviderDefaultOptions(provider), ...(editingConfig.options || {}) }
-            : editingConfig.options,
+            : undefined,
           isDefault: editingConfig.isDefault,
           status: editingConfig.status,
           remark: editingConfig.remark || "",
@@ -80,6 +86,7 @@ export function StorageConfigDialog({ open, onOpenChange, editingConfig, onSaved
   };
 
   const updateType = (type: string) => {
+    setRegionError(false);
     setEndpointManual(false);
     setForm(prev => {
       if (type === "s3") {
@@ -114,10 +121,11 @@ export function StorageConfigDialog({ open, onOpenChange, editingConfig, onSaved
   };
 
   const updateProvider = (provider: string) => {
+    setRegionError(false);
     const providerOption = getProviderOption(provider);
     setEndpointManual(!providerOption.endpointTemplate);
     setForm(prev => {
-      const region = prev.region || providerOption.defaultRegion || "";
+      const region = provider === VOLCENGINE_TOS ? "" : prev.region || providerOption.defaultRegion || "";
       const generatedEndpoint = buildEndpoint(provider, region);
       return {
         ...prev,
@@ -130,6 +138,8 @@ export function StorageConfigDialog({ open, onOpenChange, editingConfig, onSaved
   };
 
   const updateRegion = (region: string) => {
+    setRegionError(false);
+    setSaveError(null);
     setForm(prev => {
       const generatedEndpoint = buildEndpoint(prev.provider, region);
       const shouldAutoUpdate = !endpointManual && hasEndpointTemplate(prev.provider);
@@ -159,8 +169,19 @@ export function StorageConfigDialog({ open, onOpenChange, editingConfig, onSaved
     }));
   };
 
+  const validateRegion = () => {
+    const valid = form.provider !== VOLCENGINE_TOS || /^[a-z0-9]+(?:-[a-z0-9]+)+$/.test(form.region?.trim() ?? "");
+    setRegionError(!valid);
+    if (!valid) {
+      regionInput.current?.focus();
+    }
+    return valid;
+  };
+
   const handleSave = async () => {
-    if (!form.name.trim() || !original) return;
+    if (!form.name.trim() || !original || !validateRegion()) {
+      return;
+    }
     setSaveError(null);
     setSaving(true);
     try {
@@ -180,6 +201,9 @@ export function StorageConfigDialog({ open, onOpenChange, editingConfig, onSaved
   };
 
   const handleTest = async () => {
+    if (!validateRegion()) {
+      return;
+    }
     setTesting(true);
     try {
       const result = await storageConfigApi.test(form);
@@ -201,6 +225,7 @@ export function StorageConfigDialog({ open, onOpenChange, editingConfig, onSaved
 
   const providerOption = getProviderOption(form.provider);
   const isS3 = form.type === "s3";
+  const isTos = isS3 && form.provider === VOLCENGINE_TOS;
   const generatedEndpoint = buildEndpoint(form.provider, form.region);
   const endpointIsAuto = isS3 && hasEndpointTemplate(form.provider) && !endpointManual;
   const endpointStatus = isS3 && hasEndpointTemplate(form.provider)
@@ -217,7 +242,7 @@ export function StorageConfigDialog({ open, onOpenChange, editingConfig, onSaved
         <DialogHeader className="shrink-0">
           <DialogTitle>{editingConfig ? "编辑存储配置" : "新建存储配置"}</DialogTitle>
           <DialogDescription>
-            配置文件存储后端（本地磁盘 / S3 兼容存储）
+            配置文件存储后端
           </DialogDescription>
         </DialogHeader>
 
@@ -305,13 +330,24 @@ export function StorageConfigDialog({ open, onOpenChange, editingConfig, onSaved
             <>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-1.5">
-                  <Label htmlFor="storage-region" className="text-xs text-muted-foreground">地域 (Region)</Label>
+                  <Label htmlFor="storage-region" className="text-xs text-muted-foreground">
+                    地域 (Region){isTos && <span className="text-destructive ml-0.5">*</span>}
+                  </Label>
                   <Input id="storage-region"
-                    placeholder={providerOption.defaultRegion || "cn-hangzhou / ap-shanghai"}
+                    ref={regionInput}
+                    required={isTos}
+                    aria-invalid={regionError || undefined}
+                    aria-describedby={regionError ? "storage-region-error" : undefined}
+                    placeholder={isTos ? "cn-beijing" : providerOption.defaultRegion || "cn-hangzhou / ap-shanghai"}
                     value={form.region || ""}
                     onChange={e => updateRegion(e.target.value)}
                     className="text-sm"
                   />
+                  {regionError && (
+                    <p id="storage-region-error" className="text-xs text-destructive" role="alert">
+                      填写存储桶地域，例如 cn-beijing
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="storage-bucketName" className="text-xs text-muted-foreground">
@@ -415,9 +451,11 @@ export function StorageConfigDialog({ open, onOpenChange, editingConfig, onSaved
                   <span className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
                     <Settings2 className="h-3.5 w-3.5" />
                     更多设置
-                    <span className="hidden sm:inline text-[11px] font-normal text-muted-foreground/70">
-                      默认即可，兼容异常或自建 S3 时再修改
-                    </span>
+                    {!isTos && (
+                      <span className="hidden sm:inline text-[11px] font-normal text-muted-foreground/70">
+                        默认即可，兼容异常或自建 S3 时再修改
+                      </span>
+                    )}
                   </span>
                   <ChevronDown className={cn(
                     "h-3.5 w-3.5 text-muted-foreground transition-transform",
@@ -446,31 +484,35 @@ export function StorageConfigDialog({ open, onOpenChange, editingConfig, onSaved
                         />
                       </div>
                     </div>
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <label className="flex items-center justify-between gap-3 cursor-pointer select-none rounded-lg bg-muted/20 px-3 py-2">
-                        <span className="text-xs text-muted-foreground">路径样式访问 (Path-style Access)</span>
-                        <Checkbox
-                          checked={!!form.options?.pathStyleAccessEnabled}
-                          onCheckedChange={(checked) => updateOptionField("pathStyleAccessEnabled", !!checked)}
-                        />
-                      </label>
-                      <label className="flex items-center justify-between gap-3 cursor-pointer select-none rounded-lg bg-muted/20 px-3 py-2">
-                        <span className="text-xs text-muted-foreground">分块编码 (Chunked Encoding)</span>
-                        <Checkbox
-                          checked={!!form.options?.chunkedEncodingEnabled}
-                          onCheckedChange={(checked) => updateOptionField("chunkedEncodingEnabled", !!checked)}
-                        />
-                      </label>
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label htmlFor="storage-signingRegion" className="text-xs text-muted-foreground">签名地域 (Signing Region)</Label>
-                      <Input id="storage-signingRegion"
-                        placeholder={form.region || providerOption.defaultRegion || "us-east-1"}
-                        value={form.options?.signingRegion || ""}
-                        onChange={e => updateOptionField("signingRegion", e.target.value)}
-                        className="text-sm"
-                      />
-                    </div>
+                    {!isTos && (
+                      <>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <label className="flex items-center justify-between gap-3 cursor-pointer select-none rounded-lg bg-muted/20 px-3 py-2">
+                            <span className="text-xs text-muted-foreground">路径样式访问 (Path-style Access)</span>
+                            <Checkbox
+                              checked={!!form.options?.pathStyleAccessEnabled}
+                              onCheckedChange={(checked) => updateOptionField("pathStyleAccessEnabled", !!checked)}
+                            />
+                          </label>
+                          <label className="flex items-center justify-between gap-3 cursor-pointer select-none rounded-lg bg-muted/20 px-3 py-2">
+                            <span className="text-xs text-muted-foreground">分块编码 (Chunked Encoding)</span>
+                            <Checkbox
+                              checked={!!form.options?.chunkedEncodingEnabled}
+                              onCheckedChange={(checked) => updateOptionField("chunkedEncodingEnabled", !!checked)}
+                            />
+                          </label>
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label htmlFor="storage-signingRegion" className="text-xs text-muted-foreground">签名地域 (Signing Region)</Label>
+                          <Input id="storage-signingRegion"
+                            placeholder={form.region || providerOption.defaultRegion || "us-east-1"}
+                            value={form.options?.signingRegion || ""}
+                            onChange={e => updateOptionField("signingRegion", e.target.value)}
+                            className="text-sm"
+                          />
+                        </div>
+                      </>
+                    )}
                   </div>
                 )}
               </div>

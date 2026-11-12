@@ -6,14 +6,11 @@ import com.stonewu.fusion.service.media.lifecycle.MediaBlobLocks;
 import com.stonewu.fusion.service.media.lifecycle.MediaBlobLocks.Domain;
 import com.stonewu.fusion.service.media.model.MediaBlob;
 import com.stonewu.fusion.service.media.model.MediaException;
-import com.stonewu.fusion.service.storage.S3ClientFactory;
-import com.stonewu.fusion.service.storage.S3StorageConfigResolver;
+import com.stonewu.fusion.service.storage.ObjectStorageClients;
+import com.stonewu.fusion.service.storage.ObjectStorageConfigResolver;
 import com.stonewu.fusion.service.storage.StorageTypes;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
-import software.amazon.awssdk.core.exception.SdkException;
-import software.amazon.awssdk.core.sync.RequestBody;
-import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 
 import java.io.IOException;
 import java.nio.channels.SeekableByteChannel;
@@ -21,7 +18,6 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
-import java.time.Duration;
 import java.util.Objects;
 import java.util.function.BooleanSupplier;
 
@@ -29,8 +25,8 @@ import java.util.function.BooleanSupplier;
 @RequiredArgsConstructor
 public class MediaBlobStore {
     private final StorageConfigMapper configurations;
-    private final S3StorageConfigResolver s3Config;
-    private final S3ClientFactory s3Clients;
+    private final ObjectStorageConfigResolver objectConfig;
+    private final ObjectStorageClients objectClients;
     private final MediaCryptor cryptor;
     private final MediaBlobLocks locks;
 
@@ -66,14 +62,12 @@ public class MediaBlobStore {
             try (var stream = Files.newOutputStream(encrypted)) {
                 cryptor.encrypt(plaintext, stream, blob.keyset(), blob.resourceId());
             }
-            var resolved = s3Config.resolve(config);
+            var resolved = objectConfig.resolve(config);
             long bytes = Files.size(encrypted);
             try {
-                s3Clients.getClient(resolved).putObject(PutObjectRequest.builder().bucket(resolved.bucketName())
-                        .key(s3Key(config, blob.objectKey())).contentLength(bytes)
-                        .overrideConfiguration(request -> request.apiCallTimeout(Duration.ofMinutes(10)))
-                        .contentType("application/octet-stream").build(), RequestBody.fromFile(encrypted));
-            } catch (SdkException failure) {
+                objectClients.forManagedMedia(resolved).putFile(
+                        objectKey(config, blob.objectKey()), "application/octet-stream", encrypted);
+            } catch (RuntimeException failure) {
                 throw new IOException("媒体对象存储写入失败", failure);
             }
             return bytes;
@@ -108,12 +102,10 @@ public class MediaBlobStore {
                     Files.deleteIfExists(localPath(config, blob.objectKey(), false));
                 }
             } else {
-                var resolved = s3Config.resolve(config);
+                var resolved = objectConfig.resolve(config);
                 try {
-                    s3Clients.getClient(resolved).deleteObject(
-                            request -> request.bucket(resolved.bucketName()).key(s3Key(config, blob.objectKey()))
-                                    .overrideConfiguration(options -> options.apiCallTimeout(Duration.ofSeconds(30))));
-                } catch (SdkException failure) {
+                    objectClients.forManagedMedia(resolved).delete(objectKey(config, blob.objectKey()));
+                } catch (RuntimeException failure) {
                     throw new IOException("媒体对象存储清理失败", failure);
                 }
             }
@@ -135,9 +127,9 @@ public class MediaBlobStore {
                 throw new IOException("媒体对象长度不符");
             }
         } else {
-            var resolved = s3Config.resolve(config);
-            ciphertext = new S3MediaReadChannel(s3Clients.getClient(resolved), resolved.bucketName(),
-                    s3Key(config, blob.objectKey()), blob.storedBytes());
+            var resolved = objectConfig.resolve(config);
+            ciphertext = new ObjectStorageReadChannel(objectClients.forManagedMedia(resolved),
+                    objectKey(config, blob.objectKey()), blob.storedBytes());
         }
         try {
             return cryptor.decrypt(ciphertext, blob.keyset(), blob.resourceId());
@@ -181,7 +173,7 @@ public class MediaBlobStore {
         return target;
     }
 
-    private String s3Key(StorageConfig config, String key) {
+    private String objectKey(StorageConfig config, String key) {
         validateKey(key);
         String base = config.getBasePath();
         if (base == null || base.isBlank()) {

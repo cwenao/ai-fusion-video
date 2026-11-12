@@ -34,7 +34,7 @@ public final class StorageTypes {
         };
     }
 
-    public static boolean isS3Like(String type) {
+    public static boolean isObjectStorage(String type) {
         return S3.equals(normalizeType(type));
     }
 }

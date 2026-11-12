@@ -1,8 +1,9 @@
 package com.stonewu.fusion.service.storage.strategy;
 
 import com.stonewu.fusion.entity.storage.StorageConfig;
+import com.stonewu.fusion.service.storage.ObjectStorageClients;
 import com.stonewu.fusion.service.storage.S3ClientFactory;
-import com.stonewu.fusion.service.storage.S3StorageConfigResolver;
+import com.stonewu.fusion.service.storage.ObjectStorageConfigResolver;
 import com.stonewu.fusion.service.storage.StorageProviderRegistry;
 import com.stonewu.fusion.service.storage.StorageUrlResolver;
 import org.junit.jupiter.api.Test;
@@ -18,7 +19,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-class S3StorageStrategyTests {
+class ObjectStorageStrategyTests {
 
     @Test
     void storeBytesUploadsWithResolvedConfigAndReturnsCustomDomainUrl() {
@@ -28,9 +29,9 @@ class S3StorageStrategyTests {
         when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
                 .thenReturn(PutObjectResponse.builder().build());
 
-        S3StorageStrategy strategy = new S3StorageStrategy(
-                new S3StorageConfigResolver(new StorageProviderRegistry()),
-                factory,
+        ObjectStorageStrategy strategy = new ObjectStorageStrategy(
+                new ObjectStorageConfigResolver(new StorageProviderRegistry()),
+                new ObjectStorageClients(factory),
                 new StorageUrlResolver()
         );
         StorageConfig config = StorageConfig.builder()

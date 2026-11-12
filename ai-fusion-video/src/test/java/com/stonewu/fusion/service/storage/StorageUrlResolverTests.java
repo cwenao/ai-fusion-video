@@ -12,7 +12,7 @@ class StorageUrlResolverTests {
 
     @Test
     void customDomainTakesPrecedenceAndEncodesObjectKey() {
-        ResolvedS3StorageConfig config = resolved("generic_s3", "https://s3.example.com", "us-east-1",
+        ResolvedObjectStorageConfig config = resolved("generic_s3", "https://s3.example.com", "us-east-1",
                 "https://cdn.example.com", true);
 
         String url = resolver.resolvePublicUrl(config, "images/hello world/中文.png");
@@ -22,7 +22,7 @@ class StorageUrlResolverTests {
 
     @Test
     void aliyunUsesPublicOssTemplateWhenRegionIsAvailable() {
-        ResolvedS3StorageConfig config = resolved("aliyun_oss", "https://s3.oss-cn-hangzhou.aliyuncs.com",
+        ResolvedObjectStorageConfig config = resolved("aliyun_oss", "https://s3.oss-cn-hangzhou.aliyuncs.com",
                 "cn-hangzhou", null, false);
 
         String url = resolver.resolvePublicUrl(config, "videos/demo.mp4");
@@ -32,7 +32,7 @@ class StorageUrlResolverTests {
 
     @Test
     void genericPathStyleUsesEndpointBucketAndKey() {
-        ResolvedS3StorageConfig config = resolved("generic_s3", "http://127.0.0.1:9000", "us-east-1",
+        ResolvedObjectStorageConfig config = resolved("generic_s3", "http://127.0.0.1:9000", "us-east-1",
                 null, true);
 
         String url = resolver.resolvePublicUrl(config, "uploads/a.png");
@@ -40,7 +40,7 @@ class StorageUrlResolverTests {
         assertThat(url).isEqualTo("http://127.0.0.1:9000/bucket/uploads/a.png");
     }
 
-    private ResolvedS3StorageConfig resolved(String provider, String endpoint, String region,
+    private ResolvedObjectStorageConfig resolved(String provider, String endpoint, String region,
                                              String customDomain, boolean pathStyle) {
         StorageProviderProfile profile = registry.get(provider);
         StorageConfig source = StorageConfig.builder()
@@ -50,7 +50,7 @@ class StorageUrlResolverTests {
                 .accessKey("ak")
                 .secretKey("sk")
                 .build();
-        return new ResolvedS3StorageConfig(
+        return new ResolvedObjectStorageConfig(
                 source,
                 profile,
                 provider,
