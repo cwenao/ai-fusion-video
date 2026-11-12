@@ -16,6 +16,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -33,11 +34,14 @@ public class McpProjectCredentialController {
 
     public record IssueRequest(@NotBlank @Size(max = 80) String label,
                                @Pattern(regexp = "read|read_write") String scope,
-                               @Min(1) @Max(604800) Integer expiresInSeconds) {
+                               @Min(0) @Max(604800) Integer expiresInSeconds) {
+    }
+
+    public record RenameRequest(@NotBlank @Size(max = 80) String label) {
     }
 
     @PostMapping
-    public ResponseEntity<CommonResult<McpProjectCredentials.Issued>> issue(@PathVariable long projectId,
+    public ResponseEntity<CommonResult<McpProjectCredentials.Issued>> issue(@PathVariable String projectId,
                                                                             @Valid @RequestBody IssueRequest request) {
         int ttl = request.expiresInSeconds() == null ? 86_400 : request.expiresInSeconds();
         var issued = credentials.issue(projectId, actors.current(), request.label(), request.scope(), ttl);
@@ -45,12 +49,19 @@ public class McpProjectCredentialController {
     }
 
     @GetMapping
-    public CommonResult<List<McpProjectCredentials.Metadata>> list(@PathVariable long projectId) {
+    public CommonResult<List<McpProjectCredentials.Metadata>> list(@PathVariable String projectId) {
         return CommonResult.success(credentials.list(projectId, actors.current()));
     }
 
+    @PatchMapping("/{credentialId}")
+    public CommonResult<Boolean> rename(@PathVariable String projectId, @PathVariable String credentialId,
+                                        @Valid @RequestBody RenameRequest request) {
+        credentials.rename(projectId, credentialId, actors.current(), request.label());
+        return CommonResult.success(true);
+    }
+
     @DeleteMapping("/{credentialId}")
-    public CommonResult<Boolean> revoke(@PathVariable long projectId, @PathVariable String credentialId) {
+    public CommonResult<Boolean> revoke(@PathVariable String projectId, @PathVariable String credentialId) {
         credentials.revoke(projectId, credentialId, actors.current());
         return CommonResult.success(true);
     }

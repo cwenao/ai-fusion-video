@@ -34,12 +34,15 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties(McpProjectProperties.class)
 public class McpProjectSecurity {
     public static final String ENDPOINT = "/api/mcp";
     private static final String GRANT_ATTRIBUTE = McpProjectSecurity.class.getName() + ".grant";
+    private static final String MEDIA_PREFIX = ENDPOINT + "/projects/";
+    private static final Pattern MEDIA_PATH = Pattern.compile(MEDIA_PREFIX + "([1-9][0-9]{0,18})/media(?:/.*)?");
 
     public static boolean matches(HttpServletRequest request) {
         String path = path(request);
@@ -48,6 +51,18 @@ public class McpProjectSecurity {
 
     private static String path(HttpServletRequest request) {
         return request.getRequestURI().substring(request.getContextPath().length());
+    }
+
+    private static long mediaProjectId(String path) {
+        var match = MEDIA_PATH.matcher(path);
+        if (!match.matches()) {
+            throw McpProjectFailure.denied();
+        }
+        try {
+            return Long.parseLong(match.group(1));
+        } catch (NumberFormatException invalidId) {
+            throw McpProjectFailure.denied();
+        }
     }
 
     public static Grant grant(HttpServletRequest request) {
@@ -100,14 +115,11 @@ public class McpProjectSecurity {
                 var service = credentials.getObject();
                 grant = service.authenticate(request.getHeader(HttpHeaders.AUTHORIZATION));
                 String path = path(request);
-                boolean media = path.startsWith(ENDPOINT + "/projects/");
-                if (media) {
-                    String prefix = ENDPOINT + "/projects/" + grant.projectId() + "/media";
-                    if (!path.equals(prefix) && !path.startsWith(prefix + "/")) {
-                        throw McpProjectFailure.denied();
-                    }
+                if (path.startsWith(MEDIA_PREFIX)) {
+                    service.requireProject(grant, mediaProjectId(path), "POST".equals(request.getMethod()));
+                } else {
+                    service.requireConnection(grant);
                 }
-                service.requireProject(grant, grant.projectId(), media && "POST".equals(request.getMethod()));
             } catch (McpProjectFailure failure) {
                 if (failure.getCode() == 401) {
                     response.setHeader(HttpHeaders.WWW_AUTHENTICATE, "Bearer realm=\"fusion-project-mcp\"");

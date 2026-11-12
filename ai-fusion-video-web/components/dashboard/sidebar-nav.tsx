@@ -13,6 +13,7 @@ import {
   ArrowLeft,
   Bot,
   HardDrive,
+  Cable,
   ImagePlus,
   Video,
   Workflow,
@@ -62,6 +63,14 @@ const generationItems: SidebarItem[] = [
   { key: "video", label: "生视频", icon: Video, href: "/generate/video", iconColor: "text-cyan-400" },
 ];
 
+const mcpServiceItem: SidebarItem = {
+  key: "mcp-service",
+  label: "MCP服务",
+  icon: Cable,
+  href: "/settings/mcp-service",
+  iconColor: "text-cyan-400",
+};
+
 interface SidebarNavProps {
   /** 导航后回调，移动端抽屉用于关闭面板 */
   onNavigate?: () => void;
@@ -100,11 +109,13 @@ export function SidebarNav({
       { key: "profile", label: "个人设置", icon: Users, href: "/settings/profile", iconColor: "text-blue-400" },
       { key: "ai-models", label: "AI 配置", icon: Bot, href: "/settings/ai-models", iconColor: "text-purple-400" },
       { key: "agents", label: "智能体配置", icon: Bot, href: "/settings/agents", iconColor: "text-violet-400" },
+      mcpServiceItem,
       { key: "storage", label: "存储配置", icon: HardDrive, href: "/settings/storage", iconColor: "text-orange-400" },
     ]
     : [
       { key: "profile", label: "个人设置", icon: Users, href: "/settings/profile", iconColor: "text-blue-400" },
       { key: "agents", label: "智能体配置", icon: Bot, href: "/settings/agents", iconColor: "text-violet-400" },
+      mcpServiceItem,
     ];
 
   // 若外部已传入 project，则不在组件内自行请求

@@ -147,7 +147,9 @@ https://github.com/user-attachments/assets/acd181a0-541c-4163-a000-fa9ed72a5106
 
 融光提供 `/api/mcp` 的 Streamable HTTP 入口。外部 Agent 可在授权项目中创建、读取和更新剧本、分镜、提示词和资产，提交后在原项目继续编辑。
 
-在后端配置 `PROJECT_MCP_ENABLED=true`，并将 `PROJECT_MCP_ALLOWED_HOSTS` 设置为接入域名。用网页登录令牌调用 `POST /api/project/{projectId}/mcp-credentials`，提供 `label` 和 `scope`。`read` 用于读取，`read_write` 还可提交内容和上传文件。将响应中的项目凭证作为外部 MCP 客户端的 Bearer 令牌。
+在后端配置 `PROJECT_MCP_ENABLED=true`，并将 `PROJECT_MCP_ALLOWED_HOSTS` 设置为接入域名。在「系统设置 → MCP服务」选择项目、访问权限和有效期，签发后复制一次性显示的项目凭证。通过安全渠道将凭证交给接入方，作为客户端的 Bearer 令牌。「全部项目」覆盖签发时所在空间内签发人有权访问的项目，权限随成员关系变化。工具调用仍需传入具体项目的 `projectId`。`read` 用于读取，`read_write` 可在有编辑权限的项目中提交内容和上传文件。有效期 `0` 表示永久有效。
+
+脚本可用网页登录令牌调用 `POST /api/project/{projectId}/mcp-credentials` 签发，路径中的项目可用具体编号或 `all`。同一路径通过 `GET` 查看凭证列表。路径末尾加 `/{credentialId}` 后可用 `PATCH` 提交 `label` 改名，或用 `DELETE` 撤销。永久凭证的 `expiresAt` 为 `null`，凭证明文只在签发时返回。
 
 从 `fusion_workspace_get` 读取项目结构和上传入口。先在系统设置中启用一项默认存储配置，再通过同域 HTTP 上传图片、视频和音频原件。取得媒体 ID 后用 `fusion_media_bind` 绑定。更新前读回对象版本，网络重试沿用原业务 `requestId`。可通过同一项目的凭证管理接口查询和撤销授权。
 

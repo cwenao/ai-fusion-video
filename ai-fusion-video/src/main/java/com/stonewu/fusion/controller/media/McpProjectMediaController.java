@@ -41,7 +41,7 @@ public class McpProjectMediaController {
         var grant = McpProjectSecurity.grant(request);
         var row = media.download(grant, projectId, mediaResourceId);
         writer.write(row.resource(), row.blobId(), true,
-                () -> media.recheckDownload(grant, mediaResourceId, row.resource().version()), request, response);
+                () -> media.recheckDownload(grant, projectId, mediaResourceId, row.resource().version()), request, response);
     }
 
     @ExceptionHandler(McpProjectFailure.class)
