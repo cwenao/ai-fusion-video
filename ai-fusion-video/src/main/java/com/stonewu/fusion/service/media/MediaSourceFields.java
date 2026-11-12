@@ -8,14 +8,14 @@ import com.stonewu.fusion.service.media.model.MediaKind;
 
 import java.util.Map;
 
-final class MediaSourceFields {
+public final class MediaSourceFields {
     private MediaSourceFields() {
     }
 
     record Value(String uri, MediaKind kind) {
     }
 
-    static Map<String, MediaKind> fields(CanvasValueType type) {
+    public static Map<String, MediaKind> fields(CanvasValueType type) {
         return switch (type) {
             case PROJECT -> Map.of("coverUrl", MediaKind.IMAGE, "artStyleImageUrl", MediaKind.IMAGE);
             case ASSET -> Map.of("coverUrl", MediaKind.IMAGE, "properties.videoUrl", MediaKind.VIDEO,

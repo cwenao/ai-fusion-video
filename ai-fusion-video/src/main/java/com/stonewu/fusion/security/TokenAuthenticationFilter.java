@@ -33,6 +33,11 @@ public class TokenAuthenticationFilter extends OncePerRequestFilter {
     private final SecurityUserDetailsService userDetailsService;
 
     @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        return McpProjectSecurity.matches(request);
+    }
+
+    @Override
     protected void doFilterInternal(HttpServletRequest request,
                                     HttpServletResponse response,
                                     FilterChain filterChain) throws ServletException, IOException {

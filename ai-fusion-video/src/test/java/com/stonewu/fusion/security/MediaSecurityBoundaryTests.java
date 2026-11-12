@@ -4,9 +4,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.stonewu.fusion.config.CorsProperties;
 import com.stonewu.fusion.controller.media.MediaContentController;
 import com.stonewu.fusion.controller.media.MediaExceptionHandler;
-import com.stonewu.fusion.repository.media.MediaResourceRepository;
 import com.stonewu.fusion.service.media.MediaAccessTickets;
-import com.stonewu.fusion.service.media.MediaBlobStore;
+import com.stonewu.fusion.service.media.MediaContentWriter;
 import com.stonewu.fusion.service.media.model.MediaException;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.annotation.Bean;
@@ -40,7 +39,7 @@ class MediaSecurityBoundaryTests {
             return tickets;
         }
         @Bean MediaContentController content(MediaAccessTickets tickets) {
-            return new MediaContentController(tickets, mock(MediaResourceRepository.class), mock(MediaBlobStore.class));
+            return new MediaContentController(tickets, mock(MediaContentWriter.class));
         }
         @Bean MediaExceptionHandler advice() { return new MediaExceptionHandler(); }
     }

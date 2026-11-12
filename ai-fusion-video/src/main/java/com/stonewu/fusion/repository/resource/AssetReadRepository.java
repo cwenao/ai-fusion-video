@@ -1,5 +1,6 @@
 package com.stonewu.fusion.repository.resource;
 
+import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.stonewu.fusion.entity.asset.AssetItem;
@@ -38,9 +39,16 @@ public class AssetReadRepository {
     }
 
     public List<Long> items(long assetId) {
-        return items.selectList(new LambdaQueryWrapper<AssetItem>().select(AssetItem::getId)
-                        .eq(AssetItem::getAssetId, assetId).orderByAsc(AssetItem::getSortOrder, AssetItem::getId))
-                .stream().map(AssetItem::getId).toList();
+        return items.selectList(assetItems(assetId)).stream().map(AssetItem::getId).toList();
+    }
+
+    public IPage<Long> pageItems(long assetId, int page, int size) {
+        return items.selectPage(new Page<>(page, size), assetItems(assetId)).convert(AssetItem::getId);
+    }
+
+    private LambdaQueryWrapper<AssetItem> assetItems(long assetId) {
+        return new LambdaQueryWrapper<AssetItem>().select(AssetItem::getId)
+                .eq(AssetItem::getAssetId, assetId).orderByAsc(AssetItem::getSortOrder, AssetItem::getId);
     }
 
     private AccessFilter filter(CanvasActor actor, List<Long> projects, Long projectId, String type, String keyword) {

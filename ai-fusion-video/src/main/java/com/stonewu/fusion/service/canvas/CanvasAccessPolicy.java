@@ -22,10 +22,14 @@ public class CanvasAccessPolicy {
     }
 
     public void requireProjectEditor(long projectId, CanvasActor actor) {
-        requireProject(projectId, actor);
-        if (!access.canEditProject(projectId, actor)) {
+        if (!canEditProject(projectId, actor)) {
             throw denied();
         }
+    }
+
+    public boolean canEditProject(long projectId, CanvasActor actor) {
+        requireProject(projectId, actor);
+        return access.canEditProject(projectId, actor);
     }
 
     public List<Long> readableProjects(CanvasActor actor) {
@@ -41,10 +45,14 @@ public class CanvasAccessPolicy {
     }
 
     public void requireProjectManager(long projectId, CanvasActor actor) {
-        requireProject(projectId, actor);
-        if (!documents.isProjectManager(projectId, actor.userId())) {
+        if (!canManageProject(projectId, actor)) {
             throw denied();
         }
+    }
+
+    public boolean canManageProject(long projectId, CanvasActor actor) {
+        requireProject(projectId, actor);
+        return documents.isProjectManager(projectId, actor.userId());
     }
 
     public CanvasPermissions requireView(CanvasDocument document, CanvasActor actor) {

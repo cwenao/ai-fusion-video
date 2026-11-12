@@ -1,5 +1,6 @@
 package com.stonewu.fusion.repository.resource;
 
+import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.stonewu.fusion.entity.project.Project;
@@ -95,16 +96,33 @@ public class ResourceReadRepository {
 
     public List<Long> scriptChildren(CanvasValueType type, long parentId) {
         return switch (type) {
-            case SCRIPT_EPISODE -> episodes.selectList(new LambdaQueryWrapper<ScriptEpisode>()
-                            .select(ScriptEpisode::getId).eq(ScriptEpisode::getScriptId, parentId)
-                            .orderByAsc(ScriptEpisode::getSortOrder, ScriptEpisode::getId))
+            case SCRIPT_EPISODE -> episodes.selectList(scriptEpisodes(parentId))
                     .stream().map(ScriptEpisode::getId).toList();
-            case SCRIPT_SCENE -> scenes.selectList(new LambdaQueryWrapper<ScriptSceneItem>()
-                            .select(ScriptSceneItem::getId).eq(ScriptSceneItem::getEpisodeId, parentId)
-                            .orderByAsc(ScriptSceneItem::getSortOrder, ScriptSceneItem::getId))
+            case SCRIPT_SCENE -> scenes.selectList(scriptScenes(parentId))
                     .stream().map(ScriptSceneItem::getId).toList();
             default -> throw new CanvasException(CanvasErrorCode.INVALID_RESOURCE_REFERENCE, "不是剧本子对象");
         };
+    }
+
+    public IPage<Long> pageScriptChildren(CanvasValueType type, long parentId, int page, int size) {
+        return switch (type) {
+            case SCRIPT_EPISODE -> episodes.selectPage(new Page<>(page, size), scriptEpisodes(parentId))
+                    .convert(ScriptEpisode::getId);
+            case SCRIPT_SCENE -> scenes.selectPage(new Page<>(page, size), scriptScenes(parentId))
+                    .convert(ScriptSceneItem::getId);
+            default -> throw new CanvasException(CanvasErrorCode.INVALID_RESOURCE_REFERENCE, "不是剧本子对象");
+        };
+    }
+
+    private LambdaQueryWrapper<ScriptEpisode> scriptEpisodes(long parentId) {
+        return new LambdaQueryWrapper<ScriptEpisode>().select(ScriptEpisode::getId)
+                .eq(ScriptEpisode::getScriptId, parentId).orderByAsc(ScriptEpisode::getSortOrder, ScriptEpisode::getId);
+    }
+
+    private LambdaQueryWrapper<ScriptSceneItem> scriptScenes(long parentId) {
+        return new LambdaQueryWrapper<ScriptSceneItem>().select(ScriptSceneItem::getId)
+                .eq(ScriptSceneItem::getEpisodeId, parentId)
+                .orderByAsc(ScriptSceneItem::getSortOrder, ScriptSceneItem::getId);
     }
 
     public List<ObjectNode> projectPage(List<Long> ids, int page, int size) {

@@ -58,6 +58,11 @@ app:
   cors:
     # 默认全局允许跨域；生产环境可通过 CORS_ALLOWED_ORIGIN_PATTERNS 配置明确来源，多个值使用逗号分隔。
     allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:*}
+  project-mcp:
+    enabled: ${PROJECT_MCP_ENABLED:false}
+    allowed-hosts: ${PROJECT_MCP_ALLOWED_HOSTS:localhost,127.0.0.1}
+    allowed-origins: ${PROJECT_MCP_ALLOWED_ORIGINS:}
+    requests-per-minute: ${PROJECT_MCP_REQUESTS_PER_MINUTE:120}
   storage:
     local-base-path: ./data/media
   agent-workspace:
