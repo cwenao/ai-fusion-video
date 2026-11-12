@@ -30,6 +30,7 @@ export function MediaThumbnail({
   const preview = useMediaPreview(source, visible && managed);
   const access = useMediaUrl(
     preview.view?.previewId ? `media://${preview.view.previewId}` : null,
+    "playback",
   );
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
   const error =

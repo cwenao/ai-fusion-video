@@ -75,6 +75,7 @@ import jakarta.validation.Validation;
 import jakarta.validation.Validator;
 import jakarta.validation.ValidatorFactory;
 import com.stonewu.fusion.service.media.MediaAccessTickets;
+import com.stonewu.fusion.service.media.TosMediaPlayback;
 import com.stonewu.fusion.service.media.MediaBlobStore;
 import com.stonewu.fusion.service.media.MediaContentWriter;
 import com.stonewu.fusion.service.media.lifecycle.MediaBlobLocks;
@@ -256,7 +257,7 @@ abstract class MediaResourceTestContext {
                 ObjectStorageConfigResolver.class, ObjectStorageClients.class,
                 StorageProviderRegistry.class, MediaProbe.class, MediaRegistryTransactions.class,
                 MediaIntakeService.class,
-                MediaMetadataCache.class, MediaResourceQueries.class, MediaAccessTickets.class,
+                MediaMetadataCache.class, MediaResourceQueries.class, MediaAccessTickets.class, TosMediaPlayback.class,
                 MediaStorageConfigGuard.class,
                 MediaResourceController.class, MediaContentController.class, MediaContentWriter.class);
         context.refresh();

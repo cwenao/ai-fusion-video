@@ -1,5 +1,6 @@
 package com.stonewu.fusion.service.media;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.stonewu.fusion.mapper.media.MediaAccessTicketMapper;
 import com.stonewu.fusion.entity.media.MediaAccessTicketEntity;
 import com.stonewu.fusion.mapper.execution.ExecutionCoordinationMapper;
@@ -40,11 +41,14 @@ public class MediaAccessTickets {
     private final MediaResourceRepository resources;
     private final MediaAccessPolicy access;
     private final GenerationJobRepository generationJobs;
+    private final TosMediaPlayback playback;
 
-    public record Issued(String resourceId, String url, Instant expiresAt, boolean download) {
+    public record Issued(String resourceId, String url, Instant expiresAt, boolean download,
+                         @JsonInclude(JsonInclude.Include.NON_NULL) String playbackUrl) {
     }
 
-    public record Authorized(MediaResource resource, String blobId, CanvasActor actor, boolean download) {
+    public record Authorized(MediaResource resource, String blobId, CanvasActor actor, boolean download,
+                             Instant expiresAt) {
     }
 
     @Transactional
@@ -95,8 +99,11 @@ public class MediaAccessTickets {
     }
 
     private Issued issue(String id, CanvasActor actor, boolean download, Binding binding) {
-        var resource = resources.get(id, false).resource();
+        var row = resources.get(id, false);
+        var resource = row.resource();
         access.ready(resource, actor);
+        boolean browserPlayback = "BROWSER".equals(binding.purpose()) && !download
+                && TosMediaPlayback.isPlayable(resource) && playback.usesTos(row.blobId());
         byte[] random = new byte[32];
         RANDOM.nextBytes(random);
         String token = Base64.getUrlEncoder().withoutPadding().encodeToString(random);
@@ -115,16 +122,27 @@ public class MediaAccessTickets {
                 .agentOwnerInstanceId(binding.agentOwner())
                 .agentOwnerEpoch(binding.agentEpoch())
                 .canvasTextJobId(binding.textJobId()).build());
-        return new Issued(id, "/api/media-content/" + id + "?ticket=" + token,
-                binding.expiresAt().toInstant(ZoneOffset.UTC), download);
+        String path = "/api/media-content/" + id;
+        String query = "?ticket=" + token;
+        return new Issued(id, path + query, binding.expiresAt().toInstant(ZoneOffset.UTC), download,
+                browserPlayback ? path + "/playback" + query : null);
     }
 
     public Authorized authorize(String id, String token) {
+        return authorize(id, token, false);
+    }
+
+    public Authorized authorizePlayback(String id, String token) {
+        return authorize(id, token, true);
+    }
+
+    private Authorized authorize(String id, String token, boolean playbackOnly) {
         if (token == null || !token.matches("[A-Za-z0-9_-]{43}")) {
             throw denied();
         }
         var issued = tickets.authorize(hash(token), id);
-        if (issued == null) {
+        if (issued == null || (playbackOnly && (!"BROWSER".equals(issued.getPurpose())
+                || !Boolean.FALSE.equals(issued.getDownload())))) {
             throw denied();
         }
         var ticket = new Ticket(new CanvasActor(issued.getActorUserId(), issued.getActorTeamId()),
@@ -138,7 +156,8 @@ public class MediaAccessTickets {
             throw denied();
         }
         requireBinding(ticket, row.resource());
-        return new Authorized(row.resource(), row.blobId(), ticket.actor(), ticket.download());
+        return new Authorized(row.resource(), row.blobId(), ticket.actor(), ticket.download(),
+                ticket.binding().expiresAt().toInstant(ZoneOffset.UTC));
     }
 
     private void requireBinding(Ticket ticket, MediaResource resource) {
