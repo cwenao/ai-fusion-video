@@ -8,6 +8,7 @@ import com.stonewu.fusion.repository.media.MediaResourceRepository.Row;
 import com.stonewu.fusion.service.canvas.CanvasJson;
 import com.stonewu.fusion.service.canvas.model.CanvasValueType;
 import com.stonewu.fusion.service.mcp.McpProjectCredentials.Grant;
+import com.stonewu.fusion.service.mcp.McpProjectCredentials.ProjectGrant;
 import com.stonewu.fusion.service.media.MediaAccessPolicy;
 import com.stonewu.fusion.service.media.MediaIntakeService;
 import com.stonewu.fusion.service.media.MediaReference;
@@ -77,18 +78,18 @@ public class McpProjectMedia {
     }
 
     public Row download(Grant grant, long projectId, String mediaId) {
-        credentials.requireProject(grant, projectId, false);
-        return scoped(grant, mediaId, true);
+        var target = credentials.authorizeProject(grant, projectId, false);
+        return scoped(target, mediaId, true);
     }
 
-    public void recheckDownload(Grant grant, String mediaId, int version) {
-        credentials.recheckRead(grant);
-        if (scoped(grant, mediaId, true).resource().version() != version) {
+    public void recheckDownload(Grant grant, long projectId, String mediaId, int version) {
+        var target = credentials.recheckRead(grant, projectId);
+        if (scoped(target, mediaId, true).resource().version() != version) {
             throw new MediaException(410, "MEDIA_VERSION_CHANGED", "原件状态在下载期间已变化");
         }
     }
 
-    ObjectNode get(Grant grant, String mediaId) {
+    ObjectNode get(ProjectGrant grant, String mediaId) {
         return describe(scoped(grant, mediaId, false).resource(), grant.projectId());
     }
 
@@ -97,7 +98,7 @@ public class McpProjectMedia {
                 "kinds", List.of("image", "video", "audio")));
     }
 
-    Map<String, String> checkedBindings(Grant grant, CanvasValueType type, JsonNode bindings) {
+    Map<String, String> checkedBindings(ProjectGrant grant, CanvasValueType type, JsonNode bindings) {
         var mapping = SLOTS.get(type);
         Map<String, String> output = new LinkedHashMap<>();
         for (var binding : bindings) {
@@ -113,7 +114,7 @@ public class McpProjectMedia {
         return output;
     }
 
-    void readBindings(Grant grant, CanvasValueType type, ObjectNode source, ArrayNode bindings) {
+    void readBindings(ProjectGrant grant, CanvasValueType type, ObjectNode source, ArrayNode bindings) {
         var slots = SLOTS.get(type);
         for (String field : MediaSourceFields.fields(type).keySet().stream().sorted().toList()) {
             var value = source.at("/" + field.replace('.', '/'));
@@ -154,7 +155,7 @@ public class McpProjectMedia {
         return SLOTS.containsKey(type);
     }
 
-    private Row scoped(Grant grant, String id, boolean ready) {
+    private Row scoped(ProjectGrant grant, String id, boolean ready) {
         MediaReference.of(id);
         try {
             var row = media.get(id, false);

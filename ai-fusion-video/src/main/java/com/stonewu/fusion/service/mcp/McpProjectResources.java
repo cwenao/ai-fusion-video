@@ -8,7 +8,7 @@ import com.stonewu.fusion.repository.resource.ResourceReadRepository;
 import com.stonewu.fusion.repository.resource.StoryboardReadRepository;
 import com.stonewu.fusion.service.canvas.CanvasJson;
 import com.stonewu.fusion.service.canvas.model.CanvasValueType;
-import com.stonewu.fusion.service.mcp.McpProjectCredentials.Grant;
+import com.stonewu.fusion.service.mcp.McpProjectCredentials.ProjectGrant;
 import com.stonewu.fusion.service.resource.ResourceQueryService;
 import com.stonewu.fusion.service.resource.model.ResourceChange;
 import com.stonewu.fusion.service.resource.model.ResourceHeader;
@@ -45,18 +45,18 @@ class McpProjectResources {
     private record Parent(CanvasValueType type, long id) {
     }
 
-    ResourceHeader requireHeader(Grant grant, CanvasValueType type, long id) {
+    ResourceHeader requireHeader(ProjectGrant grant, CanvasValueType type, long id) {
         return resources.find(type, id, false, false)
                 .filter(header -> Objects.equals(header.projectId(), grant.projectId()))
                 .orElseThrow(McpProjectFailure::missing);
     }
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
-    public ObjectNode workspace(Grant grant, boolean writable) {
+    public ObjectNode workspace(ProjectGrant grant, boolean writable) {
         return workspaceView(grant, queries.workspace(grant.projectId(), grant.actor()), writable);
     }
 
-    ObjectNode workspaceView(Grant grant, ObjectNode snapshot, boolean writable) {
+    ObjectNode workspaceView(ProjectGrant grant, ObjectNode snapshot, boolean writable) {
         var result = json.object(Map.of("project", Map.of("id", Long.toString(grant.projectId()),
                 "name", snapshot.path("project").path("name").asText(),
                 "version", snapshot.path("projectVersion").intValue())));
@@ -76,7 +76,7 @@ class McpProjectResources {
     }
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
-    public ObjectNode detail(Grant grant, CanvasValueType type, long id, boolean rawContent) {
+    public ObjectNode detail(ProjectGrant grant, CanvasValueType type, long id, boolean rawContent) {
         requireHeader(grant, type, id);
         var source = queries.get(type, id, grant.actor()).data();
         var result = view(grant, type, source, false, rawContent);
@@ -91,7 +91,7 @@ class McpProjectResources {
     }
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
-    public ObjectNode children(Grant grant, CanvasValueType child, CanvasValueType parentType, long parentId,
+    public ObjectNode children(ProjectGrant grant, CanvasValueType child, CanvasValueType parentType, long parentId,
                                PageRequest page) {
         var header = requireHeader(grant, parentType, parentId);
         IPage<Long> found = switch (child) {
@@ -104,7 +104,7 @@ class McpProjectResources {
     }
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
-    public ObjectNode assets(Grant grant, String type, String keyword, PageRequest page) {
+    public ObjectNode assets(ProjectGrant grant, String type, String keyword, PageRequest page) {
         long projectId = grant.projectId();
         var allowed = List.of(projectId);
         var ids = assets.ids(grant.actor(), allowed, projectId, type, keyword, page.number(), page.size());
@@ -112,7 +112,7 @@ class McpProjectResources {
     }
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
-    public ObjectNode prompt(Grant grant, CanvasValueType type, long id, String slot) {
+    public ObjectNode prompt(ProjectGrant grant, CanvasValueType type, long id, String slot) {
         requireHeader(grant, type, id);
         var data = queries.get(type, id, grant.actor()).data();
         return promptView(type, data, slot);
@@ -134,7 +134,7 @@ class McpProjectResources {
         return result;
     }
 
-    ObjectNode written(Grant grant, CanvasValueType type, ObjectNode source, List<ResourceChange> changes) {
+    ObjectNode written(ProjectGrant grant, CanvasValueType type, ObjectNode source, List<ResourceChange> changes) {
         var result = view(grant, type, source, false, false);
         var parent = parent(type, source);
         if (parent != null) {
@@ -147,7 +147,7 @@ class McpProjectResources {
         return result;
     }
 
-    private ObjectNode page(Grant grant, CanvasValueType type, List<Long> ids, long total, PageRequest page) {
+    private ObjectNode page(ProjectGrant grant, CanvasValueType type, List<Long> ids, long total, PageRequest page) {
         var result = json.object(Map.of("page", page.number(), "pageSize", page.size(),
                 "hasMore", (long) page.number() * page.size() < total));
         var items = result.putArray("items");
@@ -157,7 +157,7 @@ class McpProjectResources {
         return result;
     }
 
-    private ObjectNode view(Grant grant, CanvasValueType type, ObjectNode source, boolean summary, boolean raw) {
+    private ObjectNode view(ProjectGrant grant, CanvasValueType type, ObjectNode source, boolean summary, boolean raw) {
         var result = json.object(Map.of("id", source.path("id").asText(), "kind", McpProjectValues.kind(type),
                 "projectId", Long.toString(grant.projectId()), "version", source.path("version").intValue()));
         var parent = parent(type, source);
