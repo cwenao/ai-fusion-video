@@ -7,6 +7,7 @@ import { SafeImage } from "@/components/media/managed-image";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DialogScrollBody } from "@/components/shared/dialog-scroll-body";
 import { GenerationReviewBadge } from "@/components/generation-review/generation-review-badge";
+import type { FrameImageOptions } from "./storyboard-frame-model-fields";
 import { FramePromptDialog } from "./storyboard-frame-prompt-dialog";
 import type { FrameGenerateHandler } from "./storyboard-reference/reference-shared";
 import { resolveMediaUrl } from "@/lib/api/client";
@@ -94,7 +95,7 @@ export function FrameReferenceSection({
   const [updating, setUpdating] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const skipNextChangeConfirmRef = useRef(false);
-  const defaultPrompt = buildDefaultFramePrompt(item, project, frameType);
+  const defaultPrompt = prompt?.trim() || buildDefaultFramePrompt(item, project, frameType);
   const { confirm } = useConfirm();
 
   const confirmOverwrite = useCallback(async () => {
@@ -138,13 +139,13 @@ export function FrameReferenceSection({
     setPromptOpen(true);
   };
 
-  const handleConfirmPrompt = async (nextPrompt: string, reviewModelId?: number) => {
+  const handleConfirmPrompt = async (nextPrompt: string, image: FrameImageOptions, reviewModelId?: number) => {
     if (!onGenerateFrame) {
       return;
     }
     try {
       setSubmitting(true);
-      await onGenerateFrame(item, frameType, nextPrompt, reviewModelId);
+      await onGenerateFrame(item, frameType, nextPrompt, image, reviewModelId);
       setPromptOpen(false);
       setSubmitting(false);
       onGenerateSubmitted?.();

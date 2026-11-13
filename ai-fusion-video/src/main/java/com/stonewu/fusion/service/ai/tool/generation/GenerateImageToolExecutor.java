@@ -13,7 +13,7 @@ import com.stonewu.fusion.service.canvas.agent.node.CanvasAgentNodeGeneration;
 import com.stonewu.fusion.service.generation.GenerationKind;
 import com.stonewu.fusion.service.generation.ProjectMediaCompletion;
 import com.stonewu.fusion.service.generation.GenerationModelCapabilityService;
-import com.stonewu.fusion.service.generation.image.ImageGenerationService;
+import com.stonewu.fusion.service.generation.StoryboardFrameImageOptions;
 import com.stonewu.fusion.service.generation.job.GenerationSubmissionService;
 import com.stonewu.fusion.service.generation.review.GenerationReviewAdmission;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -40,13 +40,13 @@ public class GenerateImageToolExecutor implements ToolExecutor {
 
 
     private final AiModelService aiModelService;
-    private final ImageGenerationService imageGenerationService;
     private final GenerationSubmissionService submissions;
     private final GenerationModelCapabilityService generationModelCapabilityService;
     private final CanvasJson json;
     private final CanvasAgentNodeGeneration canvasModels;
     private final GenerationReviewAdmission reviews;
     private final ProjectMediaCompletion projectMedia;
+    private final StoryboardFrameImageOptions frameOptions;
 
     @Override
     public String getToolName() {
@@ -74,7 +74,7 @@ public class GenerateImageToolExecutor implements ToolExecutor {
                 - 可以使用中文提示词，系统会自动处理
                 - 如果你打算传 imageUrls，或不确定当前默认模型是否支持参考图，请先调用 get_generation_model_capabilities
                 
-                画布专业节点使用已明确选择的模型；其他对话使用配置的默认模型。实际限制请查询能力工具。
+                项目首尾帧和画布专业节点使用用户选择的模型。项目首尾帧的输出参数由系统应用，实际限制请查询能力工具。
                 """;
     }
 
@@ -138,8 +138,9 @@ public class GenerateImageToolExecutor implements ToolExecutor {
                 prompt += "\n请避免：" + params.getStr("negativePrompt");
             }
 
-            int width = params.getInt("width", 0);
-            int height = params.getInt("height", 0);
+            var selection = frameOptions.selected(context);
+            int width = selection == null ? params.getInt("width", 0) : 0;
+            int height = selection == null ? params.getInt("height", 0) : 0;
 
             // 参考图片（图生图）
             String refImageUrls = null;
@@ -150,14 +151,22 @@ public class GenerateImageToolExecutor implements ToolExecutor {
                 }
             }
 
-            AiModel model = canvasModels.scoped(context) ? canvasModels.require(context,
-                    GenerationKind.IMAGE) : resolvePreferredModel();
+            AiModel model;
+            if (selection != null) {
+                model = selection.model();
+            } else {
+                model = canvasModels.scoped(context) ? canvasModels.require(context,
+                        GenerationKind.IMAGE) : resolvePreferredModel();
+            }
 
             // 构建生图任务
             ImageTask task = ImageTask.builder()
                     .prompt(prompt)
                     .width(width > 0 ? width : null)
                     .height(height > 0 ? height : null)
+                    .ratio(selection == null ? null : selection.aspectRatio())
+                    .aspectRatio(selection == null ? null : selection.aspectRatio())
+                    .resolution(selection == null ? null : selection.resolution())
                     .refImageUrls(refImageUrls)
                     .modelId(model.getId())
                     .count(1)

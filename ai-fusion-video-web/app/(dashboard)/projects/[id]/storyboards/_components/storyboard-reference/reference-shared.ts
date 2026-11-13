@@ -2,6 +2,7 @@
 
 import type { AssetItem } from "@/lib/api/asset";
 import type { StoryboardFrameType, StoryboardItem, StoryboardScene } from "@/lib/api/storyboard";
+import type { FrameImageOptions } from "../storyboard-frame-model-fields";
 import { MapPin, Package, Users } from "lucide-react";
 
 export // ========== 类型 ==========
@@ -30,6 +31,7 @@ export interface BatchFrameGeneratePayload {
   firstItemIds: number[];
   lastItemIds: number[];
   overwriteExisting: boolean;
+  image: FrameImageOptions;
   reviewModelId?: number;
 }
 
@@ -41,6 +43,7 @@ export type FrameGenerateHandler = (
   item: StoryboardItem,
   frameType: StoryboardFrameType,
   prompt: string,
+  image: FrameImageOptions,
   reviewModelId?: number,
 ) => Promise<void> | void;
 

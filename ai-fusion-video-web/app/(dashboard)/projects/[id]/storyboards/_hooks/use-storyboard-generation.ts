@@ -7,6 +7,7 @@ import { scriptApi, type ScriptEpisode } from "@/lib/api/script";
 import { storyboardApi, type Storyboard, type StoryboardEpisode, type StoryboardItem, type StoryboardFrameType } from "@/lib/api/storyboard";
 import { toastApiError } from "@/lib/api/toast-api-error";
 import { buildDefaultBatchFramePrompt } from "../_components/storyboard-frame-reference-dialog";
+import type { FrameImageOptions } from "../_components/storyboard-frame-model-fields";
 import type { BatchFrameGeneratePayload } from "../_components/storyboard-ref-panel";
 import type { SceneWithItems } from "../storyboard-types";
 
@@ -127,7 +128,7 @@ const handleGenerateEpisodeStoryboard = useCallback(async (episode: StoryboardEp
   ]);
 
 const handleGenerateItemFrame = useCallback(
-    async (item: StoryboardItem, frameType: StoryboardFrameType, prompt: string, reviewModelId?: number) => {
+    async (item: StoryboardItem, frameType: StoryboardFrameType, prompt: string, image: FrameImageOptions, reviewModelId?: number) => {
       if (!storyboard) {
         throw new Error("缺少分镜上下文，无法生成首尾帧");
       }
@@ -150,6 +151,7 @@ const handleGenerateItemFrame = useCallback(
               storyboardId: storyboard.id,
               frameType,
               framePrompt: prompt,
+              ...image,
             },
           },
           onComplete: () => {
@@ -180,6 +182,7 @@ const handleBatchGenerateSceneFrames = useCallback(
       sceneId,
       firstItemIds,
       lastItemIds,
+      image,
       reviewModelId,
     }: BatchFrameGeneratePayload) => {
       if (!storyboard) {
@@ -244,6 +247,7 @@ const handleBatchGenerateSceneFrames = useCallback(
               storyboardId: storyboard.id,
               frameType: task.frameType,
                 framePrompt: task.framePrompt,
+                ...image,
               },
             },
             onComplete: () => {

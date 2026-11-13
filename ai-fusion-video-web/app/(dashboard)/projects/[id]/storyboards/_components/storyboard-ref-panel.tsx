@@ -18,6 +18,7 @@ import {
   SceneWithItems,
 } from "./storyboard-reference/reference-shared";
 import { SceneAssetPanel } from "./storyboard-reference/scene-asset-panel";
+import { StoryboardPromptCards } from "./storyboard-prompt-cards";
 import { StoryboardOverview } from "./storyboard-reference/storyboard-overview";
 
 // ========== 主面板 ==========
@@ -33,6 +34,7 @@ export function StoryboardRefPanel({
   onUpdateFrame,
   onGenerateFrame,
   onBatchGenerateFrames,
+  onSavePrompt,
   onEditAssets,
 }: {
   storyboard: Storyboard;
@@ -49,6 +51,7 @@ export function StoryboardRefPanel({
   ) => Promise<void> | void;
   onGenerateFrame?: FrameGenerateHandler;
   onBatchGenerateFrames?: BatchFrameGenerateHandler;
+  onSavePrompt?: (item: StoryboardItem, field: "videoPrompt" | "firstFramePrompt" | "lastFramePrompt", value: string | null) => Promise<void>;
   onEditAssets?: (item: StoryboardItem) => void;
 }) {
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
@@ -65,6 +68,8 @@ export function StoryboardRefPanel({
     <div className="w-full lg:w-72 border-l border-border/20 flex flex-col shrink-0 bg-card/20 overflow-y-auto h-full relative">
       {showShot ? (
         <>
+          {onSavePrompt && <StoryboardPromptCards key={selectedItem.id} item={selectedItem} projectId={projectId}
+            project={project} scene={activeSceneGroup?.scene} onSave={onSavePrompt} />}
           <ItemDetail
             item={selectedItem}
             projectId={projectId}

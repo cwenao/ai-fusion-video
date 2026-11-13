@@ -21,6 +21,11 @@ import java.util.Map;
 @Component
 public class AiAgentRegistry {
     public static final String SCRIPT_EPISODE_REWRITE = "script_episode_rewrite";
+    public static final String PROJECT_TEXT_EDITOR = "project_text_editor";
+
+    public static boolean fixedTextEditor(String type) {
+        return SCRIPT_EPISODE_REWRITE.equals(type) || PROJECT_TEXT_EDITOR.equals(type);
+    }
 
     private static final String SUB_AGENT_MESSAGE_SCHEMA = """
             {
@@ -76,6 +81,12 @@ public class AiAgentRegistry {
         registerScriptStoryToScriptAgent();
         registerScriptEpisodeUploadAgent();
         registerScriptEpisodeRewriteAgent();
+        register(AiAgentDefinition.builder()
+                .type(PROJECT_TEXT_EDITOR)
+                .name("分镜与资产文本编辑")
+                .systemPrompt(loadPrompt("project-text-editor.system.md"))
+                .enableTools(0)
+                .build());
         registerScriptAssistantAgent();
         registerScriptToStoryboardAgent();
         registerEpisodeSceneWriterAgent();

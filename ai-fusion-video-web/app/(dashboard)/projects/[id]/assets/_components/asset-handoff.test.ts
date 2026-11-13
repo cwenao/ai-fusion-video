@@ -45,6 +45,7 @@ function fixture() {
     "@/components/ui/button": { Button: "Button" },
     "@/components/ui/input": { Input: "Input" },
     "@/components/ui/textarea": { Textarea: "Textarea" },
+    "./asset-appearance-dialog": { AssetAppearanceDialog: "AssetAppearanceDialog" },
     "@/components/media/managed-image": { SafeImage: "SafeImage" },
     "@/components/media/managed-video": { ManagedVideo: "ManagedVideo" },
     "@/components/media/managed-audio": { ManagedAudio: "ManagedAudio" },
@@ -208,7 +209,7 @@ test("saved video source is preferred for video handoff while its independent im
 
 function workspaceProps(selected: AssetItem) {
   return {
-    mode: "edit", item: selected, asset: asset([selected]), assetType: "scene", parentVersion: 7,
+    projectId: 19, mode: "edit", item: selected, asset: asset([selected]), assetType: "scene", parentVersion: 7,
     saving: false, onCreate: async () => {}, onSave: async () => selected,
     onDelete: () => {}, onCancelCreate: () => {}, onGenerate: () => {},
   };
@@ -304,4 +305,29 @@ test("new item creation still requests the original create-and-generate pipeline
   (element(tree, "AssetItemMedia").props.onGenerate as () => void)();
   await flush();
   assert.deepEqual(calls, [[7, "新增素材", "", "", true]]);
+});
+
+
+test("采用 AI 外观描写后由创建表单提交草稿", async () => {
+  const f = fixture();
+  const selected = item();
+  const created: string[] = [];
+  const props = { ...workspaceProps(selected), mode: "create", item: null,
+    onCreate: async (_version: number, name: string, appearance: string) => {
+      created.push(name, appearance);
+    } };
+  let tree = f.render(route + "/asset-item-workspace.tsx", "AssetItemWorkspace", props);
+  assert.equal(element(tree, "Button", "AI 写外观").props.disabled, true);
+  (element(tree, "Input").props.onChange as (event: { target: { value: string } }) => void)({ target: { value: "雨夜站台" } });
+  tree = f.render(route + "/asset-item-workspace.tsx", "AssetItemWorkspace", props);
+  click(element(tree, "Button", "AI 写外观"));
+  tree = f.render(route + "/asset-item-workspace.tsx", "AssetItemWorkspace", props);
+  const dialog = element(tree, "AssetAppearanceDialog");
+  (dialog.props.onApply as (value: string) => void)("墨绿色铁制站牌，表面覆着雨珠。");
+  assert.deepEqual(created, []);
+  tree = f.render(route + "/asset-item-workspace.tsx", "AssetItemWorkspace", props);
+  assert.equal(element(tree, "Textarea").props.value, "墨绿色铁制站牌，表面覆着雨珠。");
+  click(element(tree, "Button", "创建"));
+  await flush();
+  assert.deepEqual(created, ["雨夜站台", "墨绿色铁制站牌，表面覆着雨珠。"]);
 });

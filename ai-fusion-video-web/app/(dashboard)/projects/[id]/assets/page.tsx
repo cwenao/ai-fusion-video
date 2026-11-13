@@ -345,6 +345,7 @@ export default function ProjectAssetsPage() {
                         ? `create-${selectedAsset.id}`
                         : String(selectedItem?.id)
                     }
+                    projectId={projectId}
                     mode={creatingItem ? "create" : "edit"}
                     item={creatingItem ? null : selectedItem}
                     asset={selectedAsset}

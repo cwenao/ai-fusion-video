@@ -15,7 +15,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import static com.stonewu.fusion.config.ai.AiAgentRegistry.SCRIPT_EPISODE_REWRITE;
+import static com.stonewu.fusion.config.ai.AiAgentRegistry.fixedTextEditor;
 
 /**
  * 内置定义保持只读，按可信用户标识生成独立的生效配置。
@@ -49,7 +49,7 @@ public class AgentDefinitionConfiguration {
 
     public Resolved get(String type, Long userId) {
         var base = builtin(type);
-        var stored = userId == null || SCRIPT_EPISODE_REWRITE.equals(type)
+        var stored = userId == null || fixedTextEditor(type)
                 ? new AgentUserOverrideRepository.Stored(0, "{}") : repository.get(userId, type);
         AgentSettingsOverride overrides;
         try {

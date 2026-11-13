@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   Check,
   Loader2,
   Plus,
+  Sparkles,
   Trash2,
   X,
 } from "lucide-react";
@@ -16,10 +17,12 @@ import { getApiErrorMessage } from "@/lib/api/api-error";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { AssetAppearanceDialog } from "./asset-appearance-dialog";
 import { AssetItemMedia } from "./asset-item-media";
 import { getAppearance, getAppearanceHints } from "./asset-types";
 
 interface AssetItemWorkspaceProps {
+  projectId: number;
   mode: "create" | "edit";
   item: AssetItem | null;
   asset: AssetWithItems;
@@ -46,6 +49,7 @@ interface AssetItemWorkspaceProps {
 }
 
 export function AssetItemWorkspace({
+  projectId,
   mode,
   item,
   asset,
@@ -69,6 +73,8 @@ export function AssetItemWorkspace({
   const [imageUrl, setImageUrl] = useState(initialImageUrl);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
+  const appearanceField = useId();
+  const [appearanceOpen, setAppearanceOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const appearanceHints = useMemo(
     () => getAppearanceHints(assetType),
@@ -228,16 +234,20 @@ export function AssetItemWorkspace({
             />
           </div>
 
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between gap-2">
-              <label className="text-xs font-medium text-muted-foreground">
+          <div className="flex min-w-0 flex-col gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <label htmlFor={appearanceField} className="text-xs font-medium text-muted-foreground">
                 外观描写
               </label>
-              <span className="text-[10px] tabular-nums text-muted-foreground/70">
-                {appearance.length} 字
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-xs tabular-nums text-muted-foreground">{appearance.length} 字</span>
+                <Button type="button" variant="ai" disabled={disabled} onClick={() => setAppearanceOpen(true)}>
+                  <Sparkles />
+                  AI 写外观
+                </Button>
+              </div>
             </div>
-            <Textarea disabled={saving || uploading}
+            <Textarea id={appearanceField} disabled={saving || uploading}
               ref={textareaRef}
               value={appearance}
               onChange={(event) => setAppearance(event.target.value)}
@@ -294,6 +304,19 @@ export function AssetItemWorkspace({
           </div>
         </div>
       </div>
+      {appearanceOpen && (
+        <AssetAppearanceDialog
+          projectId={projectId}
+          asset={asset}
+          name={name.trim()}
+          appearance={appearance}
+          onClose={() => setAppearanceOpen(false)}
+          onApply={(draft) => {
+            setAppearance(draft);
+            setAppearanceOpen(false);
+          }}
+        />
+      )}
     </section>
   );
 }

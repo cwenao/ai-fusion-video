@@ -57,17 +57,18 @@ const itemClass = cn(
   "[&>span:first-child]:items-center [&>span:last-child:not(:first-child)]:right-1 [&>span:last-child:not(:first-child)>svg]:size-3",
 );
 
-function OutputSelect({ title, value, items, compact, icon, onChange, children }: {
+function OutputSelect({ title, value, items, compact, disabled, icon, onChange, children }: {
   title: string;
   value: string;
   items: { value: string; label: string }[];
   compact: boolean;
+  disabled: boolean;
   icon: ReactNode;
   onChange: (value: string) => void;
   children: ReactNode;
 }) {
   const select = (
-    <Select items={items} value={value || null} disabled={!items.length} onValueChange={(next) => {
+    <Select items={items} value={value || null} disabled={disabled || !items.length} onValueChange={(next) => {
       if (next !== null) {
         onChange(next);
       }
@@ -96,12 +97,14 @@ function OutputSelect({ title, value, items, compact, icon, onChange, children }
 
 interface Props {
   capabilities: GenerationCapabilities | null;
-  form: GenerationFormState;
-  onChange: (patch: Partial<GenerationFormState>) => void;
+  form: Pick<GenerationFormState, "ratio" | "resolution">;
+  onChange: (patch: Partial<Pick<GenerationFormState, "ratio" | "resolution">>) => void;
   compact?: boolean;
+  disabled?: boolean;
+  hideUnavailable?: boolean;
 }
 
-export function GenerationImageOutputPickers({ capabilities, form, onChange, compact = false }: Props) {
+export function GenerationImageOutputPickers({ capabilities, form, onChange, compact = false, disabled = false, hideUnavailable = false }: Props) {
   const ratios = capabilities?.supportedAspectRatios ?? [];
   const wide = ratios.filter((value) => ratioValue(value) > 1).sort((a, b) => ratioValue(a) - ratioValue(b));
   const tall = ratios.filter((value) => ratioValue(value) < 1).sort((a, b) => ratioValue(b) - ratioValue(a));
@@ -113,8 +116,8 @@ export function GenerationImageOutputPickers({ capabilities, form, onChange, com
   const resolutions = resolutionChoices(capabilities, form.ratio);
   return (
     <>
-      <OutputSelect title="画面比例" value={form.ratio} items={ratios.map((value) => ({ value, label: ratioLabel(value) }))}
-        compact={compact} icon={form.ratio ? <RatioFrame value={form.ratio} compact /> : <Proportions className="size-4" />} onChange={(ratio) => onChange({ ratio })}>
+      {(!hideUnavailable || ratios.length > 0) && <OutputSelect title="画面比例" value={form.ratio} items={ratios.map((value) => ({ value, label: ratioLabel(value) }))}
+        compact={compact} disabled={disabled} icon={form.ratio ? <RatioFrame value={form.ratio} compact /> : <Proportions className="size-4" />} onChange={(ratio) => onChange({ ratio })}>
         {groups.filter(({ options }) => options.length).map(({ title, options }) => (
           <SelectGroup key={title} className="grid grid-cols-3 gap-1.5 p-1">
             {title && <SelectLabel className="col-span-full px-0 pb-0 pt-1.5 text-xs">{title}</SelectLabel>}
@@ -130,10 +133,10 @@ export function GenerationImageOutputPickers({ capabilities, form, onChange, com
             ))}
           </SelectGroup>
         ))}
-      </OutputSelect>
-      <OutputSelect title="分辨率" value={form.resolution}
+      </OutputSelect>}
+      {(!hideUnavailable || resolutions.length > 0) && <OutputSelect title="分辨率" value={form.resolution}
         items={resolutions.map((value) => ({ value, label: resolutionLabel(value) }))}
-        compact={compact} icon={<Grid2X2 aria-hidden className="size-4" />} onChange={(resolution) => onChange({ resolution })}>
+        compact={compact} disabled={disabled} icon={<Grid2X2 aria-hidden className="size-4" />} onChange={(resolution) => onChange({ resolution })}>
         <SelectGroup className="grid grid-cols-3 gap-2 p-1">
           {resolutions.map((tier) => {
             const size = capabilities?.imageSizes?.[tier]?.[form.ratio];
@@ -148,7 +151,7 @@ export function GenerationImageOutputPickers({ capabilities, form, onChange, com
             );
           })}
         </SelectGroup>
-      </OutputSelect>
+      </OutputSelect>}
     </>
   );
 }

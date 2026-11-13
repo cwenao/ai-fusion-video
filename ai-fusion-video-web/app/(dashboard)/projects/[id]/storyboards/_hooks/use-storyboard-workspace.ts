@@ -4,6 +4,7 @@ import { useCommandRequestKey } from "@/hooks/use-command-request-key";
 import { useEffect, useState, useCallback, useRef } from "react";
 import { usePipelineStore } from "@/lib/store/pipeline-store";
 import { useConfirm } from "@/components/ui/confirm-dialog";
+import { getApiErrorStatus } from "@/lib/api/api-error";
 import { toastApiError } from "@/lib/api/toast-api-error";
 import { scriptApi, type ScriptEpisode } from "@/lib/api/script";
 import { storyboardApi, type Storyboard, type StoryboardEpisode, type StoryboardFrameType, type StoryboardItem, type StoryboardScene } from "@/lib/api/storyboard";
@@ -626,6 +627,23 @@ export function useStoryboardWorkspace(projectId: number) {
     }
   }, []);
 
+  const handleSaveItemPrompt = useCallback(async (
+    item: StoryboardItem, field: "videoPrompt" | "firstFramePrompt" | "lastFramePrompt", value: string | null,
+  ) => {
+    const payload = { id: item.id, version: item.version, [field]: value };
+    try {
+      const updated = await storyboardApi.updateItem(payload, requests.forPayload(payload));
+      requests.clear();
+      updateItemInSceneGroups(updated);
+      await refreshStoryboardData();
+    } catch (cause) {
+      if (getApiErrorStatus(cause) === 409) {
+        await refreshStoryboardItems([item.id]);
+      }
+      throw cause;
+    }
+  }, [refreshStoryboardData, refreshStoryboardItems, requests, updateItemInSceneGroups]);
+
   /** 手动更新镜头首尾帧 */
   const handleUpdateItemFrame = useCallback(
     async (item: StoryboardItem, frameType: StoryboardFrameType, imageUrl: string | null) => {
@@ -634,7 +652,6 @@ export function useStoryboardWorkspace(projectId: number) {
           version: item.version,
           frameType,
           imageUrl,
-          prompt: null,
         };
         const updated = await storyboardApi.updateFrame(item.id, payload, requests.forPayload({ itemId: item.id, ...payload }));
         requests.clear();
@@ -797,6 +814,7 @@ export function useStoryboardWorkspace(projectId: number) {
     handleDeleteItem,
     handleUpdateItemField,
     handleUpdateItemFrame,
+    handleSaveItemPrompt,
     handleOpenFrameDialog,
     handleCloseFrameDialog,
     handleReorderItems,
