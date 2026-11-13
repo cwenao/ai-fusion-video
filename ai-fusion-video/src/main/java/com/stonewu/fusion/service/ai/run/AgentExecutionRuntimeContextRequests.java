@@ -8,7 +8,7 @@ import com.stonewu.fusion.service.ai.agentscope.runtime.AgentRuntimeSchedulers;
 import com.stonewu.fusion.service.ai.run.model.ResumedAgentRun;
 import com.stonewu.fusion.service.ai.run.model.StartedAgentRun;
 import com.stonewu.fusion.service.canvas.agent.CanvasAgentScopeService;
-import com.stonewu.fusion.service.storyboard.StoryboardVideoPipeline;
+import com.stonewu.fusion.service.generation.ProjectMediaPipeline;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 
@@ -172,8 +172,7 @@ public final class AgentExecutionRuntimeContextRequests {
         AgentRun parent = runRepository.findRun(child.getParentRunId());
         var canvasScope = canvasScopes.decode(child.getCanvasScopeJson());
         boolean independent = (canvasScope != null && canvasScope.nodeRunId() != null)
-                || (child.getProjectId() != null && StoryboardVideoPipeline.EXECUTOR.equals(child.getAgentType())
-                && StoryboardVideoPipeline.CHILD_TOOL.equals(child.getAgentName()));
+                || (child.getProjectId() != null && ProjectMediaPipeline.observesChild(child.getAgentType(), child.getAgentName()));
         if (parent == null
                 || (!independent && (parent.getOwnerInstanceId() == null || parent.getOwnerInstanceId().isBlank()))
                 || parent.getOwnerEpoch() == null

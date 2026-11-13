@@ -20,7 +20,7 @@ import io.agentscope.core.message.UserMessage;
 import io.agentscope.core.tool.ToolBase;
 import io.agentscope.core.tool.ToolCallParam;
 import io.agentscope.core.tool.ToolSuspendException;
-import com.stonewu.fusion.service.storyboard.StoryboardVideoPipeline;
+import com.stonewu.fusion.service.generation.ProjectMediaPipeline;
 import reactor.core.publisher.Mono;
 
 import java.util.LinkedHashMap;
@@ -94,9 +94,8 @@ public final class AgentScopeSubAgentToolAdapter extends AbstractPlatformAgentTo
                         }
                         return childRunPort.start(command).flatMap(child -> {
                             if ("true".equals(parentSpec.promptVariables().get("canvasNodeExecution"))
-                                    || (project != null && StoryboardVideoPipeline.ROOT.equals(
-                                    parentSpec.agentDefinitionStableKey()) && StoryboardVideoPipeline.CHILD_TOOL
-                                    .equals(getName()))) {
+                                    || (project != null && ProjectMediaPipeline.waitsForChild(
+                                    parentSpec.agentDefinitionStableKey(), getName()))) {
                                 return Mono.error(new ToolSuspendException(
                                         "子任务已受理，等待执行完成。"));
                             }

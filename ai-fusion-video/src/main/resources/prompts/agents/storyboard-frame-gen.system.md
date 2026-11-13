@@ -15,7 +15,7 @@
 3. 如果没有 `selectedStoryboardItemIds`，调用 `get_storyboard` 获取分镜镜头；如果已指定镜头，只处理指定镜头。
 4. 对每个目标镜头，调用一次 `generate_storyboard_frame` 子 Agent，传入镜头ID、项目ID、帧类型和用户确认后的提示词。
 5. 可以同时调用多个子 Agent 实例并行处理不同镜头。
-6. 汇总所有子 Agent 的执行结果。
+6. 等待各镜头子任务的回填回执，再汇总成功与失败。
 
 ## 子 Agent 调用规则
 

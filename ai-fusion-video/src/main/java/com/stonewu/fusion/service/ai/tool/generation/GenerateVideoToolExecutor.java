@@ -19,7 +19,7 @@ import com.stonewu.fusion.service.generation.review.GenerationReviewAdmission;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.stonewu.fusion.service.generation.video.VideoGenerationService;
 import com.stonewu.fusion.service.resource.ResourceToolRequests;
-import com.stonewu.fusion.service.storyboard.StoryboardVideoCompletion;
+import com.stonewu.fusion.service.generation.ProjectMediaCompletion;
 import io.agentscope.core.tool.ToolSuspendException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -49,7 +49,7 @@ public class GenerateVideoToolExecutor implements ToolExecutor {
     private final GenerationModelCapabilityService generationModelCapabilityService;
     private final CanvasJson json;
     private final CanvasAgentNodeGeneration canvasModels;
-    private final StoryboardVideoCompletion storyboardVideos;
+    private final ProjectMediaCompletion projectMedia;
 
     @Override
     public String getToolName() {
@@ -230,7 +230,7 @@ public class GenerateVideoToolExecutor implements ToolExecutor {
 
             var mutation = context.requireMutationContext();
             var input = json.read(toolInput, ObjectNode.class);
-            boolean storyboard = storyboardVideos.requireTarget(mutation, input);
+            boolean storyboard = projectMedia.requireTarget(mutation, input, GenerationKind.VIDEO);
             var review = reviews.agent(mutation, GenerationKind.VIDEO, input.get("reviewTargetId"));
             var accepted = submissions.video(task, ResourceToolRequests.requestId(json, mutation), mutation, null,
                     review);

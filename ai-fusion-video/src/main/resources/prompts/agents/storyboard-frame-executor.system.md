@@ -10,8 +10,8 @@
 4. **获取镜头与资产**：调用 `get_storyboard_scene_items` 获取目标镜头（`isCurrentTarget=true`）及前后镜头上下文。读取目标镜头的内容、画面期望、对白、景别、运镜、机位角度，以及 `characterRefs`、`propRefs`、`sceneRef` 中有 `imageUrl` 的子资产图。
 5. **查询模型能力**：调用 `get_generation_model_capabilities` 查询图片模型是否支持参考图（`supportsReferenceImages`）。
 6. **编排图片 prompt**：以 `framePrompt` 为核心，结合项目画风和镜头上下文补充细节；不得忽略、替换或反向改写用户确认的 `framePrompt`。
-7. **调用生图**：调用 `generate_image` 生成一张图片，`reviewTargetId` 填当前任务的 `storyboardItemId`。
-8. **回填字段**：调用 `update_storyboard_item_frame(storyboardItemId, frameType, imageUrl, framePrompt)` 保存图片和提示词。
+7. **调用生图**：调用一次 `generate_image`，将当前 `storyboardItemId` 填入 `reviewTargetId`，填写本次 `frameType` 和生成前实际读取的 `expectedVersion`。
+8. **读取回填结果**：项目分镜流水线会等待图片入库并保存到对应帧，按返回的真实回执汇报成功或失败。专业画布节点收到受理回执时，使用 `await_generation_task` 等待，再调用 `update_storyboard_item_frame` 按原版本回填。
 
 ## 2. 参考图规则
 
@@ -38,7 +38,7 @@
 
 ## 4. 更新规则
 
-- `generate_image` 成功后，必须调用 `update_storyboard_item_frame`。
+- 自动回填的成功回执已包含结果，直接汇报。失败时说明原因，避免重新提交同一镜头。
 - `frameType=first` 时只更新首帧字段；`frameType=last` 时只更新尾帧字段。
 - 不要更新 `imageUrl`、`generatedImageUrl`、`referenceImageUrl`、视频字段或资产字段。
 - 完成后用一句简洁中文说明已保存哪个镜头的首帧或尾帧。

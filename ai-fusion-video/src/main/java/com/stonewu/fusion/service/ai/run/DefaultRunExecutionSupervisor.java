@@ -241,7 +241,8 @@ public final class DefaultRunExecutionSupervisor implements RunExecutionSupervis
             }
             for (JsonNode call : calls) {
                 String name = call.path("name").asText();
-                if (CanvasAgentNodeTypes.CHILD_TOOLS.contains(name) || "generate_video".equals(name)) {
+                if (CanvasAgentNodeTypes.CHILD_TOOLS.contains(name) || Set.of("generate_video", "generate_image")
+                        .contains(name)) {
                     requiredText(call, "id");
                     continue;
                 }

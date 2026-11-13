@@ -1,6 +1,6 @@
 package com.stonewu.fusion.service.ai.run;
 
-import com.stonewu.fusion.service.storyboard.StoryboardVideoPipeline;
+import com.stonewu.fusion.service.generation.ProjectMediaPipeline;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -548,7 +548,7 @@ public final class DurableAgentWaitingStateService implements AgentWaitingStateP
 
     private boolean durableWait(AgentRun run, PendingExternalExecution pending) {
         return "await_canvas_run".equals(pending.toolName()) && (run.getCanvasScopeJson() != null
-                || StoryboardVideoPipeline.waitsDurably(run.getAgentType(), run.getProjectId()));
+                || ProjectMediaPipeline.waitsDurably(run.getAgentType(), run.getProjectId()));
     }
 
     private long appendCanvasToolResults(AgentRun run, PendingExternalExecution pending, JsonNode result,
