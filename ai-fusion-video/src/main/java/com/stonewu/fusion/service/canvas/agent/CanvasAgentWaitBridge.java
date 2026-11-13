@@ -18,6 +18,8 @@ import com.stonewu.fusion.service.ai.run.model.ResumeExternalCommand;
 import com.stonewu.fusion.service.canvas.CanvasJson;
 import com.stonewu.fusion.service.canvas.agent.node.CanvasAgentNodeTypes;
 import com.stonewu.fusion.service.canvas.model.CanvasActor;
+import com.stonewu.fusion.service.storyboard.StoryboardVideoCompletion;
+import com.stonewu.fusion.service.storyboard.StoryboardVideoPipeline;
 import io.agentscope.core.message.Msg;
 import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
@@ -53,6 +55,7 @@ public class CanvasAgentWaitBridge {
     private final AgentScopeV2Properties properties;
     private final CanvasJson json;
     private final ObjectMapper mapper;
+    private final StoryboardVideoCompletion storyboardVideos;
     private final ExecutorService workers = Executors.newVirtualThreadPerTaskExecutor();
     private final Semaphore slots = new Semaphore(4);
     private final Set<String> active = ConcurrentHashMap.newKeySet();
@@ -121,16 +124,24 @@ public class CanvasAgentWaitBridge {
             }
             String name = call.path("name").asText();
             var executor = tools.findExecutor(name);
-            if ((!(executor instanceof CanvasExternalTool) && !CanvasAgentNodeTypes.CHILD_TOOLS.contains(name))
+            boolean storyboardVideo = "generate_video".equals(name)
+                    && StoryboardVideoPipeline.EXECUTOR.equals(agent.getAgentType()) && scope == null;
+            if ((!storyboardVideo && !(executor instanceof CanvasExternalTool)
+                    && !CanvasAgentNodeTypes.CHILD_TOOLS.contains(name))
                     || kernel.tools().stream().noneMatch(item -> item.name().equals(name))) {
                 throw new IllegalStateException("外部等待工具未登记或不在本轮白名单内");
             }
             var entry = results.addObject().put("toolCallId", toolId).put("toolName", name);
             try {
                 var actor = new CanvasActor(agent.getUserId(), agent.getActorTeamId());
-                var output = executor instanceof CanvasExternalTool external
-                        ? external.poll(json.object(call.path("input")), scope, actor, model)
-                        : children.poll(id, toolId, name, scope, actor);
+                Object output;
+                if (storyboardVideo) {
+                    output = storyboardVideos.poll(agent, toolId, json.object(call.path("input")));
+                } else if (executor instanceof CanvasExternalTool external) {
+                    output = external.poll(json.object(call.path("input")), scope, actor, model);
+                } else {
+                    output = children.poll(agent, toolId, name, scope, actor);
+                }
                 ready &= output != null;
                 if (output != null) {
                     entry.set("result", json.object(output));
@@ -147,7 +158,7 @@ public class CanvasAgentWaitBridge {
             return;
         }
         waiting.resumeExternal(
-                        new ResumeExternalCommand(id, agent.getUserId(), "canvas-run-waiter", pending.toolCallId(),
+                        new ResumeExternalCommand(id, agent.getUserId(), "agent-run-waiter", pending.toolCallId(),
                                 json.write(result), identity.value(), properties.getExecution().getOwnerLease()))
                 .block(STEP_TIMEOUT);
         // 恢复消息与 RUNNING 转换同事务保存；即使此处进程退出，下一轮仍会读取恢复发件箱。

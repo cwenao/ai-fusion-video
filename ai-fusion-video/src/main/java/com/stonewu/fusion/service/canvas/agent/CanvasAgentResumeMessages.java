@@ -28,7 +28,8 @@ final class CanvasAgentResumeMessages {
                 throw new IllegalStateException("恢复工具结果身份或内容无效");
             }
             var executor = tools.findExecutor(name);
-            if (!(executor instanceof CanvasExternalTool) && !CanvasAgentNodeTypes.CHILD_TOOLS.contains(name)) {
+            if (!(executor instanceof CanvasExternalTool) && !CanvasAgentNodeTypes.CHILD_TOOLS.contains(name)
+                    && !"generate_video".equals(name)) {
                 throw new IllegalStateException("恢复工具未登记");
             }
             var output = ToolResultBlock.builder().id(id).name(name)

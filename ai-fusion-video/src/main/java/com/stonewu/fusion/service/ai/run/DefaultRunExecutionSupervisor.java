@@ -240,7 +240,8 @@ public final class DefaultRunExecutionSupervisor implements RunExecutionSupervis
                 return Mono.error(new IllegalStateException("外部等待缺少有效工具调用"));
             }
             for (JsonNode call : calls) {
-                if (CanvasAgentNodeTypes.CHILD_TOOLS.contains(call.path("name").asText())) {
+                String name = call.path("name").asText();
+                if (CanvasAgentNodeTypes.CHILD_TOOLS.contains(name) || "generate_video".equals(name)) {
                     requiredText(call, "id");
                     continue;
                 }

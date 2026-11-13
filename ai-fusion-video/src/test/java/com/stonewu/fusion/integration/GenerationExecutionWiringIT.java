@@ -21,6 +21,8 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
@@ -56,6 +58,7 @@ import java.util.Map;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -82,6 +85,8 @@ class GenerationExecutionWiringIT {
     static final HttpServer PROVIDER = provider();
     static final byte[] PNG = png();
     static final AtomicReference<byte[]> VIDEO = new AtomicReference<>();
+    static final AtomicBoolean STORYBOARD_VIDEO_READY = new AtomicBoolean(false);
+    static final AtomicReference<JsonNode> STORYBOARD_SHOT = new AtomicReference<>();
     @DynamicPropertySource static void properties(DynamicPropertyRegistry p) {
         p.add("spring.datasource.url", MYSQL::getJdbcUrl);
         p.add("spring.datasource.username", MYSQL::getUsername);
@@ -190,6 +195,102 @@ class GenerationExecutionWiringIT {
         assertThat(reviewer.remote().calls.get()).isEqualTo(1);
         assertThat(reviewer.remote().input.get()).contains("蓝色背景", "video_url",
                 "data:video/mp4;base64," + Base64.getEncoder().encodeToString(clip));
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void storyboardWaitsForTheVideoAndRespectsConcurrentShotEdits(boolean editWhileWaiting) throws Exception {
+        STORYBOARD_VIDEO_READY.set(false);
+        jdbc.update("UPDATE afv_ai_model SET default_model=FALSE WHERE model_type=3");
+        var f = fixture("sync");
+        VIDEO.set(sampleVideo());
+        long model = IDS.incrementAndGet();
+        jdbc.update("""
+                INSERT INTO afv_ai_model(id, name, code, model_type, model_protocol, api_config_id, config,
+                    max_concurrency, multimodal_input_types, multimodal_input_transports, reasoning_effort_levels,
+                    default_model)
+                VALUES (?, '分镜视频生成桩', 'sora-2', 3, 'openai', ?, '{"asyncTaskPollIntervalSeconds":1}', 1,
+                    JSON_ARRAY(), JSON_OBJECT(), JSON_ARRAY(), TRUE)
+                """, model, f.id);
+        var reviewer = reviewer(f, "分镜审查桩", "video");
+        reviewer.remote().release.countDown();
+        long chat = IDS.incrementAndGet();
+        jdbc.update("""
+                INSERT INTO afv_ai_model(id, name, code, model_type, model_protocol, api_config_id, config,
+                    max_concurrency, multimodal_input_types, multimodal_input_transports, reasoning_effort_levels)
+                VALUES (?, '分镜调度桩', 'storyboard-acceptance', 1, 'openai', ?, '', 2,
+                    JSON_ARRAY(), JSON_OBJECT(), JSON_ARRAY())
+                """, chat, f.id);
+        var project = ok(http.postForEntity("/api/project", new HttpEntity<>(Map.of(
+                "requestId", UUID.randomUUID().toString(), "fields", Map.of("name", "分镜回填验收")), f.headers),
+                JsonNode.class));
+        long projectId = project.path("id").asLong();
+        ok(http.postForEntity("/api/project/" + projectId + "/workspace/initialize",
+                new HttpEntity<>(Map.of("requestId", UUID.randomUUID().toString(), "version", project.path("version").asInt()),
+                        f.headers), JsonNode.class));
+        var board = ok(get("/api/storyboard/project/" + projectId, f.headers));
+        var episode = storyboardChild(f, "episode", board, Map.of("episodeNumber", 1));
+        var scene = storyboardChild(f, "scene", episode, Map.of("sceneNumber", "1"));
+        var shot = storyboardChild(f, "item", scene, Map.of("content", "红色背景，固定镜头"));
+        STORYBOARD_SHOT.set(shot);
+        long shotId = shot.path("id").asLong();
+        String shotPath = "/api/storyboard/item/" + shotId;
+        var body = Map.of("projectId", projectId, "modelId", chat, "agentType", "storyboard_video_gen",
+                "toolExecutionMode", "FULL_ACCESS", "generationReviewModelId", reviewer.id(), "context",
+                Map.of("selectedStoryboardItemIds", List.of(shotId), "storyboardId", board.path("id").asLong()));
+        var headers = new HttpHeaders();
+        headers.putAll(f.headers);
+        headers.setAccept(List.of(MediaType.TEXT_EVENT_STREAM));
+        var pipeline = CompletableFuture.supplyAsync(() ->
+                http.postForEntity("/api/ai/pipeline/run", new HttpEntity<>(body, headers), String.class));
+        try {
+            await().atMost(Duration.ofSeconds(25)).untilAsserted(() -> {
+                var states = jdbc.queryForList("SELECT status FROM afv_agent_run WHERE project_id=? ORDER BY id",
+                        String.class, projectId);
+                assertThat(states).containsExactly("WAITING_EXTERNAL", "WAITING_EXTERNAL");
+            });
+            assertThat(ok(get(shotPath, f.headers)).path("generatedVideoUrl").isNull()).isTrue();
+            assertThat(pipeline.isDone()).isFalse();
+            if (editWhileWaiting) {
+                var edit = Map.of("requestId", UUID.randomUUID().toString(), "id", shotId,
+                        "version", shot.path("version").asInt(), "patch", Map.of("remark", "并发编辑的备注"));
+                ok(http.exchange("/api/storyboard/item", HttpMethod.PUT, new HttpEntity<>(edit, f.headers),
+                        JsonNode.class));
+            }
+        } finally {
+            STORYBOARD_VIDEO_READY.set(true);
+        }
+        assertThat(pipeline.get(45, TimeUnit.SECONDS).getBody()).contains("\"outputType\":\"DONE\"");
+        var written = ok(get(shotPath, f.headers));
+        String reference = jdbc.queryForObject("""
+                SELECT i.video_url FROM afv_video_item i JOIN afv_generation_submission s ON s.task_id=i.task_id
+                WHERE s.project_id=? AND s.kind='VIDEO' AND s.state='SUCCEEDED'
+                """, String.class, projectId);
+        if (editWhileWaiting) {
+            assertThat(written.path("generatedVideoUrl").isNull()).isTrue();
+            assertThat(written.path("remark").asText()).isEqualTo("并发编辑的备注");
+            assertThat(jdbc.queryForObject("""
+                    SELECT COUNT(*) FROM afv_agent_event e JOIN afv_agent_run a ON a.run_id=e.run_id
+                    WHERE a.project_id=? AND e.raw_event_type='PLATFORM_TOOL_RESULT'
+                    AND JSON_UNQUOTE(JSON_EXTRACT(e.payload_json,'$.toolStatus'))='error'
+                    """, Integer.class, projectId)).isEqualTo(1);
+        } else {
+            assertThat(written.path("generatedVideoUrl").asText()).isEqualTo(reference);
+            assertThat(written.path("videoPrompt").asText()).isEqualTo("分镜验收，红色背景");
+        }
+        assertThat(written.path("version").asInt()).isEqualTo(shot.path("version").asInt() + 1);
+        String review = "/api/generation/reviews/media/" + reference.substring("media://".length())
+                + "?target=SHOT_VIDEO&targetId=" + shotId;
+        await().atMost(Duration.ofSeconds(15)).untilAsserted(() ->
+                assertThat(ok(get(review, f.headers)).path("state").asText()).isEqualTo("COMPLETED"));
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM afv_generation_submission WHERE project_id=?",
+                Integer.class, projectId)).isEqualTo(1);
+    }
+
+    private JsonNode storyboardChild(Fixture f, String type, JsonNode parent, Map<String, Object> fields) {
+        return ok(http.postForEntity("/api/storyboard/" + type, new HttpEntity<>(Map.of(
+                "requestId", UUID.randomUUID().toString(), "parentId", parent.path("id").asLong(),
+                "parentVersion", parent.path("version").asInt(), "fields", fields), f.headers), JsonNode.class));
     }
 
     private Reviewer reviewer(Fixture f, String name, String kind) {
@@ -674,6 +775,10 @@ class GenerationExecutionWiringIT {
 
     private static void review(HttpExchange exchange) throws IOException {
         var body = JSON.readTree(exchange.getRequestBody());
+        if ("storyboard-acceptance".equals(body.path("model").asText())) {
+            storyboardChat(exchange, body);
+            return;
+        }
         var remote = REVIEWERS.get(body.path("model").asText());
         if (remote == null) {
             respond(exchange, 404, Map.of("error", "unknown review fixture"));
@@ -710,6 +815,35 @@ class GenerationExecutionWiringIT {
         }
     }
 
+    private static void storyboardChat(HttpExchange exchange, JsonNode body) throws IOException {
+        var messages = body.path("messages");
+        boolean root = body.path("tools").findValuesAsText("name").contains("generate_storyboard_video");
+        var delta = JSON.createObjectNode().put("role", "assistant");
+        String finish = "stop";
+        if ("tool".equals(messages.get(messages.size() - 1).path("role").asText())) {
+            delta.put("content", "已经收到实际执行结果。");
+        } else {
+            finish = "tool_calls";
+            var call = delta.putArray("tool_calls").addObject().put("index", 0)
+                    .put("id", root ? "shot-child-call" : "shot-video-call").put("type", "function");
+            var shot = STORYBOARD_SHOT.get();
+            String arguments = root ? JSON.writeValueAsString(Map.of("message", "storyboardItemId: " + shot.path("id").asLong()))
+                    : JSON.writeValueAsString(Map.of("prompt", "分镜验收，红色背景",
+                    "reviewTargetId", shot.path("id").asLong(), "expectedVersion", shot.path("version").asInt(),
+                    "ratio", "16:9", "resolution", "1280x720", "duration", 4));
+            call.putObject("function").put("name", root ? "generate_storyboard_video" : "generate_video")
+                    .put("arguments", arguments);
+        }
+        var chunk = JSON.createObjectNode().put("id", UUID.randomUUID().toString())
+                .put("object", "chat.completion.chunk").put("model", "storyboard-acceptance").put("created", 1);
+        chunk.putArray("choices").addObject().put("index", 0).putNull("finish_reason").set("delta", delta);
+        var last = chunk.deepCopy();
+        ((ObjectNode) last.path("choices").get(0)).put("finish_reason", finish).putObject("delta");
+        byte[] response = ("data: " + chunk + "\n\ndata: " + last + "\n\ndata: [DONE]\n\n")
+                .getBytes(StandardCharsets.UTF_8);
+        sendMedia(exchange, "text/event-stream", response);
+    }
+
     private static HttpServer provider() {
         try {
             var server = HttpServer.create(new InetSocketAddress(0), 0);
@@ -720,8 +854,11 @@ class GenerationExecutionWiringIT {
                     boolean thumbnail = "variant=thumbnail".equals(exchange.getRequestURI().getQuery());
                     sendMedia(exchange, thumbnail ? "image/png" : "video/mp4", thumbnail ? PNG : VIDEO.get());
                 } else {
-                    exchange.getRequestBody().readAllBytes();
-                    respond(exchange, 200, Map.of("id", "synthetic-review-video", "status", "completed", "seconds", "4"));
+                    String request = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+                    boolean storyboard = request.contains("分镜验收") || path.endsWith("/storyboard-review-video");
+                    String id = storyboard ? "storyboard-review-video" : "synthetic-review-video";
+                    String state = storyboard && !STORYBOARD_VIDEO_READY.get() ? "in_progress" : "completed";
+                    respond(exchange, 200, Map.of("id", id, "status", state, "seconds", "4"));
                 }
             });
             server.createContext("/preparation-input/", exchange -> {
