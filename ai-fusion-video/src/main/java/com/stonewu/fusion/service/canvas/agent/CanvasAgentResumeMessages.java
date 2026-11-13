@@ -29,7 +29,7 @@ final class CanvasAgentResumeMessages {
             }
             var executor = tools.findExecutor(name);
             if (!(executor instanceof CanvasExternalTool) && !CanvasAgentNodeTypes.CHILD_TOOLS.contains(name)
-                    && !"generate_video".equals(name)) {
+                    && !Set.of("generate_video", "generate_image").contains(name)) {
                 throw new IllegalStateException("恢复工具未登记");
             }
             var output = ToolResultBlock.builder().id(id).name(name)

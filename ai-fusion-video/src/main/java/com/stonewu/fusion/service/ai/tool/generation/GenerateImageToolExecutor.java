@@ -11,12 +11,14 @@ import com.stonewu.fusion.service.ai.ToolExecutor;
 import com.stonewu.fusion.service.canvas.CanvasJson;
 import com.stonewu.fusion.service.canvas.agent.node.CanvasAgentNodeGeneration;
 import com.stonewu.fusion.service.generation.GenerationKind;
+import com.stonewu.fusion.service.generation.ProjectMediaCompletion;
 import com.stonewu.fusion.service.generation.GenerationModelCapabilityService;
 import com.stonewu.fusion.service.generation.image.ImageGenerationService;
 import com.stonewu.fusion.service.generation.job.GenerationSubmissionService;
 import com.stonewu.fusion.service.generation.review.GenerationReviewAdmission;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.stonewu.fusion.service.resource.ResourceToolRequests;
+import io.agentscope.core.tool.ToolSuspendException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -44,6 +46,7 @@ public class GenerateImageToolExecutor implements ToolExecutor {
     private final CanvasJson json;
     private final CanvasAgentNodeGeneration canvasModels;
     private final GenerationReviewAdmission reviews;
+    private final ProjectMediaCompletion projectMedia;
 
     @Override
     public String getToolName() {
@@ -58,7 +61,7 @@ public class GenerateImageToolExecutor implements ToolExecutor {
     @Override
     public String getToolDescription() {
         return """
-                生成AI图片。此工具仅负责生图，不会自动保存到资产库。
+                生成AI图片。项目首尾帧和子资产流水线会等待产物并自动回填。
 
                 适用场景：
                 1. 为角色生成立绘：根据角色的外貌、性格描述生成设定图
@@ -66,7 +69,7 @@ public class GenerateImageToolExecutor implements ToolExecutor {
                 3. 生成场景图、道具图等创意素材
 
                 重要提示：
-                - 生成完成后，如需将图片保存到角色/场景/道具等资产中，请使用 update_asset_image 工具
+                - 其他生图任务如需保存到资产中，请使用 update_asset_image 工具
                 - 提示词要详细具体，包含画面的主体、风格、视角等信息
                 - 可以使用中文提示词，系统会自动处理
                 - 如果你打算传 imageUrls，或不确定当前默认模型是否支持参考图，请先调用 get_generation_model_capabilities
@@ -87,6 +90,14 @@ public class GenerateImageToolExecutor implements ToolExecutor {
                                 .set("description", "图片生成提示词（英文效果更佳）"))
                         .set("reviewTargetId", JSONUtil.createObj().set("type", "integer")
                                 .set("description", "项目生成时填写本次生成对应的子资产 ID 或分镜镜头 ID"))
+                        .set("expectedVersion", JSONUtil.createObj().set("type", "integer")
+                                .set("description", "项目回填必填，填写实际读取的镜头或子资产版本"))
+                        .set("frameType", JSONUtil.createObj().set("type", "string")
+                                .set("description", "分镜帧回填必填，first 或 last，须与本次请求一致"))
+                        .set("assetId", JSONUtil.createObj().set("type", "integer")
+                                .set("description", "子资产回填必填，填写主资产 ID"))
+                        .set("expectedParentVersion", JSONUtil.createObj().set("type", "integer")
+                                .set("description", "子资产回填必填，填写实际读取的 assetVersion"))
                         .set("negativePrompt", JSONUtil.createObj()
                                 .set("type", "string")
                                 .set("description", "反向提示词，描述不希望出现的内容"))
@@ -159,10 +170,14 @@ public class GenerateImageToolExecutor implements ToolExecutor {
                     prompt, width, height, model.getId(), model.getCode(), refImageUrls != null ? "有" : "无");
 
             var mutation = context.requireMutationContext();
-            var review = reviews.agent(mutation, GenerationKind.IMAGE,
-                    json.read(toolInput, ObjectNode.class).get("reviewTargetId"));
+            var input = json.read(toolInput, ObjectNode.class);
+            boolean writeback = projectMedia.requireTarget(mutation, input, GenerationKind.IMAGE);
+            var review = reviews.agent(mutation, GenerationKind.IMAGE, input.get("reviewTargetId"));
             var accepted = submissions.image(task, ResourceToolRequests.requestId(json, mutation), mutation, null,
                     review);
+            if (writeback) {
+                throw new ToolSuspendException("图片已受理，生成完成后自动回填。");
+            }
             return JSONUtil.createObj()
                     .set("status", "pending")
                     .set("submissionId", accepted.id())
@@ -173,6 +188,8 @@ public class GenerateImageToolExecutor implements ToolExecutor {
                             "生成已可靠受理。通过 get_generation_task 读取实际结果；尚未完成时不要将其报告为生成成功。")
                     .toString();
 
+        } catch (ToolSuspendException pending) {
+            throw pending;
         } catch (Exception e) {
             log.error("[generate_image] 生成图片失败", e);
             return errorResult("生成失败: " + e.getMessage());

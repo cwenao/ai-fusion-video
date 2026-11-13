@@ -293,7 +293,8 @@
         SELECT run_id FROM afv_agent_run WHERE status='WAITING_EXTERNAL'
           AND waiting_tool_name='await_canvas_run'
           AND (canvas_scope_json IS NOT NULL OR (project_id IS NOT NULL
-                AND agent_type IN ('storyboard_video_gen','storyboard_video_executor')))
+                AND agent_type IN ('storyboard_video_gen','storyboard_video_executor',
+                    'storyboard_frame_gen','storyboard_frame_executor','asset_image_gen','asset_image_executor')))
           AND external_check_after &lt;= UTC_TIMESTAMP(3) AND wait_expires_at &gt; UTC_TIMESTAMP(3)
         ORDER BY external_check_after, id LIMIT 32
     </select>

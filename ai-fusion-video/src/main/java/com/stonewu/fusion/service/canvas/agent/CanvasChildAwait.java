@@ -13,7 +13,7 @@ import com.stonewu.fusion.entity.ai.AgentRun;
 import com.stonewu.fusion.mapper.ai.AgentMessageMapper;
 import com.stonewu.fusion.mapper.ai.AgentRunMapper;
 import com.stonewu.fusion.service.canvas.CanvasAccessPolicy;
-import com.stonewu.fusion.service.storyboard.StoryboardVideoPipeline;
+import com.stonewu.fusion.service.generation.ProjectMediaPipeline;
 import org.springframework.stereotype.Component;
 
 import java.util.LinkedHashMap;
@@ -36,10 +36,9 @@ public class CanvasChildAwait {
     public Object poll(AgentRun parent, String toolCallId, String toolName, CanvasAgentScope scope,
                        CanvasActor actor) {
         String parentRunId = parent.getRunId();
-        boolean storyboard = scope == null && parent.getProjectId() != null
-                && StoryboardVideoPipeline.ROOT.equals(parent.getAgentType())
-                && StoryboardVideoPipeline.CHILD_TOOL.equals(toolName);
-        if (storyboard) {
+        boolean projectGeneration = scope == null && parent.getProjectId() != null
+                && ProjectMediaPipeline.waitsForChild(parent.getAgentType(), toolName);
+        if (projectGeneration) {
             access.requireProject(parent.getProjectId(), actor);
         } else {
             if (!CanvasAgentNodeTypes.CHILD_TOOLS.contains(toolName) || scope == null || scope.nodeRunId() == null) {
@@ -58,7 +57,7 @@ public class CanvasChildAwait {
         if (!Objects.equals(scope, inherited) || !Objects.equals(child.getUserId(), actor.userId())
                 || !Objects.equals(child.getProjectId(), parent.getProjectId())
                 || !Objects.equals(child.getActorTeamId(), actor.teamId()) || !toolName.equals(child.getAgentName())
-                || (storyboard && !StoryboardVideoPipeline.EXECUTOR.equals(child.getAgentType()))) {
+                || (projectGeneration && !ProjectMediaPipeline.observesChild(child.getAgentType(), toolName))) {
             throw new BusinessException(403, "子任务不属于当前项目、工具调用或身份");
         }
         if (!Set.of("COMPLETED", "FAILED", "CANCELLED")

@@ -18,8 +18,8 @@ import com.stonewu.fusion.service.ai.run.model.ResumeExternalCommand;
 import com.stonewu.fusion.service.canvas.CanvasJson;
 import com.stonewu.fusion.service.canvas.agent.node.CanvasAgentNodeTypes;
 import com.stonewu.fusion.service.canvas.model.CanvasActor;
-import com.stonewu.fusion.service.storyboard.StoryboardVideoCompletion;
-import com.stonewu.fusion.service.storyboard.StoryboardVideoPipeline;
+import com.stonewu.fusion.service.generation.ProjectMediaCompletion;
+import com.stonewu.fusion.service.generation.ProjectMediaPipeline;
 import io.agentscope.core.message.Msg;
 import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
@@ -55,7 +55,7 @@ public class CanvasAgentWaitBridge {
     private final AgentScopeV2Properties properties;
     private final CanvasJson json;
     private final ObjectMapper mapper;
-    private final StoryboardVideoCompletion storyboardVideos;
+    private final ProjectMediaCompletion projectMedia;
     private final ExecutorService workers = Executors.newVirtualThreadPerTaskExecutor();
     private final Semaphore slots = new Semaphore(4);
     private final Set<String> active = ConcurrentHashMap.newKeySet();
@@ -124,9 +124,9 @@ public class CanvasAgentWaitBridge {
             }
             String name = call.path("name").asText();
             var executor = tools.findExecutor(name);
-            boolean storyboardVideo = "generate_video".equals(name)
-                    && StoryboardVideoPipeline.EXECUTOR.equals(agent.getAgentType()) && scope == null;
-            if ((!storyboardVideo && !(executor instanceof CanvasExternalTool)
+            var pipeline = ProjectMediaPipeline.forExecutor(agent.getAgentType());
+            boolean projectGeneration = pipeline != null && pipeline.generationTool(name) && scope == null;
+            if ((!projectGeneration && !(executor instanceof CanvasExternalTool)
                     && !CanvasAgentNodeTypes.CHILD_TOOLS.contains(name))
                     || kernel.tools().stream().noneMatch(item -> item.name().equals(name))) {
                 throw new IllegalStateException("外部等待工具未登记或不在本轮白名单内");
@@ -135,8 +135,8 @@ public class CanvasAgentWaitBridge {
             try {
                 var actor = new CanvasActor(agent.getUserId(), agent.getActorTeamId());
                 Object output;
-                if (storyboardVideo) {
-                    output = storyboardVideos.poll(agent, toolId, json.object(call.path("input")));
+                if (projectGeneration) {
+                    output = projectMedia.poll(agent, toolId, json.object(call.path("input")));
                 } else if (executor instanceof CanvasExternalTool external) {
                     output = external.poll(json.object(call.path("input")), scope, actor, model);
                 } else {

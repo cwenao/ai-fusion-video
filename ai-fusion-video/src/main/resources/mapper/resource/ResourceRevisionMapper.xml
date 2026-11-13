@@ -1,6 +1,26 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.stonewu.fusion.mapper.resource.ResourceRevisionMapper">
+    <select id="generationChanges" resultType="com.stonewu.fusion.mapper.resource.ResourceRevisionMapper$GenerationChange">
+        SELECT a.agent_type, a.parent_run_id, a.user_id, a.actor_team_id AS team_id,
+            CASE
+                WHEN JSON_CONTAINS_PATH(c.request_json, 'one', '$.input.patch.firstFrameImageUrl') THEN 'first'
+                WHEN JSON_CONTAINS_PATH(c.request_json, 'one', '$.input.patch.lastFrameImageUrl') THEN 'last'
+                ELSE NULL
+            END AS frame_type
+        FROM afv_resource_revision r
+        JOIN afv_resource_command c ON c.id = r.command_id
+        JOIN afv_agent_run a ON a.run_id = c.agent_run_id
+        WHERE r.resource_type = #{type} AND r.resource_id = #{id}
+            AND r.resource_version &gt; #{after} AND r.resource_version &lt;= #{through}
+            AND c.origin = 'system' AND c.request_id LIKE 'project-image:%'
+    </select>
+    <select id="generationWritebackRequest" resultType="com.stonewu.fusion.mapper.resource.ResourceRevisionMapper$WritebackVersion">
+        SELECT CAST(JSON_UNQUOTE(JSON_EXTRACT(request_json, '$.input.expectedVersion')) AS SIGNED) AS version,
+            CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(request_json, '$.input.expectedParentVersion')), 'null') AS SIGNED) AS parent_version
+        FROM afv_resource_command WHERE actor_user_id = #{userId} AND request_id = #{requestId}
+            AND committed_at IS NOT NULL
+    </select>
     <insert id="capture">
         INSERT INTO afv_resource_revision(command_id, resource_type, resource_id, project_id, resource_version,
             before_json, after_json, changed_fields, create_time)

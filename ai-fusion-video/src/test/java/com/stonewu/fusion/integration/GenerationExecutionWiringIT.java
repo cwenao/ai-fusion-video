@@ -23,6 +23,7 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
@@ -87,6 +88,7 @@ class GenerationExecutionWiringIT {
     static final AtomicReference<byte[]> VIDEO = new AtomicReference<>();
     static final AtomicBoolean STORYBOARD_VIDEO_READY = new AtomicBoolean(false);
     static final AtomicReference<JsonNode> STORYBOARD_SHOT = new AtomicReference<>();
+    static final Map<String, ImagePipeline> IMAGE_PIPELINES = new ConcurrentHashMap<>();
     @DynamicPropertySource static void properties(DynamicPropertyRegistry p) {
         p.add("spring.datasource.url", MYSQL::getJdbcUrl);
         p.add("spring.datasource.username", MYSQL::getUsername);
@@ -291,6 +293,152 @@ class GenerationExecutionWiringIT {
         return ok(http.postForEntity("/api/storyboard/" + type, new HttpEntity<>(Map.of(
                 "requestId", UUID.randomUUID().toString(), "parentId", parent.path("id").asLong(),
                 "parentVersion", parent.path("version").asInt(), "fields", fields), f.headers), JsonNode.class));
+    }
+
+    @ParameterizedTest
+    @CsvSource({"first,firstFrameImageUrl,SHOT_FIRST_FRAME", "last,lastFrameImageUrl,SHOT_LAST_FRAME",
+            "asset,imageUrl,ASSET", "both,firstFrameImageUrl,SHOT_FIRST_FRAME", "variants,imageUrl,ASSET"})
+    void projectImagePipelineWaitsAndWritesItsOwnReviewedResult(String destination, String field, String reviewType)
+            throws Exception {
+        boolean both = destination.equals("both");
+        boolean variants = destination.equals("variants");
+        boolean assetDestination = destination.equals("asset") || variants;
+        String firstDestination = both ? "first" : destination;
+        var f = fixture("async");
+        jdbc.update("UPDATE afv_ai_model SET default_model=(id=?) WHERE model_type=2", f.id);
+        var reviewer = reviewer(f, "项目生图审查桩", "image");
+        reviewer.remote().allValid.set(true);
+        reviewer.remote().release.countDown();
+        long chat = IDS.incrementAndGet();
+        String chatCode = "project-image-" + chat;
+        jdbc.update("""
+                INSERT INTO afv_ai_model(id, name, code, model_type, model_protocol, api_config_id, config,
+                    max_concurrency, multimodal_input_types, multimodal_input_transports, reasoning_effort_levels)
+                VALUES (?, '项目生图调度桩', ?, 1, 'openai', ?, '', 2, JSON_ARRAY(), JSON_OBJECT(), JSON_ARRAY())
+                """, chat, chatCode, f.id);
+        var project = ok(http.postForEntity("/api/project", new HttpEntity<>(Map.of(
+                "requestId", UUID.randomUUID().toString(), "fields", Map.of("name", "项目生图回填验收")), f.headers),
+                JsonNode.class));
+        long projectId = project.path("id").asLong();
+        String agentType;
+        String resourcePath;
+        ImagePipeline fixture;
+        Long secondItem = null;
+        Map<String, Object> context;
+        if (assetDestination) {
+            var asset = ok(http.postForEntity("/api/asset", new HttpEntity<>(Map.of("projectId", projectId,
+                    "requestId", UUID.randomUUID().toString(), "fields", Map.of("name", "红色道具", "type", "prop")),
+                    f.headers), JsonNode.class));
+            var item = asset.path("items").get(0);
+            int parentVersion = asset.path("version").asInt();
+            if (variants) {
+                var variant = ok(http.postForEntity("/api/asset/item", new HttpEntity<>(Map.of(
+                        "requestId", UUID.randomUUID().toString(), "assetId", asset.path("id").asLong(),
+                        "parentVersion", parentVersion, "fields", Map.of("name", "道具变体", "itemType", "variant")),
+                        f.headers), JsonNode.class));
+                secondItem = variant.path("id").asLong();
+                parentVersion = variant.path("assetVersion").asInt();
+            }
+            fixture = new ImagePipeline("generate_asset_image", "asset", item.path("id").asLong(),
+                    item.path("version").asInt(), asset.path("id").asLong(), parentVersion, f.prompt);
+            agentType = "asset_image_gen";
+            resourcePath = "/api/asset/item/" + fixture.target();
+            context = Map.of("selectedAssetIds", List.of(fixture.parent()), "selectedAssetItemIds",
+                    variants ? List.of(fixture.target(), secondItem) : List.of(fixture.target()));
+        } else {
+            ok(http.postForEntity("/api/project/" + projectId + "/workspace/initialize",
+                    new HttpEntity<>(Map.of("requestId", UUID.randomUUID().toString(),
+                            "version", project.path("version").asInt()), f.headers), JsonNode.class));
+            var board = ok(get("/api/storyboard/project/" + projectId, f.headers));
+            var episode = storyboardChild(f, "episode", board, Map.of("episodeNumber", 1));
+            var scene = storyboardChild(f, "scene", episode, Map.of("sceneNumber", "1"));
+            var shot = storyboardChild(f, "item", scene, Map.of("content", "红色背景"));
+            fixture = new ImagePipeline("generate_storyboard_frame", firstDestination, shot.path("id").asLong(),
+                    shot.path("version").asInt(), null, null, f.prompt);
+            agentType = "storyboard_frame_gen";
+            resourcePath = "/api/storyboard/item/" + fixture.target();
+            context = Map.of("selectedStoryboardItemIds", List.of(fixture.target()), "storyboardId",
+                    board.path("id").asLong(), "frameType", firstDestination, "framePrompt", f.prompt);
+        }
+        if (variants) {
+            fixture = new ImagePipeline(fixture.childTool(), "asset", fixture.target(), fixture.version(),
+                    fixture.parent(), fixture.parentVersion(), fixture.prompt(), secondItem);
+        }
+        IMAGE_PIPELINES.put(chatCode, fixture);
+        var body = Map.of("projectId", projectId, "modelId", chat, "agentType", agentType,
+                "toolExecutionMode", "FULL_ACCESS", "generationReviewModelId", reviewer.id(), "context", context);
+        var headers = new HttpHeaders();
+        headers.putAll(f.headers);
+        headers.setAccept(List.of(MediaType.TEXT_EVENT_STREAM));
+        var pipeline = CompletableFuture.supplyAsync(() ->
+                http.postForEntity("/api/ai/pipeline/run", new HttpEntity<>(body, headers), String.class));
+        CompletableFuture<ResponseEntity<String>> tailPipeline = null;
+        if (both) {
+            String tailCode = chatCode + "-tail";
+            long tailChat = IDS.incrementAndGet();
+            jdbc.update("""
+                    INSERT INTO afv_ai_model(id, name, code, model_type, model_protocol, api_config_id, config,
+                        max_concurrency, multimodal_input_types, multimodal_input_transports, reasoning_effort_levels)
+                    VALUES (?, '尾帧调度桩', ?, 1, 'openai', ?, '', 2, JSON_ARRAY(), JSON_OBJECT(), JSON_ARRAY())
+                    """, tailChat, tailCode, f.id);
+            IMAGE_PIPELINES.put(tailCode, new ImagePipeline(fixture.childTool(), "last", fixture.target(),
+                    fixture.version(), null, null, f.prompt));
+            var tailContext = new HashMap<>(context);
+            tailContext.put("frameType", "last");
+            var tailBody = new HashMap<>(body);
+            tailBody.put("context", tailContext);
+            tailBody.put("modelId", tailChat);
+            tailPipeline = CompletableFuture.supplyAsync(() ->
+                    http.postForEntity("/api/ai/pipeline/run", new HttpEntity<>(tailBody, headers), String.class));
+        }
+        try {
+            await().atMost(Duration.ofSeconds(20)).untilAsserted(() -> {
+                var states = jdbc.queryForList("SELECT status FROM afv_agent_run WHERE project_id=? ORDER BY id",
+                        String.class, projectId);
+                assertThat(states).hasSize(both ? 4 : variants ? 3 : 2).containsOnly("WAITING_EXTERNAL");
+            });
+            assertThat(ok(get(resourcePath, f.headers)).path(field).isNull()).isTrue();
+            assertThat(pipeline.isDone()).isFalse();
+        } finally {
+            f.remote.complete.set(true);
+        }
+        assertThat(pipeline.get(40, TimeUnit.SECONDS).getBody()).contains("\"outputType\":\"DONE\"");
+        if (tailPipeline != null) {
+            assertThat(tailPipeline.get(40, TimeUnit.SECONDS).getBody()).contains("\"outputType\":\"DONE\"");
+        }
+        var result = ok(get(resourcePath, f.headers));
+        assertThat(result.path("version").asInt()).isEqualTo(fixture.version() + (both ? 2 : 1));
+        String reference = result.path(field).asText();
+        assertThat(reference).startsWith("media://");
+        assertThat(result.path(assetDestination ? "aiPrompt" : firstDestination + "FramePrompt").asText())
+                .isEqualTo(f.prompt);
+        String report = "/api/generation/reviews/media/" + reference.substring("media://".length())
+                + "?target=" + reviewType + "&targetId=" + fixture.target();
+        await().atMost(Duration.ofSeconds(15)).untilAsserted(() ->
+                assertThat(ok(get(report, f.headers)).path("state").asText()).isEqualTo("COMPLETED"));
+        if (both) {
+            String tail = result.path("lastFrameImageUrl").asText();
+            assertThat(tail).startsWith("media://").isNotEqualTo(reference);
+            String tailReport = "/api/generation/reviews/media/" + tail.substring("media://".length())
+                    + "?target=SHOT_LAST_FRAME&targetId=" + fixture.target();
+            await().atMost(Duration.ofSeconds(15)).untilAsserted(() ->
+                    assertThat(ok(get(tailReport, f.headers)).path("state").asText()).isEqualTo("COMPLETED"));
+        }
+        if (variants) {
+            var sibling = ok(get("/api/asset/item/" + secondItem, f.headers));
+            String siblingMedia = sibling.path("imageUrl").asText();
+            assertThat(siblingMedia).startsWith("media://").isNotEqualTo(reference);
+            assertThat(sibling.path("sourceType").asInt()).isEqualTo(2);
+        }
+        assertThat(f.remote.calls.get()).isEqualTo(both || variants ? 2 : 1);
+    }
+
+    private record ImagePipeline(String childTool, String destination, long target, int version, Long parent,
+                                 Integer parentVersion, String prompt, Long secondTarget) {
+        ImagePipeline(String childTool, String destination, long target, int version, Long parent,
+                      Integer parentVersion, String prompt) {
+            this(childTool, destination, target, version, parent, parentVersion, prompt, null);
+        }
     }
 
     private Reviewer reviewer(Fixture f, String name, String kind) {
@@ -765,6 +913,7 @@ class GenerationExecutionWiringIT {
 
     private static final class ReviewRemote {
         final AtomicInteger calls = new AtomicInteger();
+        final AtomicBoolean allValid = new AtomicBoolean();
         final AtomicReference<String> input = new AtomicReference<>();
         final CountDownLatch started = new CountDownLatch(1);
         final CountDownLatch release = new CountDownLatch(1);
@@ -775,6 +924,11 @@ class GenerationExecutionWiringIT {
 
     private static void review(HttpExchange exchange) throws IOException {
         var body = JSON.readTree(exchange.getRequestBody());
+        var imagePipeline = IMAGE_PIPELINES.get(body.path("model").asText());
+        if (imagePipeline != null) {
+            projectImageChat(exchange, body, imagePipeline);
+            return;
+        }
         if ("storyboard-acceptance".equals(body.path("model").asText())) {
             storyboardChat(exchange, body);
             return;
@@ -795,7 +949,7 @@ class GenerationExecutionWiringIT {
             Thread.currentThread().interrupt();
             throw new IOException(stopped);
         }
-        String report = attempt == 1 ? """
+        String report = attempt == 1 || remote.allValid.get() ? """
                 {"verdict":"NEEDS_CHANGES","summary":"背景颜色不同","findings":[
                 {"issue":"背景不符","evidence":"背景是黑色","suggestion":"改为蓝色"}],"limitations":[]}
                 """ : "模型没有返回结构化结论";
@@ -834,8 +988,50 @@ class GenerationExecutionWiringIT {
             call.putObject("function").put("name", root ? "generate_storyboard_video" : "generate_video")
                     .put("arguments", arguments);
         }
+        chatChunk(exchange, body, delta, finish);
+    }
+
+    private static void projectImageChat(HttpExchange exchange, JsonNode body, ImagePipeline fixture) throws IOException {
+        var messages = body.path("messages");
+        boolean root = body.path("tools").findValuesAsText("name").contains(fixture.childTool());
+        var delta = JSON.createObjectNode().put("role", "assistant");
+        if ("tool".equals(messages.get(messages.size() - 1).path("role").asText())) {
+            delta.put("content", "收到执行回执。");
+            chatChunk(exchange, body, delta, "stop");
+            return;
+        }
+        var arguments = JSON.createObjectNode();
+        long target = fixture.target();
+        if (root) {
+            arguments.put("message", "处理目标 " + fixture.target());
+        } else {
+            if (fixture.secondTarget() != null && messages.toString().contains("目标 " + fixture.secondTarget() + "。")) {
+                target = fixture.secondTarget();
+            }
+            arguments.put("prompt", fixture.prompt()).put("width", 1024).put("height", 1024)
+                    .put("reviewTargetId", target).put("expectedVersion", fixture.version());
+            if (fixture.parent() != null) {
+                arguments.put("assetId", fixture.parent()).put("expectedParentVersion", fixture.parentVersion());
+            } else {
+                arguments.put("frameType", fixture.destination());
+            }
+        }
+        var calls = delta.putArray("tool_calls");
+        calls.addObject().put("index", 0)
+                .put("id", root ? "image-child-call" : "image-generation-call").put("type", "function")
+                .putObject("function").put("name", root ? fixture.childTool() : "generate_image")
+                .put("arguments", arguments.toString());
+        if (root && fixture.secondTarget() != null) {
+            calls.addObject().put("index", 1).put("id", "variant-child-call").put("type", "function")
+                    .putObject("function").put("name", fixture.childTool())
+                    .put("arguments", JSON.writeValueAsString(Map.of("message", "处理目标 " + fixture.secondTarget() + "。")));
+        }
+        chatChunk(exchange, body, delta, "tool_calls");
+    }
+
+    private static void chatChunk(HttpExchange exchange, JsonNode body, ObjectNode delta, String finish) throws IOException {
         var chunk = JSON.createObjectNode().put("id", UUID.randomUUID().toString())
-                .put("object", "chat.completion.chunk").put("model", "storyboard-acceptance").put("created", 1);
+                .put("object", "chat.completion.chunk").put("model", body.path("model").asText()).put("created", 1);
         chunk.putArray("choices").addObject().put("index", 0).putNull("finish_reason").set("delta", delta);
         var last = chunk.deepCopy();
         ((ObjectNode) last.path("choices").get(0)).put("finish_reason", finish).putObject("delta");

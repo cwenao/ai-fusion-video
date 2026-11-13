@@ -10,7 +10,7 @@ import com.stonewu.fusion.service.ai.agentscope.tool.PlatformSubAgentRunPort;
 import com.stonewu.fusion.service.ai.run.kernel.AgentKernelSnapshot;
 import com.stonewu.fusion.service.ai.run.kernel.AgentKernelSnapshotBuilder;
 import com.stonewu.fusion.service.ai.run.model.*;
-import com.stonewu.fusion.service.storyboard.StoryboardVideoPipeline;
+import com.stonewu.fusion.service.generation.ProjectMediaPipeline;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
 
@@ -197,9 +197,8 @@ public final class PlatformSubAgentRunService implements PlatformSubAgentRunPort
                                 command.parentToolCallId(),
                                 command.agentName(),
                                 "true".equals(command.kernelSpec().promptVariables().get("canvasNodeExecution"))
-                                        || (command.projectContext() != null && StoryboardVideoPipeline.EXECUTOR
-                                        .equals(command.kernelSpec().agentDefinitionStableKey())
-                                        && StoryboardVideoPipeline.CHILD_TOOL.equals(command.agentName()))),
+                                        || (command.projectContext() != null && ProjectMediaPipeline.observesChild(
+                                        command.kernelSpec().agentDefinitionStableKey(), command.agentName()))),
                         command.toolExecutionMode())
                 .flatMap(runtime -> supervisor.start(new StartAgentExecutionCommand(
                         started,

@@ -14,6 +14,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Isolation;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -35,7 +36,7 @@ public class AgentConversationService {
     private final AgentRunMapper runMapper;
     private final AgentRuntimeSchedulers schedulers;
 
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public AgentConversation createOrUpdate(String conversationId, Long userId, Long projectId,
                                             String contextType, Long contextId,
                                             String agentType, String title, String category) {
