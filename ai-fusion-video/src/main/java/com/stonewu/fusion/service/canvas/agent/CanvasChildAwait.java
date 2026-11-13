@@ -12,6 +12,8 @@ import com.stonewu.fusion.entity.ai.AgentMessage;
 import com.stonewu.fusion.entity.ai.AgentRun;
 import com.stonewu.fusion.mapper.ai.AgentMessageMapper;
 import com.stonewu.fusion.mapper.ai.AgentRunMapper;
+import com.stonewu.fusion.service.canvas.CanvasAccessPolicy;
+import com.stonewu.fusion.service.storyboard.StoryboardVideoPipeline;
 import org.springframework.stereotype.Component;
 
 import java.util.LinkedHashMap;
@@ -29,23 +31,35 @@ public class CanvasChildAwait {
     private final AgentRunRepository agents;
     private final CanvasQueryService canvases;
     private final CanvasJson json;
+    private final CanvasAccessPolicy access;
 
-    public Object poll(String parentRunId, String toolCallId, String toolName, CanvasAgentScope scope,
+    public Object poll(AgentRun parent, String toolCallId, String toolName, CanvasAgentScope scope,
                        CanvasActor actor) {
-        if (!CanvasAgentNodeTypes.CHILD_TOOLS.contains(toolName) || scope == null || scope.nodeRunId() == null) {
-            throw new BusinessException(403, "此子任务没有专业画布运行范围");
+        String parentRunId = parent.getRunId();
+        boolean storyboard = scope == null && parent.getProjectId() != null
+                && StoryboardVideoPipeline.ROOT.equals(parent.getAgentType())
+                && StoryboardVideoPipeline.CHILD_TOOL.equals(toolName);
+        if (storyboard) {
+            access.requireProject(parent.getProjectId(), actor);
+        } else {
+            if (!CanvasAgentNodeTypes.CHILD_TOOLS.contains(toolName) || scope == null || scope.nodeRunId() == null) {
+                throw new BusinessException(403, "此子任务没有可恢复的业务范围");
+            }
+            canvases.snapshot(scope.canvasId(), actor);
         }
-        canvases.snapshot(scope.canvasId(), actor);
         var ids = runs.selectList(new LambdaQueryWrapper<AgentRun>().select(AgentRun::getRunId)
                 .eq(AgentRun::getParentRunId, parentRunId).eq(AgentRun::getParentToolCallId, toolCallId));
         if (ids.size() != 1) {
             throw new BusinessException(409, "子任务尚未可靠受理，不能报告其已完成");
         }
         var child = agents.findRun(ids.getFirst().getRunId());
-        var inherited = json.read(child.getCanvasScopeJson(), CanvasAgentScope.class);
+        var inherited = child.getCanvasScopeJson() == null ? null
+                : json.read(child.getCanvasScopeJson(), CanvasAgentScope.class);
         if (!Objects.equals(scope, inherited) || !Objects.equals(child.getUserId(), actor.userId())
-                || !Objects.equals(child.getActorTeamId(), actor.teamId()) || !toolName.equals(child.getAgentName())) {
-            throw new BusinessException(403, "子任务不属于当前画布、工具调用或身份");
+                || !Objects.equals(child.getProjectId(), parent.getProjectId())
+                || !Objects.equals(child.getActorTeamId(), actor.teamId()) || !toolName.equals(child.getAgentName())
+                || (storyboard && !StoryboardVideoPipeline.EXECUTOR.equals(child.getAgentType()))) {
+            throw new BusinessException(403, "子任务不属于当前项目、工具调用或身份");
         }
         if (!Set.of("COMPLETED", "FAILED", "CANCELLED")
                 .contains(child.getStatus()) || child.getProjectionCompletedAt() == null) {

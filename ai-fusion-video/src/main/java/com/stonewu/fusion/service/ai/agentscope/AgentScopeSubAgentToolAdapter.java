@@ -20,6 +20,7 @@ import io.agentscope.core.message.UserMessage;
 import io.agentscope.core.tool.ToolBase;
 import io.agentscope.core.tool.ToolCallParam;
 import io.agentscope.core.tool.ToolSuspendException;
+import com.stonewu.fusion.service.storyboard.StoryboardVideoPipeline;
 import reactor.core.publisher.Mono;
 
 import java.util.LinkedHashMap;
@@ -92,9 +93,12 @@ public final class AgentScopeSubAgentToolAdapter extends AbstractPlatformAgentTo
                                     "Platform sub-agent run service is unavailable"));
                         }
                         return childRunPort.start(command).flatMap(child -> {
-                            if ("true".equals(parentSpec.promptVariables().get("canvasNodeExecution"))) {
+                            if ("true".equals(parentSpec.promptVariables().get("canvasNodeExecution"))
+                                    || (project != null && StoryboardVideoPipeline.ROOT.equals(
+                                    parentSpec.agentDefinitionStableKey()) && StoryboardVideoPipeline.CHILD_TOOL
+                                    .equals(getName()))) {
                                 return Mono.error(new ToolSuspendException(
-                                        "专业子任务已受理；通过持久化等待接收该任务的真实结果。"));
+                                        "子任务已受理，等待执行完成。"));
                             }
                             return childRunPort.awaitCompletion(child);
                         });

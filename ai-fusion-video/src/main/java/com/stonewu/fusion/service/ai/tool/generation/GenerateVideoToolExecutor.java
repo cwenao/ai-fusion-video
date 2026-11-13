@@ -19,6 +19,8 @@ import com.stonewu.fusion.service.generation.review.GenerationReviewAdmission;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.stonewu.fusion.service.generation.video.VideoGenerationService;
 import com.stonewu.fusion.service.resource.ResourceToolRequests;
+import com.stonewu.fusion.service.storyboard.StoryboardVideoCompletion;
+import io.agentscope.core.tool.ToolSuspendException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -47,6 +49,7 @@ public class GenerateVideoToolExecutor implements ToolExecutor {
     private final GenerationModelCapabilityService generationModelCapabilityService;
     private final CanvasJson json;
     private final CanvasAgentNodeGeneration canvasModels;
+    private final StoryboardVideoCompletion storyboardVideos;
 
     @Override
     public String getToolName() {
@@ -99,6 +102,8 @@ public class GenerateVideoToolExecutor implements ToolExecutor {
                                         "视频生成提示词；是否允许仅使用素材由模型 videoRules.promptRequired 决定"))
                         .set("reviewTargetId", JSONUtil.createObj().set("type", "integer")
                                 .set("description", "为项目镜头生成时填写本次生成对应的分镜镜头 ID"))
+                        .set("expectedVersion", JSONUtil.createObj().set("type", "integer")
+                                .set("description", "分镜视频生成必填，填写生成前实际读取的镜头版本"))
                         .set("firstFrameImageUrl", JSONUtil.createObj()
                                 .set("type", "string")
                                 .set("description", firstFrameDescription))
@@ -224,10 +229,14 @@ public class GenerateVideoToolExecutor implements ToolExecutor {
                     referenceImageUrlList.size());
 
             var mutation = context.requireMutationContext();
-            var review = reviews.agent(mutation, GenerationKind.VIDEO,
-                    json.read(toolInput, ObjectNode.class).get("reviewTargetId"));
+            var input = json.read(toolInput, ObjectNode.class);
+            boolean storyboard = storyboardVideos.requireTarget(mutation, input);
+            var review = reviews.agent(mutation, GenerationKind.VIDEO, input.get("reviewTargetId"));
             var accepted = submissions.video(task, ResourceToolRequests.requestId(json, mutation), mutation, null,
                     review);
+            if (storyboard) {
+                throw new ToolSuspendException("镜头视频已受理，生成完成后自动回填。");
+            }
             return JSONUtil.createObj()
                     .set("status", "pending")
                     .set("submissionId", accepted.id())
@@ -238,6 +247,8 @@ public class GenerateVideoToolExecutor implements ToolExecutor {
                             "生成已可靠受理。通过 get_generation_task 读取实际结果；尚未完成时不要将其报告为生成成功。")
                     .toString();
 
+        } catch (ToolSuspendException pending) {
+            throw pending;
         } catch (Exception e) {
             log.error("[generate_video] 生成视频失败", e);
             return errorResult("生成失败: " + e.getMessage());

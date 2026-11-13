@@ -1,5 +1,7 @@
 package com.stonewu.fusion.service.ai.run;
 
+import com.stonewu.fusion.service.storyboard.StoryboardVideoPipeline;
+
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -282,8 +284,8 @@ public final class DurableAgentWaitingStateService implements AgentWaitingStateP
             return false;
         }
         requireCheckpoint(run, checkpoint);
-        boolean canvasWait = "await_canvas_run".equals(pending.toolName()) && run.getCanvasScopeJson() != null;
-        LocalDateTime expiresAt = canvasWait
+        boolean durable = durableWait(run, pending);
+        LocalDateTime expiresAt = durable
                 ? canvasWaitExpiry(pending.expiresAt(), run, now) : clampedExpiry(pending.expiresAt(), run, now);
         PendingExternalExecution normalized = new PendingExternalExecution(
                 pending.toolCallId(),
@@ -322,7 +324,7 @@ public final class DurableAgentWaitingStateService implements AgentWaitingStateP
                 normalized.toolCallId(),
                 normalized.toolName(),
                 expiresAt,
-                canvasWait ? expiresAt : run.getDeadlineAt(),
+                durable ? expiresAt : run.getDeadlineAt(),
                 checkpoint.pausedThroughSequence(),
                 increment(sequence),
                 now);
@@ -509,7 +511,8 @@ public final class DurableAgentWaitingStateService implements AgentWaitingStateP
                 null,
                 payload,
                 now);
-        if ("await_canvas_run".equals(pending.toolName()) && run.getCanvasScopeJson() != null) {
+        boolean durable = durableWait(run, pending);
+        if (durable) {
             sequence = appendCanvasToolResults(run, pending, payload.path("result"), sequence, now);
         }
         if (runMapper.resumeExternal(
@@ -524,7 +527,7 @@ public final class DurableAgentWaitingStateService implements AgentWaitingStateP
             throw conflict("外部执行请求已由其他节点处理");
         }
         LocalDateTime deadline = run.getDeadlineAt();
-        if ("await_canvas_run".equals(pending.toolName()) && run.getCanvasScopeJson() != null) {
+        if (durable) {
             deadline = AgentExecutionLimits.deadlineFrom(now, runTimeout);
             if (!runTimeout.isZero() && deadline.isAfter(run.getStartedAt().plusHours(24))) {
                 deadline = run.getStartedAt().plusHours(24);
@@ -541,6 +544,11 @@ public final class DurableAgentWaitingStateService implements AgentWaitingStateP
                 newEpoch,
                 leaseUntil,
                 deadline);
+    }
+
+    private boolean durableWait(AgentRun run, PendingExternalExecution pending) {
+        return "await_canvas_run".equals(pending.toolName()) && (run.getCanvasScopeJson() != null
+                || StoryboardVideoPipeline.waitsDurably(run.getAgentType(), run.getProjectId()));
     }
 
     private long appendCanvasToolResults(AgentRun run, PendingExternalExecution pending, JsonNode result,
