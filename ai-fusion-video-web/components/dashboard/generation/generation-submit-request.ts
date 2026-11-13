@@ -18,6 +18,7 @@ export function generationSubmitRequest(
   modelId: number,
   capabilities?: GenerationCapabilities | null,
   projectId?: number | null,
+  reviewModelId?: number,
 ): GenerationInput {
   const referenceImages = clean(form.referenceImages);
   const common = {
@@ -27,6 +28,7 @@ export function generationSubmitRequest(
     ratio: form.ratio || undefined,
     resolution: form.resolution || undefined,
     count: form.count,
+    ...(reviewModelId === undefined ? {} : { reviewModelId }),
   };
   if (mode === "image") {
     const input: Omit<ImageGenerationSubmitReq, "requestId" | "scope"> = {

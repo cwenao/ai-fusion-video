@@ -55,6 +55,9 @@ public class AiChatReqVO {
      */
     private Long projectId;
 
+    /** 仅在项目生成入口明确勾选时传入；不通过提示词或模型参数启用。 */
+    private Long generationReviewModelId;
+
     /**
      * 当前画布的定位上下文，受理时由服务端重新授权和固定。
      */

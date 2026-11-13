@@ -31,7 +31,18 @@ public record StartAgentRunCommand(
         String userContent,
         String referencesJson,
         Long actorTeamId,
-        String canvasScopeJson) {
+        String canvasScopeJson,
+        String generationReviewJson) {
+
+    public StartAgentRunCommand(String runId, String conversationId, long userId, Long projectId,
+                                String agentType, String parentRunId, String parentToolCallId, String agentName,
+                                String stateSessionCandidate, AgentKernelSnapshot kernelSnapshot,
+                                String ownerInstanceId, Duration ownerLease, Instant deadline, String userContent,
+                                String referencesJson, Long actorTeamId, String canvasScopeJson) {
+        this(runId, conversationId, userId, projectId, agentType, parentRunId, parentToolCallId, agentName,
+                stateSessionCandidate, kernelSnapshot, ownerInstanceId, ownerLease, deadline, userContent,
+                referencesJson, actorTeamId, canvasScopeJson, null);
+    }
 
     public StartAgentRunCommand {
         requireText(runId, "runId");

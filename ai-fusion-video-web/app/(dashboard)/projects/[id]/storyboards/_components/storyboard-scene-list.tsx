@@ -1,8 +1,10 @@
 "use client";
 import { Camera, Loader2 } from "lucide-react";
+import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { StoryboardTableView } from "./storyboard-table-view";
 import { StoryboardCardView } from "./storyboard-card-view";
+import { VideoGenDialog } from "./video-gen-dialog";
 import type { useStoryboardWorkspace } from "../_hooks/use-storyboard-workspace";
 
 export function StoryboardSceneList({ workspace }: { workspace: ReturnType<typeof useStoryboardWorkspace> }) {
@@ -26,8 +28,10 @@ export function StoryboardSceneList({ workspace }: { workspace: ReturnType<typeo
     handleReorderItems,
     handleVideoGen,
   } = workspace;
+  const [videoItemId, setVideoItemId] = useState<number | null>(null);
+  const videoItem = sceneGroups.flatMap(({ items }) => items).find((item) => item.id === videoItemId);
   return (
-
+    <>
         <div
           ref={scrollContainerRef}
           className="flex-1 overflow-y-auto px-6 py-5 space-y-8"
@@ -101,7 +105,7 @@ export function StoryboardSceneList({ workspace }: { workspace: ReturnType<typeo
                     onReorderItems={(reordered) =>
                       handleReorderItems(scene.id, reordered)
                     }
-                    onVideoGen={handleVideoGen}
+                    onVideoGen={setVideoItemId}
                     onOpenFrameDialog={handleOpenFrameDialog}
                     assetLookup={assetLookup}
                     onEditAssets={(item) => {
@@ -121,7 +125,7 @@ export function StoryboardSceneList({ workspace }: { workspace: ReturnType<typeo
                     onReorderItems={(reordered) =>
                       handleReorderItems(scene.id, reordered)
                     }
-                    onVideoGen={handleVideoGen}
+                    onVideoGen={setVideoItemId}
                     onOpenFrameDialog={handleOpenFrameDialog}
                   />
                 )}
@@ -129,6 +133,15 @@ export function StoryboardSceneList({ workspace }: { workspace: ReturnType<typeo
             ))
           )}
         </div>
-
+      {videoItem && (
+        <VideoGenDialog
+          key={videoItem.id}
+          open
+          items={[videoItem]}
+          onClose={() => setVideoItemId(null)}
+          onConfirm={([itemId], promptOnly, reviewModelId) => handleVideoGen(itemId, promptOnly, reviewModelId)}
+        />
+      )}
+    </>
   );
 }

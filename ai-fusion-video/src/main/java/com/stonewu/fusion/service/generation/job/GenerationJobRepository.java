@@ -12,6 +12,7 @@ import com.stonewu.fusion.mapper.ai.AiModelMapper;
 import com.stonewu.fusion.entity.ai.AiModel;
 import com.stonewu.fusion.service.canvas.CanvasJson;
 import com.stonewu.fusion.service.generation.GenerationKind;
+import com.stonewu.fusion.service.generation.review.GenerationContentReview.Criteria;
 import com.stonewu.fusion.service.resource.model.ResourceCommandContext;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -160,7 +161,8 @@ public class GenerationJobRepository {
                 model, row.getApiConfigId(),
                 row.getApiConfigHash(),
                 row.getState(), row.getCancelRequested(), row.getRevision(),
-                row.getCreatedAt());
+                row.getCreatedAt(),
+                row.getContentReviewJson() == null ? null : json.read(row.getContentReviewJson(), Criteria.class));
     }
 
     private RemoteGenerationJob readJob(RemoteGenerationJobEntity row) {

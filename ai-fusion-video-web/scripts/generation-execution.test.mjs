@@ -159,6 +159,7 @@ const original = {
     requestId: "original-request",
     scope,
     modelId: 7,
+    reviewModelId: 23,
     prompt: "原始提示词",
     count: 2,
     refImageUrls: '["media://original-image"]',
@@ -182,6 +183,18 @@ test("recovery preserves the original request, model, media and explicit account
       ...scope,
       teamId: 9,
     }),
+  );
+});
+
+test("工具生成仅在用户选定审查模型时提交审查参数", () => {
+  const form = { ...forms.EMPTY_GENERATION_FORM, prompt: "蓝车经过路口" };
+  for (const mode of ["image", "video"]) {
+    assert.equal("reviewModelId" in requests.generationSubmitRequest(mode, form, 7), false);
+    assert.equal(requests.generationSubmitRequest(mode, form, 7, null, null, 23).reviewModelId, 23);
+  }
+  assert.throws(() =>
+    pending.readPendingGeneration(JSON.stringify({ ...original, request: { ...original.request, reviewModelId: 0 } }),
+      "image", scope),
   );
 });
 

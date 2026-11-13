@@ -54,5 +54,7 @@ public class VideoTaskSubmitReqVO extends GenerationScopeReqVO {
 
     private Long modelId;
 
+    private Long reviewModelId;
+
     private String category;
 }

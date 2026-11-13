@@ -6,8 +6,6 @@ import com.stonewu.fusion.entity.generation.ImageTask;
 import com.stonewu.fusion.entity.generation.VideoTask;
 import com.stonewu.fusion.service.canvas.model.CanvasActor;
 import lombok.RequiredArgsConstructor;
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.stonewu.fusion.entity.generation.GenerationSubmissionEntity;
 import com.stonewu.fusion.mapper.generation.GenerationSubmissionMapper;
 import org.springframework.stereotype.Component;
 
@@ -44,19 +42,16 @@ public class GenerationTaskViews {
             return Map.of();
         }
         var result = new HashMap<Long, Execution>();
-        submissions.selectList(new LambdaQueryWrapper<GenerationSubmissionEntity>()
-                        .select(GenerationSubmissionEntity::getId, GenerationSubmissionEntity::getTaskId,
-                                GenerationSubmissionEntity::getState, GenerationSubmissionEntity::getCancelRequested,
-                                GenerationSubmissionEntity::getActorUserId)
-                        .eq(GenerationSubmissionEntity::getKind, kind.name()).in(GenerationSubmissionEntity::getTaskId, ids))
-                .forEach(row -> result.put(row.getTaskId(), new Execution(row.getId(), row.getState(),
-                        row.getCancelRequested(), actor.userId() == row.getActorUserId())));
+        submissions.taskSummaries(kind.name(), ids)
+                .forEach(row -> result.put(row.taskId(), new Execution(row.id(), row.state(),
+                        row.cancelRequested(), actor.userId() == row.actorUserId(), row.reviewRequested())));
         return result;
     }
 
     public record View<T>(@JsonUnwrapped T task, Execution execution) {
     }
 
-    public record Execution(String id, String state, boolean cancelRequested, boolean canControl) {
+    public record Execution(String id, String state, boolean cancelRequested, boolean canControl,
+                            boolean reviewRequested) {
     }
 }

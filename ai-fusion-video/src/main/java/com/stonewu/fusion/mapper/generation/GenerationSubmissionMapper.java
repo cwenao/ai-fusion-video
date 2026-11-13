@@ -6,8 +6,16 @@ import com.stonewu.fusion.entity.generation.GenerationSubmissionEntity;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
+import java.util.List;
+
 @Mapper
 public interface GenerationSubmissionMapper extends BaseMapper<GenerationSubmissionEntity> {
+    record TaskSummary(long taskId, String id, String state, boolean cancelRequested, long actorUserId,
+                       boolean reviewRequested) {
+    }
+
+    List<TaskSummary> taskSummaries(@Param("kind") String kind, @Param("ids") List<Long> ids);
+
     String lock(@Param("id") String id);
 
     long countActiveJobs(@Param("kind") String kind, @Param("taskId") long taskId);

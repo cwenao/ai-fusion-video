@@ -8,6 +8,7 @@ import com.stonewu.fusion.common.BusinessException;
 import com.stonewu.fusion.config.AgentScopeV2Properties;
 import com.stonewu.fusion.config.ai.AiAgentDefinition;
 import com.stonewu.fusion.controller.ai.vo.AiChatReqVO;
+import com.stonewu.fusion.service.generation.review.GenerationReviewAdmission;
 import com.stonewu.fusion.controller.ai.vo.AiChatStreamRespVO;
 import com.stonewu.fusion.controller.ai.vo.AiMultimodalInputVO;
 import com.stonewu.fusion.controller.ai.vo.AiReferenceVO;
@@ -87,6 +88,7 @@ public final class AgentScopePipelineRunService {
     private final AgentRuntimeSchedulers schedulers;
     private final ObjectMapper objectMapper;
     private final CanvasAgentScopeService canvasScopes;
+    private final GenerationReviewAdmission reviews;
 
     public AgentScopePipelineRunService(
             AiModelService modelService,
@@ -106,7 +108,8 @@ public final class AgentScopePipelineRunService {
             AgentScopeV2Properties properties,
             AgentRuntimeSchedulers schedulers,
             ObjectMapper objectMapper,
-            CanvasAgentScopeService canvasScopes) {
+            CanvasAgentScopeService canvasScopes,
+            GenerationReviewAdmission reviews) {
         this.modelService = Objects.requireNonNull(modelService, "modelService must not be null");
         this.agentService = Objects.requireNonNull(agentService, "agentService must not be null");
         this.conversations = Objects.requireNonNull(conversations, "conversations must not be null");
@@ -129,6 +132,7 @@ public final class AgentScopePipelineRunService {
         this.schedulers = Objects.requireNonNull(schedulers, "schedulers must not be null");
         this.objectMapper = Objects.requireNonNull(objectMapper, "objectMapper must not be null");
         this.canvasScopes = Objects.requireNonNull(canvasScopes, "canvasScopes must not be null");
+        this.reviews = Objects.requireNonNull(reviews, "reviews must not be null");
     }
 
     public Flux<AiChatStreamRespVO> stream(AiChatReqVO request, long userId) {
@@ -219,6 +223,7 @@ public final class AgentScopePipelineRunService {
 
     private PreparedRun prepare(AiChatReqVO request, long userId, Long actorTeamId) {
         CanvasActor actor = new CanvasActor(userId, actorTeamId);
+        String reviewPlan = reviews.pipeline(request, actor);
         var canvasScope = canvasScopes.capture(request.getCanvasContext(), request.getProjectId(), actor);
         if ("canvas_assistant".equals(request.getAgentType()) && canvasScope == null) {
             throw new BusinessException(400, "画布助手必须从明确的画布启动");
@@ -275,7 +280,8 @@ public final class AgentScopePipelineRunService {
                 visibleUserContent,
                 normalize(request.getReferencesJson()),
                 actorTeamId,
-                canvasScopes.encode(canvasScope));
+                canvasScopes.encode(canvasScope),
+                reviewPlan);
         ProjectContext project = request.getProjectId() == null
                 ? null
                 : new ProjectContext(request.getProjectId());

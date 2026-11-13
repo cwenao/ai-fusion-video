@@ -1,11 +1,16 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Sparkles, X, ImageIcon, Check } from "lucide-react";
+import { Sparkles, ImageIcon, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { resolveMediaUrl } from "@/lib/api/client";
 import type { AssetItem } from "@/lib/api/asset";
 import { SafeImage } from "@/components/media/managed-image";
+import { GenerationReviewFields } from "@/components/generation-review/generation-review-fields";
+import { useGenerationReviewChoice } from "@/components/generation-review/use-generation-review-choice";
+import { DialogScrollBody } from "@/components/shared/dialog-scroll-body";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 /** 带主资产信息的子资产 */
 export interface AssetItemWithInfo {
@@ -26,7 +31,7 @@ interface BatchGenDialogProps {
   onClose: () => void;
   /** 子资产列表（带主资产信息） */
   assetItems: AssetItemWithInfo[];
-  onConfirm: (selected: SelectedAssetItem[]) => void;
+  onConfirm: (selected: SelectedAssetItem[], reviewModelId?: number) => void;
 }
 
 const typeLabels: Record<string, string> = {
@@ -56,15 +61,22 @@ export function BatchGenDialog({
     [assetItems]
   );
   const [selectedOverride, setSelectedOverride] = useState<Set<number> | null>(null);
-  const selected = selectedOverride ?? defaultSelected;
+  const selected = selectedOverride
+    ? new Set([...selectedOverride].filter((id) => defaultSelected.has(id))) : defaultSelected;
+  const review = useGenerationReviewChoice("image");
 
-  if (!open) return null;
+  if (!open) {
+    return null;
+  }
 
   const toggleItem = (id: number) => {
     setSelectedOverride((prev) => {
       const next = new Set(prev ?? selected);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
       return next;
     });
   };
@@ -78,10 +90,13 @@ export function BatchGenDialog({
   };
 
   const handleConfirm = () => {
+    if (!selected.size || !review.ready) {
+      return;
+    }
     const result: SelectedAssetItem[] = assetItems
       .filter((a) => selected.has(a.item.id))
       .map((a) => ({ assetId: a.assetId, itemId: a.item.id }));
-    onConfirm(result);
+    onConfirm(result, review.modelId);
     onClose();
   };
 
@@ -97,39 +112,20 @@ export function BatchGenDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      {/* 遮罩 */}
-      <div
-        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-        onClick={onClose}
-      />
-
-      {/* 弹窗 */}
-      <div className="relative bg-card border border-border/30 rounded-2xl shadow-2xl w-[480px] max-w-[90vw] max-h-[80vh] flex flex-col overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border/20">
-          <div className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-lg bg-linear-to-br from-cyan-500/20 to-blue-500/20 flex items-center justify-center">
-              <Sparkles className="h-4 w-4 text-cyan-400" />
-            </div>
-            <div>
-              <h3 className="text-sm font-semibold">批量生图</h3>
-              <p className="text-[10px] text-muted-foreground">
-                选择需要生成图片的子资产
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground transition-colors"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
+    <Dialog open={open} onOpenChange={(next) => {
+      if (!next) {
+        onClose();
+      }
+    }}>
+      <DialogContent className="flex max-h-[calc(100vh-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-lg">
+        <DialogHeader className="shrink-0 border-b border-border/20 px-5 py-4 pr-14">
+          <DialogTitle>批量生图</DialogTitle>
+          <DialogDescription>选择需要生成图片的子资产</DialogDescription>
+        </DialogHeader>
 
         {/* 全选 */}
         {assetItems.length > 0 && (
-          <div className="px-5 py-2.5 border-b border-border/10 flex items-center justify-between">
+          <div className="flex shrink-0 items-center justify-between border-b border-border/20 px-5 py-2">
             <button
               onClick={toggleAll}
               className="text-xs text-primary hover:text-primary/80 font-medium transition-colors"
@@ -143,7 +139,8 @@ export function BatchGenDialog({
         )}
 
         {/* 子资产列表（按主资产分组） */}
-        <div className="flex-1 overflow-y-auto p-3 space-y-3 min-h-0">
+        <DialogScrollBody className="flex flex-col gap-3 p-4">
+          <GenerationReviewFields choice={review} />
           {assetItems.length === 0 ? (
             <div className="text-center py-8">
               <ImageIcon className="h-8 w-8 text-muted-foreground/20 mx-auto mb-2" />
@@ -246,32 +243,22 @@ export function BatchGenDialog({
               );
             })
           )}
-        </div>
+        </DialogScrollBody>
 
         {/* Footer */}
-        <div className="px-5 py-3.5 border-t border-border/20 flex items-center justify-end gap-2">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 rounded-xl text-xs font-medium text-muted-foreground hover:bg-muted transition-colors"
-          >
+        <div className="flex shrink-0 items-center justify-end gap-2 border-t border-border/20 px-5 py-3">
+          <Button type="button" variant="ghost" onClick={onClose}>
             取消
-          </button>
-          <button
+          </Button>
+          <Button type="button" variant="image"
             onClick={handleConfirm}
-            disabled={selected.size === 0}
-            className={cn(
-              "flex items-center gap-1.5 px-5 py-2 rounded-xl text-xs font-medium transition-all",
-              "bg-linear-to-r from-cyan-600 to-blue-600 text-white",
-              "hover:shadow-lg hover:shadow-cyan-500/20 hover:scale-[1.02]",
-              "active:scale-[0.98]",
-              "disabled:opacity-40 disabled:pointer-events-none"
-            )}
+            disabled={selected.size === 0 || !review.ready}
           >
-            <Sparkles className="h-3.5 w-3.5" />
+            <Sparkles />
             开始生成 ({selected.size})
-          </button>
+          </Button>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

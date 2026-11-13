@@ -270,20 +270,15 @@ const CardItemUI = memo(
 
             {/* 生成视频按钮 - 右下角悬浮（只在图片模式或没有切换 tab 时显示） */}
             {onVideoGen && !hasBoth && (
-              <button
+              <Button type="button" variant="secondary" size="icon-sm" aria-label="生成镜头视频"
                 onClick={(e) => {
                   e.stopPropagation();
                   onVideoGen(item.id);
                 }}
-                className={cn(
-                  "absolute bottom-2 right-2 p-1.5 rounded-md bg-black/40 backdrop-blur-sm",
-                  "opacity-0 group-hover:opacity-100 transition-all z-20",
-                  "hover:bg-purple-500/60 text-white/90"
-                )}
-                title="生成视频"
+                className="absolute right-2 bottom-2 z-20"
               >
-                <Video className="h-3.5 w-3.5" />
-              </button>
+                <Video />
+              </Button>
             )}
           </div>
 

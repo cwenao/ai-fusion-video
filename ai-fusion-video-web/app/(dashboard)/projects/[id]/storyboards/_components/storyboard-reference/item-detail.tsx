@@ -1,6 +1,7 @@
 "use client";
 
 import { SafeImage } from "@/components/media/managed-image";
+import { GenerationReviewBadge } from "@/components/generation-review/generation-review-badge";
 import type { Asset, AssetItem } from "@/lib/api/asset";
 import { assetApi } from "@/lib/api/asset";
 import { resolveMediaUrl } from "@/lib/api/client";
@@ -28,7 +29,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { FrameReferenceSection } from "../storyboard-frame-reference-dialog";
 import { LinkedAssetGroup } from "./linked-asset-group";
-import { parseIds, typeConfig } from "./reference-shared";
+import { parseIds, typeConfig, type FrameGenerateHandler } from "./reference-shared";
 
 export // ========== 镜头详情（保留原有） ==========
 
@@ -52,11 +53,7 @@ function ItemDetail({
     frameType: StoryboardFrameType,
     imageUrl: string | null,
   ) => Promise<void> | void;
-  onGenerateFrame?: (
-    item: StoryboardItem,
-    frameType: StoryboardFrameType,
-    prompt: string,
-  ) => Promise<void> | void;
+  onGenerateFrame?: FrameGenerateHandler;
   onPreviewImage?: (url: string, title: string) => void;
 }) {
   const router = useRouter();
@@ -242,10 +239,11 @@ function ItemDetail({
   return (
     <div className="p-4 space-y-5">
       {/* 标题 */}
-      <div>
-        <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-1.5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h4 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           <Info className="h-3 w-3" /> 镜头详情
         </h4>
+        <GenerationReviewBadge source={item.generatedVideoUrl} target="SHOT_VIDEO" targetId={item.id} />
       </div>
 
       <FrameReferenceSection

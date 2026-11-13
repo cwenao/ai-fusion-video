@@ -30,6 +30,7 @@ import com.stonewu.fusion.service.generation.video.strategy.VideoGenerationStrat
 import com.stonewu.fusion.service.generation.video.strategy.VideoGenerationStrategyRouter;
 import com.stonewu.fusion.service.resource.model.ResourceCommandContext;
 import org.junit.jupiter.api.BeforeEach;
+import com.stonewu.fusion.service.generation.review.GenerationReviewAdmission;
 import org.junit.jupiter.api.Test;
 import com.stonewu.fusion.mapper.generation.GenerationSubmissionMapper;
 import com.stonewu.fusion.mapper.generation.RemoteGenerationJobMapper;
@@ -65,7 +66,8 @@ class GenerationSubmissionServiceTests {
             mock(GenerationExecutionContexts.class), models, capabilities, workflows,
             images, videos, mock(GenerationJobRepository.class), mock(GenerationOutbox.class),
             mock(GenerationRequestRepository.class), imageProtocols, videoProtocols,
-            mock(GenerationInputVersions.class), mock(CanvasAgentNodeGeneration.class));
+            mock(GenerationInputVersions.class), mock(CanvasAgentNodeGeneration.class),
+            mock(GenerationReviewAdmission.class));
 
     @BeforeEach
     void configure() {

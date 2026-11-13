@@ -320,6 +320,7 @@ export function GenerationHistory({
                       task.execution?.cancelRequested === true
                     }
                     taskError={task.errorMsg}
+                    reviewRequested={task.execution?.reviewRequested === true}
                     onUseReference={onUseReference}
                     onAddAsset={onAddAsset}
                     onPreview={setMediaPreview}

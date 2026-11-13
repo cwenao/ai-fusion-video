@@ -16,6 +16,7 @@ import com.stonewu.fusion.service.generation.GenerationExecutionContexts;
 import com.stonewu.fusion.service.generation.GenerationKind;
 import com.stonewu.fusion.service.generation.GenerationItemViews;
 import com.stonewu.fusion.service.generation.GenerationTaskViews;
+import com.stonewu.fusion.service.generation.review.GenerationContentReview.Selection;
 import com.stonewu.fusion.service.resource.model.ResourceCommandContext;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -51,7 +52,8 @@ public class ImageGenerationController {
         reqVO.getScope().require(actor);
         ImageTask task = GenerationConvert.INSTANCE.convert(reqVO);
         task.setUserId(requireCurrentUserId());
-        String taskId = submissions.image(task, reqVO.getRequestId(), ResourceCommandContext.user(actor, null), null).publicTaskId();
+        String taskId = submissions.image(task, reqVO.getRequestId(), ResourceCommandContext.user(actor, null), null,
+                Selection.manual(reqVO.getReviewModelId())).publicTaskId();
         return CommonResult.success(taskId);
     }
 

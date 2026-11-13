@@ -10,6 +10,7 @@ import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.stonewu.fusion.config.AgentScopeRuntimeProperties;
 import com.stonewu.fusion.config.AgentScopeV2Properties;
 import com.stonewu.fusion.controller.ai.vo.AiChatReqVO;
+import com.stonewu.fusion.service.generation.review.GenerationReviewAdmission;
 import com.stonewu.fusion.entity.ai.AiModel;
 import com.stonewu.fusion.entity.ai.AgentRun;
 import com.stonewu.fusion.entity.ai.AgentMessage;
@@ -155,7 +156,8 @@ class AgentScopePipelineRunServiceTests {
                 properties,
                 schedulers,
                 new ObjectMapper(),
-                mock(CanvasAgentScopeService.class));
+                mock(CanvasAgentScopeService.class),
+                mock(GenerationReviewAdmission.class));
         AiChatReqVO request = new AiChatReqVO()
                 .setConversationId("conversation-1")
                 .setMessage("hello harness")
@@ -281,7 +283,8 @@ class AgentScopePipelineRunServiceTests {
                 properties,
                 schedulers,
                 new ObjectMapper(),
-                mock(CanvasAgentScopeService.class));
+                mock(CanvasAgentScopeService.class),
+                mock(GenerationReviewAdmission.class));
 
         StepVerifier.create(service.startContinuation("conversation-1", 42L))
                 .assertNext(started -> assertThat(started.conversationId())
@@ -344,7 +347,8 @@ class AgentScopePipelineRunServiceTests {
                 new AgentScopeV2Properties(),
                 schedulers,
                 new ObjectMapper(),
-                mock(CanvasAgentScopeService.class));
+                mock(CanvasAgentScopeService.class),
+                mock(GenerationReviewAdmission.class));
 
         StepVerifier.create(service.startContinuation("conversation-1", 42L))
                 .expectErrorSatisfies(error -> assertThat(error)

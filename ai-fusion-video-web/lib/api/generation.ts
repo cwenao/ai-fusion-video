@@ -87,6 +87,7 @@ export interface ImageGenerationSubmitReq {
   height?: number;
   count?: number;
   modelId: number;
+  reviewModelId?: number;
   category?: string;
 }
 
@@ -111,6 +112,7 @@ export interface VideoGenerationSubmitReq {
   cameraFixed?: boolean;
   count?: number;
   modelId: number;
+  reviewModelId?: number;
   category?: string;
 }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, type ClipboardEvent, type DragEvent } from "react";
+import { useRef, useState, type ClipboardEvent, type DragEvent, type ReactNode } from "react";
 import { toast } from "sonner";
 import {
   CircleAlert,
@@ -53,6 +53,7 @@ interface GenerationSimpleComposerProps {
   minAttachments: number;
   submitting: boolean;
   submitDisabled?: boolean;
+  reviewControl: ReactNode;
   onModelChange: (modelId: number) => void;
   onFormChange: (patch: Partial<GenerationFormState>) => void;
   onAddAttachments: (urls: string[], kind?: SimpleAttachmentKind) => void;
@@ -79,6 +80,7 @@ export function GenerationSimpleComposer({
   minAttachments,
   submitting,
   submitDisabled = false,
+  reviewControl,
   onModelChange,
   onFormChange,
   onAddAttachments,
@@ -273,6 +275,8 @@ export function GenerationSimpleComposer({
               : "pt-5",
           )}
         />
+
+        <div className="mx-4 mb-2">{reviewControl}</div>
 
         <div className="mx-2 mb-2 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/15 bg-background/42 p-1.5 shadow-sm backdrop-blur-xl dark:border-white/6">
           <div className="flex min-w-0 flex-wrap items-center gap-1">

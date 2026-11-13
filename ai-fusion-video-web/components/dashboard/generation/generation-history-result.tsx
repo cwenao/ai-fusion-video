@@ -32,6 +32,7 @@ import {
   getTaskStatus,
 } from "./generation-utils";
 import type { GenerationMediaPreview } from "./generation-media-preview-dialog";
+import { GenerationReviewBadge } from "@/components/generation-review/generation-review-badge";
 
 interface GenerationHistoryResultProps {
   mode: WorkbenchMode;
@@ -41,6 +42,7 @@ interface GenerationHistoryResultProps {
   taskStatus: ReturnType<typeof getTaskStatus>;
   taskCancelRequested: boolean;
   taskError?: string | null;
+  reviewRequested: boolean;
   onUseReference: (item: GenerationResultItem) => void;
   onAddAsset: (item: GenerationResultItem, prompt: string) => void;
   onPreview: (preview: GenerationMediaPreview) => void;
@@ -67,6 +69,7 @@ export function GenerationHistoryResult({
   taskStatus,
   taskCancelRequested,
   taskError,
+  reviewRequested,
   onUseReference,
   onAddAsset,
   onPreview,
@@ -300,6 +303,11 @@ export function GenerationHistoryResult({
           </ManagedMediaLink>
         )}
       </div>
+      {reviewRequested && mediaUrl && (
+        <div className="border-t border-border/20 p-2">
+          <GenerationReviewBadge source={getResultMediaUrl(item)} expected />
+        </div>
+      )}
     </article>
   );
 }

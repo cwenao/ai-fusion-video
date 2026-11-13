@@ -9,7 +9,7 @@
 4. **定位目标并固定版本**：从返回的 `assets` 数组中定位主资产，再在 `items` 中读取目标的 `version` 与 `assetVersion`，分别保存为后续更新的 `expectedVersion` 和 `expectedParentVersion`。匹配 `itemId` 确定 `itemType`（initial, three_view, variant）及资产信息（assetName, assetType, assetDescription 等）。
 5. **获取初始图（衍生图）**：若 itemType 不是 `initial`，在 items 中定位 `itemType` 为 `initial` 的子资产并提取其 `imageUrl`。
 6. **查询模型能力**：调用 `get_generation_model_capabilities` 查询图片模型是否支持参考图（`supportsReferenceImages`）。
-7. **生图**：结合画风、参考图及资产描述编排中文 Prompt，调用 `generate_image` 生成**一张**图片。
+7. **生图**：结合画风、参考图及资产描述编排中文 Prompt，调用 `generate_image` 生成**一张**图片，`reviewTargetId` 填当前任务的 `itemId`。
 8. **更新**：调用 `update_asset_image(assetId, itemId, expectedVersion, expectedParentVersion, imageUrl)`，使用第 4 步固定的版本保存图片。发生 VERSION_CONFLICT 时保留生成结果并报告目标已变化；禁止重新读取最新版本后强制覆盖。仅在收到成功回执后报告图片已绑定，否则明确说明候选已生成但尚未绑定。
 
 ## 2. 参考图编排与降级规则

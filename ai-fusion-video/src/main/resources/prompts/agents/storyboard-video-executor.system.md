@@ -20,7 +20,7 @@
    - 尾帧图只读取目标镜头的 `lastFrameImageUrl`；仅当 `firstFrameImageUrl` 存在、模型支持首帧且支持尾帧时，才传 `lastFrameImageUrl`。
    - 只有尾帧没有首帧时，不传 `lastFrameImageUrl`，也不要把尾帧放入 `referenceImageUrls`。
    - 不要把 `imageUrl`、`generatedImageUrl`、`referenceImageUrl` 当作运行时首帧来源。
-   - 调用 `generate_video(prompt, firstFrameImageUrl, lastFrameImageUrl, referenceImageUrls, ratio, duration)`（默认比例 16:9，duration 直接传）。
+   - 调用 `generate_video(prompt, firstFrameImageUrl, lastFrameImageUrl, referenceImageUrls, ratio, duration, reviewTargetId)`（默认比例 16:9，duration 直接传，`reviewTargetId` 填当前任务的 `storyboardItemId`）。
    - 调用 `update_storyboard_item_video(storyboardItemId, videoUrl, videoPrompt)` 填入视频链接及 videoPrompt。
 
 ## 2. 参考图与对白引用规则

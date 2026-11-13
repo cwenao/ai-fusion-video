@@ -41,6 +41,14 @@ public class AiProviderService {
         return fingerprint(contextFactory.createForModel(model));
     }
 
+    public boolean supportsNativeVideoInput(AiModel model) {
+        var context = contextFactory.createForModel(model);
+        var provider = providerRegistry.getProvider(context);
+        return provider instanceof GeminiAiProvider || provider instanceof DashScopeAiProvider
+                || (provider instanceof OpenAiCompatibleAiProvider compatible
+                && !compatible.shouldUseResponsesApi(context));
+    }
+
     public AgentScopeModelProvision provisionAgentScopeModel(AiModel model) {
         AiProviderContext context = contextFactory.createForModel(model);
         ChatModelBase agentScopeModel = providerRegistry.getProvider(context)

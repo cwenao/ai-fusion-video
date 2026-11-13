@@ -67,6 +67,8 @@ export function readPendingGeneration(
     request.prompt.length > 100_000 ||
     !Number.isSafeInteger(request.modelId) ||
     Number(request.modelId) <= 0 ||
+    (request.reviewModelId !== undefined && (!Number.isSafeInteger(request.reviewModelId) ||
+      Number(request.reviewModelId) <= 0 || !request.prompt.trim())) ||
     !Number.isSafeInteger(request.count) ||
     Number(request.count) < 1 ||
     Number(request.count) > 32

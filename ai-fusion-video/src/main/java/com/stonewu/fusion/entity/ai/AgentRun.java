@@ -1,6 +1,7 @@
 package com.stonewu.fusion.entity.ai;
 
 import com.baomidou.mybatisplus.annotation.*;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.*;
 
 import java.time.LocalDateTime;
@@ -20,6 +21,8 @@ public class AgentRun {
     private Long userId;
     private Long actorTeamId;
     private String canvasScopeJson;
+    @JsonIgnore
+    private String generationReviewJson;
     private LocalDateTime externalCheckAfter;
     private String externalResumeJson;
     private Long externalResumeSequence;

@@ -14,6 +14,7 @@ import { useCallback, useState } from "react";
 import { ItemDetail } from "./storyboard-reference/item-detail";
 import {
   BatchFrameGenerateHandler,
+  FrameGenerateHandler,
   SceneWithItems,
 } from "./storyboard-reference/reference-shared";
 import { SceneAssetPanel } from "./storyboard-reference/scene-asset-panel";
@@ -46,11 +47,7 @@ export function StoryboardRefPanel({
     frameType: StoryboardFrameType,
     imageUrl: string | null,
   ) => Promise<void> | void;
-  onGenerateFrame?: (
-    item: StoryboardItem,
-    frameType: StoryboardFrameType,
-    prompt: string,
-  ) => Promise<void> | void;
+  onGenerateFrame?: FrameGenerateHandler;
   onBatchGenerateFrames?: BatchFrameGenerateHandler;
   onEditAssets?: (item: StoryboardItem) => void;
 }) {

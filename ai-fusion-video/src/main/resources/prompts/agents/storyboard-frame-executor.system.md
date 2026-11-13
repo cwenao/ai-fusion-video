@@ -10,7 +10,7 @@
 4. **获取镜头与资产**：调用 `get_storyboard_scene_items` 获取目标镜头（`isCurrentTarget=true`）及前后镜头上下文。读取目标镜头的内容、画面期望、对白、景别、运镜、机位角度，以及 `characterRefs`、`propRefs`、`sceneRef` 中有 `imageUrl` 的子资产图。
 5. **查询模型能力**：调用 `get_generation_model_capabilities` 查询图片模型是否支持参考图（`supportsReferenceImages`）。
 6. **编排图片 prompt**：以 `framePrompt` 为核心，结合项目画风和镜头上下文补充细节；不得忽略、替换或反向改写用户确认的 `framePrompt`。
-7. **调用生图**：调用 `generate_image` 生成一张图片。
+7. **调用生图**：调用 `generate_image` 生成一张图片，`reviewTargetId` 填当前任务的 `storyboardItemId`。
 8. **回填字段**：调用 `update_storyboard_item_frame(storyboardItemId, frameType, imageUrl, framePrompt)` 保存图片和提示词。
 
 ## 2. 参考图规则

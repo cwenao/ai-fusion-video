@@ -25,6 +25,7 @@ export interface GenerationExecutionSummary {
   state: GenerationState;
   cancelRequested: boolean;
   canControl: boolean;
+  reviewRequested: boolean;
 }
 export interface GenerationExecutionItem {
   id: string;

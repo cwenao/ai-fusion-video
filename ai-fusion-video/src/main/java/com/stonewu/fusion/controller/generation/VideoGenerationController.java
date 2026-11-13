@@ -15,6 +15,7 @@ import com.stonewu.fusion.service.generation.GenerationTaskViews;
 import com.stonewu.fusion.service.generation.job.GenerationJobCommands;
 import com.stonewu.fusion.service.generation.job.GenerationJobQueries;
 import com.stonewu.fusion.service.generation.job.GenerationSubmissionService;
+import com.stonewu.fusion.service.generation.review.GenerationContentReview.Selection;
 import com.stonewu.fusion.service.generation.video.VideoGenerationService;
 import com.stonewu.fusion.service.resource.model.ResourceCommandContext;
 import io.swagger.v3.oas.annotations.Operation;
@@ -51,8 +52,8 @@ public class VideoGenerationController {
         reqVO.getScope().require(actor);
         VideoTask task = GenerationConvert.INSTANCE.convert(reqVO);
         task.setUserId(requireCurrentUserId());
-        String taskId = submissions.video(task, reqVO.getRequestId(), ResourceCommandContext.user(actor, null), null)
-                .publicTaskId();
+        String taskId = submissions.video(task, reqVO.getRequestId(), ResourceCommandContext.user(actor, null), null,
+                Selection.manual(reqVO.getReviewModelId())).publicTaskId();
         return CommonResult.success(taskId);
     }
 
