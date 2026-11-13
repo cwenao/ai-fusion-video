@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.stonewu.fusion.service.ai.ToolExecutionContext;
 import com.stonewu.fusion.service.canvas.CanvasJson;
+import com.stonewu.fusion.service.canvas.model.CanvasActor;
+import com.stonewu.fusion.service.canvas.model.CanvasErrorCode;
 import com.stonewu.fusion.service.canvas.model.CanvasException;
 import com.stonewu.fusion.service.resource.ResourceQueryService;
 import com.stonewu.fusion.service.resource.ScriptFields;
@@ -32,6 +34,7 @@ public class ScriptToolQueries {
                 case "get_script" -> queries.get(SCRIPT, id(params, "scriptId"), actor).data();
                 case "get_script_scene" -> queries.get(SCRIPT_SCENE, id(params, "scriptSceneItemId"), actor).data();
                 case "get_script_episode" -> queries.scriptTree(SCRIPT_EPISODE, id(params, "scriptEpisodeId"), actor);
+                case "get_script_episode_source" -> episodeSource(params, actor);
                 case "get_project_script", "get_script_structure" ->
                         queries.projectScriptTree(id(params, "projectId"), operation.equals("get_script_structure"),
                                 actor);
@@ -88,6 +91,23 @@ public class ScriptToolQueries {
             return json.write(Map.of("status", "error", "message",
                     failure.getMessage() == null ? "剧本查询失败" : failure.getMessage()));
         }
+    }
+
+    private ObjectNode episodeSource(ObjectNode params, CanvasActor actor) {
+        ObjectNode source = queries.get(SCRIPT_EPISODE, id(params, "scriptEpisodeId"), actor).data();
+        int version = source.path("version").intValue();
+        if (params.has("expectedVersion")) {
+            int expectedVersion = ScriptFields.integer(params.get("expectedVersion"), 0, Integer.MAX_VALUE,
+                    "expectedVersion");
+            if (expectedVersion != version) {
+                throw new CanvasException(409, CanvasErrorCode.VERSION_CONFLICT,
+                        "分集已更新，请核对最新原文和场次数后重新解析", Map.of("currentVersion", version));
+            }
+        }
+        if (source.path("rawContent").asText("").isBlank()) {
+            throw ScriptFields.invalid("请填写并保存分集剧本原文后再解析");
+        }
+        return source;
     }
 
     private long id(ObjectNode params, String name) {

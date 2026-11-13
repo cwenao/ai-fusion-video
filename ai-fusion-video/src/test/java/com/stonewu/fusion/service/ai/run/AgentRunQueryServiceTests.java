@@ -80,6 +80,16 @@ class AgentRunQueryServiceTests {
     }
 
     @Test
+    void keepsLineBreaksAndIndentationInStandaloneContentDeltas() {
+        ObjectNode payload = JsonNodeFactory.instance.objectNode().put("delta", "\n\n  ");
+        CommittedAgentEvent event = committed(7, "CONTENT", "TEXT_BLOCK_DELTA", null, payload);
+
+        StepVerifier.create(service.project(run(), event))
+                .assertNext(projected -> assertThat(projected.getContent()).isEqualTo("\n\n  "))
+                .verifyComplete();
+    }
+
+    @Test
     void reconstructsToolArgumentsFromRawJournalDeltas() {
         AgentRun run = run();
         AgentEvent delta = AgentEvent.builder()

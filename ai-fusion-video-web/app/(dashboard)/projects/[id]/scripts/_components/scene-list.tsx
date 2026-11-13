@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import type { ScriptEpisode, SceneItem } from "@/lib/api/script";
 import { SceneCard } from "./scene-card";
 import { EpisodeDetailsEditor } from "./episode-details-editor";
+import { episodeEditorHref } from "./episode-routes";
 
 /** 场次间插入按钮 – absolute 定位在卡片上方间隙居中 */
 function SceneInsertIndicator({
@@ -43,6 +44,7 @@ function SceneInsertIndicator({
 }
 
 export function SceneList({
+  projectId,
   activeEpisode,
   activeScenes,
   isLoading,
@@ -54,6 +56,7 @@ export function SceneList({
   onDeleteScene,
   onEpisodeUpdated,
 }: {
+  projectId: number;
   activeEpisode: ScriptEpisode | undefined;
   activeScenes: SceneItem[];
   isLoading: boolean;
@@ -78,7 +81,12 @@ export function SceneList({
 
   return (
     <div className="max-w-4xl mx-auto px-6 py-5">
-      {activeEpisode && <EpisodeDetailsEditor episode={activeEpisode} scenesCount={activeScenes.length} onSaved={onEpisodeUpdated} />}
+      <EpisodeDetailsEditor
+        episode={activeEpisode}
+        scenesCount={activeScenes.length}
+        editHref={episodeEditorHref(projectId, activeEpisode.id)}
+        onSaved={onEpisodeUpdated}
+      />
 
       {/* 场次卡片列表 */}
       {isLoading ? (

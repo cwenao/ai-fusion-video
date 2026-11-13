@@ -18,6 +18,8 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
+import static com.stonewu.fusion.config.ai.AiAgentRegistry.SCRIPT_EPISODE_REWRITE;
+
 @Service
 @RequiredArgsConstructor
 public class AgentUserConfigurationService {
@@ -43,12 +45,14 @@ public class AgentUserConfigurationService {
     private final Validator validator;
 
     public List<Summary> list(long userId) {
-        return registry.getAll().stream().map(base -> {
-            var value = definitions.get(base.getType(), userId);
-            return new Summary(base.getType(), base.getName(), value.effective().name(),
-                    !json(value.overrides()).isEmpty(), value.revision(),
-                    value.effective().toolsEnabled(), value.effective().defaultSkills(), value.effective().maxIters());
-        }).toList();
+        return registry.getAll().stream()
+                .filter(base -> !SCRIPT_EPISODE_REWRITE.equals(base.getType()))
+                .map(base -> {
+                    var value = definitions.get(base.getType(), userId);
+                    return new Summary(base.getType(), base.getName(), value.effective().name(),
+                            !json(value.overrides()).isEmpty(), value.revision(), value.effective().toolsEnabled(),
+                            value.effective().defaultSkills(), value.effective().maxIters());
+                }).toList();
     }
 
     public Detail detail(long userId, String type) {
@@ -58,6 +62,9 @@ public class AgentUserConfigurationService {
     @Transactional
     @CacheEvict(value = AgentUserOverrideRepository.CACHE, key = "#userId + ':' + #type")
     public long save(long userId, String type, long expectedRevision, AgentSettingsOverride overrides) {
+        if (SCRIPT_EPISODE_REWRITE.equals(type)) {
+            throw new BusinessException(400, "分集剧本改写使用固定的文本编辑配置");
+        }
         if (overrides == null || expectedRevision < 0) {
             throw new BusinessException(400, "智能体配置或版本无效");
         }

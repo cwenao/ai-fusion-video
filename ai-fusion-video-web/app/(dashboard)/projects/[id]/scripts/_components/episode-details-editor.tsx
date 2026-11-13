@@ -1,25 +1,54 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { Loader2, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useCommandRequestKey } from "@/hooks/use-command-request-key";
 import { scriptApi, type ScriptEpisode } from "@/lib/api/script";
 
-interface Props { episode: ScriptEpisode; scenesCount: number; onSaved?: (episode: ScriptEpisode) => void }
-
-export function EpisodeDetailsEditor({ episode, scenesCount, onSaved }: Props) {
-  return <div className="space-y-4 mb-5">
-    <div className="flex items-center justify-between gap-3">
-      <span className="text-sm text-muted-foreground">第 {episode.episodeNumber} 集</span>
-      <span className="text-xs text-muted-foreground">共 {scenesCount} 场</span>
-    </div>
-    <EpisodeField key={`title:${episode.id}`} episode={episode} field="title" label="分集标题" onSaved={onSaved} />
-    <EpisodeField key={`synopsis:${episode.id}`} episode={episode} field="synopsis" label="剧情概览" onSaved={onSaved} />
-  </div>;
+interface EpisodeFieldsProps {
+  episode: ScriptEpisode;
+  onSaved?: (episode: ScriptEpisode) => void;
 }
 
-function EpisodeField({ episode, field, label, onSaved }: Omit<Props, "scenesCount"> & { field: "title" | "synopsis"; label: string }) {
+export function EpisodeDetailsEditor({ episode, scenesCount, editHref, onSaved }: EpisodeFieldsProps & {
+  scenesCount: number;
+  editHref: string;
+}) {
+  const hasSource = Boolean(episode.rawContent?.trim());
+
+  return (
+    <div className="mb-5 flex flex-col gap-4">
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-sm text-muted-foreground">第 {episode.episodeNumber} 集</span>
+        <span className="text-xs text-muted-foreground">共 {scenesCount} 场</span>
+      </div>
+      <EpisodeField key={`title:${episode.id}`} episode={episode} field="title" label="分集标题" onSaved={onSaved} />
+      <EpisodeField key={`synopsis:${episode.id}`} episode={episode} field="synopsis" label="剧情概览" onSaved={onSaved} />
+      <section className="flex min-w-0 flex-col gap-2 border-t border-border/20 pt-3">
+        <div className="flex items-center justify-between gap-2">
+          <h2 id="episode-source-heading" className="text-sm font-medium">分集剧本原文</h2>
+          <Button variant="ghost" nativeButton={false} render={<Link href={editHref} />}
+            aria-label={hasSource ? "编辑分集剧本原文" : "填写分集剧本原文"}>
+            <Pencil />
+            {hasSource ? "编辑" : "填写"}
+          </Button>
+        </div>
+        {hasSource ? (
+          <div tabIndex={0} role="region" aria-labelledby="episode-source-heading"
+            className="max-h-48 overflow-y-auto rounded-lg border border-border/20 bg-background/70 p-3 text-sm leading-6 whitespace-pre-wrap wrap-anywhere focus-visible:outline-2 focus-visible:outline-ring">
+            {episode.rawContent}
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">本集原文未填写</p>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function EpisodeField({ episode, field, label, onSaved }: EpisodeFieldsProps & { field: "title" | "synopsis"; label: string }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [version, setVersion] = useState(episode.version);

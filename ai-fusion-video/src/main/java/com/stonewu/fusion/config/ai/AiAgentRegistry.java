@@ -20,6 +20,7 @@ import java.util.Map;
  */
 @Component
 public class AiAgentRegistry {
+    public static final String SCRIPT_EPISODE_REWRITE = "script_episode_rewrite";
 
     private static final String SUB_AGENT_MESSAGE_SCHEMA = """
             {
@@ -74,6 +75,7 @@ public class AiAgentRegistry {
         registerScriptFullParseAgent();
         registerScriptStoryToScriptAgent();
         registerScriptEpisodeUploadAgent();
+        registerScriptEpisodeRewriteAgent();
         registerScriptAssistantAgent();
         registerScriptToStoryboardAgent();
         registerEpisodeSceneWriterAgent();
@@ -260,7 +262,7 @@ public class AiAgentRegistry {
                 .toolNames(List.of(
                         "list_project_assets", "batch_create_assets",
                         "update_script_info", "save_script_scene_items",
-                        "get_script_episode", "get_script_structure",
+                        "get_script_episode_source", "get_script_episode", "get_script_structure",
                         "manage_script_scenes", "query_asset_metadata", "get_project"))
                 .systemPrompt(loadPrompt("script-episode-upload.system.md"))
                 .instructionTemplate("""
@@ -271,6 +273,15 @@ public class AiAgentRegistry {
                         </task_context>""")
                 .defaultUserMessage("请解析分集（episodeId: {episodeId}）的剧本原文，将内容解析为结构化的场次和对白数据。")
                 .enableTools(1)
+                .build());
+    }
+
+    private void registerScriptEpisodeRewriteAgent() {
+        register(AiAgentDefinition.builder()
+                .type(SCRIPT_EPISODE_REWRITE)
+                .name("分集剧本改写")
+                .systemPrompt(loadPrompt("script-episode-rewrite.system.md"))
+                .enableTools(0)
                 .build());
     }
 

@@ -153,6 +153,17 @@ class AgentUserConfigurationTests {
         assertThat(request.getAgentSkillSnapshot()).isNull();
     }
 
+    @Test
+    void episodeRewriteIgnoresToolAndSkillOverrides() {
+        String type = AiAgentRegistry.SCRIPT_EPISODE_REWRITE;
+        saved.put("42:" + type, "{\"toolsEnabled\":true,\"toolNames\":[\"read_script\"],\"defaultSkills\":[\"chosen\"]}");
+
+        var rewrite = root(new AiChatReqVO().setAgentType(type));
+
+        assertThat(rewrite.toolWhitelist()).isEmpty();
+        assertThat(rewrite.systemPrompt()).doesNotContain("本次规范");
+    }
+
     @Test void categoriesDescribeBusinessPurposeWithoutChangingToolDefinitions() {
         assertThat(AgentToolCategories.category("get_generation_model_capabilities")).isEqualTo("媒体生成");
         assertThat(AgentToolCategories.category("get_project_script")).isEqualTo("剧本创作");
