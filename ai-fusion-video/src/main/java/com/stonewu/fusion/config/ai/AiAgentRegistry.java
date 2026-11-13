@@ -20,6 +20,8 @@ import java.util.Map;
  */
 @Component
 public class AiAgentRegistry {
+    public static final String PROJECT_TEXT_EDITOR = "project_text_editor";
+
 
     private static final String SUB_AGENT_MESSAGE_SCHEMA = """
             {
@@ -74,6 +76,12 @@ public class AiAgentRegistry {
         registerScriptFullParseAgent();
         registerScriptStoryToScriptAgent();
         registerScriptEpisodeUploadAgent();
+        register(AiAgentDefinition.builder()
+                .type(PROJECT_TEXT_EDITOR)
+                .name("分镜与资产文本编辑")
+                .systemPrompt(loadPrompt("project-text-editor.system.md"))
+                .enableTools(0)
+                .build());
         registerScriptAssistantAgent();
         registerScriptToStoryboardAgent();
         registerEpisodeSceneWriterAgent();

@@ -10,6 +10,7 @@ import com.stonewu.fusion.service.ai.ToolExecutor;
 import com.stonewu.fusion.service.canvas.agent.node.CanvasAgentNodeGeneration;
 import com.stonewu.fusion.service.generation.GenerationKind;
 import com.stonewu.fusion.service.generation.GenerationModelCapabilityService;
+import com.stonewu.fusion.service.generation.StoryboardFrameImageOptions;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -32,6 +33,7 @@ public class GetGenerationModelCapabilitiesToolExecutor implements ToolExecutor 
     private final AiModelService aiModelService;
     private final GenerationModelCapabilityService generationModelCapabilityService;
     private final CanvasAgentNodeGeneration canvasModels;
+    private final StoryboardFrameImageOptions frameOptions;
 
     @Override
     public String getToolName() {
@@ -51,7 +53,7 @@ public class GetGenerationModelCapabilitiesToolExecutor implements ToolExecutor 
     @Override
     public String getToolDescription() {
         return """
-                查询当前默认生图模型和生视频模型的能力约束。
+                查询本次生成使用的生图模型和生视频模型的能力约束。
 
                 使用时机：
                 - 在调用 generate_image 前，先确认当前默认图片模型是否支持 imageUrls
@@ -92,6 +94,8 @@ public class GetGenerationModelCapabilitiesToolExecutor implements ToolExecutor 
                 return errorResult("modelType 仅支持 image、video、all");
             }
             Long modelId = params.getLong("modelId");
+            var frame = frameOptions.selected(context);
+            var frameModel = frame == null ? null : new ResolvedModel(frame.model(), "storyboard_frame");
             boolean node = canvasModels.scoped(context);
             if (context.getCanvasScope() != null && !node && modelId == null) {
                 return errorResult("请提供要查询的 modelId，可先用 get_canvas_models 查看画布可用模型。");
@@ -105,6 +109,13 @@ public class GetGenerationModelCapabilitiesToolExecutor implements ToolExecutor 
                 String kind = chosen.getModelType() == MODEL_TYPE_IMAGE ? "image" : "video";
                 if (!"all".equals(requestedType) && !kind.equals(requestedType)) {
                     return errorResult("modelType 与所选模型不一致");
+                }
+                if (frameModel != null && kind.equals("image")) {
+                    if (!frameModel.model().getId().equals(modelId)) {
+                        return errorResult("此模型与本次首尾帧选择的生图模型不一致");
+                    }
+                    return JSONUtil.createObj().set("status", "success").set("requestedModelType", kind)
+                            .set(kind, buildImageResult(frameModel)).toString();
                 }
                 if (node) {
                     var selected = canvasModels.selected(context,
@@ -128,9 +139,11 @@ public class GetGenerationModelCapabilitiesToolExecutor implements ToolExecutor 
                             "如果某个字段不受支持，请直接删除该字段并改写 prompt，不要重复用相同的不支持参数重试。\n");
 
             if (!"video".equals(requestedType)) {
-                ResolvedModel imageModel = canvasModels.scoped(context)
-                        ? new ResolvedModel(canvasModels.selected(context, GenerationKind.IMAGE),
-                        "canvas_node") : resolvePreferredModel(MODEL_TYPE_IMAGE);
+                ResolvedModel imageModel = frameModel;
+                if (imageModel == null) {
+                    imageModel = node ? new ResolvedModel(canvasModels.selected(context, GenerationKind.IMAGE),
+                            "canvas_node") : resolvePreferredModel(MODEL_TYPE_IMAGE);
+                }
                 result.set("image", buildImageResult(imageModel));
             }
             if (!"image".equals(requestedType)) {

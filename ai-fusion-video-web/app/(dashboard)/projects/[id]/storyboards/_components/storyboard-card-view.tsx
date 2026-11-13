@@ -474,7 +474,7 @@ export function StoryboardCardView({
       >
         <SortableContext items={itemIds} strategy={rectSortingStrategy}>
           {/* 修改 Grid 列数，解决卡片太小的问题 */}
-          <div className="grid gap-4 md:gap-5" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))" }}>
+          <div className="grid gap-4 md:gap-5" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 300px), 1fr))" }}>
             {items.map((item, idx) => (
               <SortableCardItem
                 key={item.id}

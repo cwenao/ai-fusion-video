@@ -11,6 +11,8 @@ import { DialogScrollBody } from "@/components/shared/dialog-scroll-body";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useState } from "react";
+import { toastApiError } from "@/lib/api/toast-api-error";
+import { FrameModelFields, useFrameImageOptions } from "../storyboard-frame-model-fields";
 import {
   BatchFrameGenerateHandler,
   compareStoryboardItemsAsc,
@@ -38,6 +40,8 @@ export function BatchFrameGenDialog({
     null,
   );
   const review = useGenerationReviewChoice("image");
+  const image = useFrameImageOptions(open);
+  const [submitting, setSubmitting] = useState(false);
 
   const hasFrameTypeSelected = includeFirstFrame || includeLastFrame;
   const sortedItems = [...items].sort(compareStoryboardItemsAsc);
@@ -107,27 +111,35 @@ export function BatchFrameGenDialog({
   };
 
   const handleConfirm = async () => {
-    if (!canSubmit || !review.ready) {
+    if (!canSubmit || !review.ready || !image.options || submitting) {
       return;
     }
-    await onConfirm({
-      episodeId,
-      sceneId,
-      firstItemIds,
-      lastItemIds,
-      overwriteExisting,
-      reviewModelId: review.modelId,
-    });
-    onClose();
+    setSubmitting(true);
+    try {
+      await onConfirm({
+        episodeId,
+        sceneId,
+        firstItemIds,
+        lastItemIds,
+        overwriteExisting,
+        image: image.options,
+        reviewModelId: review.modelId,
+      });
+      onClose();
+    } catch (cause) {
+      toastApiError(cause, "提交批量首尾帧生成失败");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
     <Dialog open={open} onOpenChange={(next) => {
-      if (!next) {
+      if (!next && !submitting) {
         onClose();
       }
     }}>
-      <DialogContent className="flex max-h-[calc(100vh-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-lg">
+      <DialogContent className="flex max-h-[calc(100vh-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-lg" showCloseButton={!submitting}>
         <DialogHeader className="shrink-0 border-b border-border/20 px-5 py-4 pr-14">
           <DialogTitle>批量生成首尾帧</DialogTitle>
           <DialogDescription>选择当前场次中需要生成首尾帧的分镜镜头</DialogDescription>
@@ -182,7 +194,8 @@ export function BatchFrameGenDialog({
               </span>
             </label>
 
-            <GenerationReviewFields choice={review} />
+            <FrameModelFields choice={image} disabled={submitting} />
+            <GenerationReviewFields choice={review} disabled={submitting} />
 
             {!hasFrameTypeSelected ? (
               <div className="rounded-lg bg-amber-500/10 border border-amber-500/20 px-3 py-2.5 text-xs text-amber-600">
@@ -320,12 +333,12 @@ export function BatchFrameGenDialog({
 
         </DialogScrollBody>
         <div className="flex shrink-0 items-center justify-end gap-2 border-t border-border/20 px-5 py-3">
-          <Button type="button" variant="ghost" onClick={onClose}>
+          <Button type="button" variant="ghost" onClick={onClose} disabled={submitting}>
             取消
           </Button>
           <Button type="button" variant="frame"
             onClick={handleConfirm}
-            disabled={!canSubmit || !review.ready}
+            disabled={!canSubmit || !review.ready || !image.options || submitting}
           >
             <Sparkles />
             开始生成 ({generateCount})

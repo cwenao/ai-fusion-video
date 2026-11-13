@@ -16,6 +16,7 @@
    - `supportsReferenceImages=false`：不传 `referenceImageUrls`，在 prompt 中详述角色/场景/道具外观特征。
    - `supportsReferenceVideos/Audios=false`：不传对应字段。禁止对不支持的参数做重复重试。
 6. **调用生成与更新**：
+   - 目标镜头已有 `videoPrompt` 时，保留其中的创作要求作为生视频提示词，按实际可用输入校正图片编号。没有已保存提示词时按下文编写。
    - 首帧图只读取目标镜头的 `firstFrameImageUrl`；为空或模型不支持首帧时，不传 `firstFrameImageUrl`。
    - 尾帧图只读取目标镜头的 `lastFrameImageUrl`；仅当 `firstFrameImageUrl` 存在、模型支持首帧且支持尾帧时，才传 `lastFrameImageUrl`。
    - 只有尾帧没有首帧时，不传 `lastFrameImageUrl`，也不要把尾帧放入 `referenceImageUrls`。

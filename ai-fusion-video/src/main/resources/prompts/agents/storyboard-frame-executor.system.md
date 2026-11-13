@@ -8,8 +8,8 @@
 2. **校验参数**：`frameType` 只能是 `first` 或 `last`；`framePrompt` 必须存在。缺少任一必要参数时，直接说明失败原因。
 3. **查询项目画风**：调用 `get_project(projectId)` 提取 `artStyleInfo` 的 `description`、`imagePrompt` 和 `referenceImageUrl`。
 4. **获取镜头与资产**：调用 `get_storyboard_scene_items` 获取目标镜头（`isCurrentTarget=true`）及前后镜头上下文。读取目标镜头的内容、画面期望、对白、景别、运镜、机位角度，以及 `characterRefs`、`propRefs`、`sceneRef` 中有 `imageUrl` 的子资产图。
-5. **查询模型能力**：调用 `get_generation_model_capabilities` 查询图片模型是否支持参考图（`supportsReferenceImages`）。
-6. **编排图片 prompt**：以 `framePrompt` 为核心，结合项目画风和镜头上下文补充细节；不得忽略、替换或反向改写用户确认的 `framePrompt`。
+5. **查询模型能力**：调用 `get_generation_model_capabilities` 以 `modelType: image` 查询本次实际选用的生图模型，包括参考图支持情况及数量上限。项目流水线自动应用用户选择的输出参数，调用 `generate_image` 时无需填写宽高。
+6. **编排图片 prompt**：以 `framePrompt` 为核心，结合项目画风和镜头上下文补充细节。批量生成时，优先将目标镜头已有的对应帧提示词作为画面要求，并按批量指令补充。保留用户已确认的内容。
 7. **调用生图**：调用一次 `generate_image`，将当前 `storyboardItemId` 填入 `reviewTargetId`，填写本次 `frameType` 和生成前实际读取的 `expectedVersion`。
 8. **读取回填结果**：项目分镜流水线会等待图片入库并保存到对应帧，按返回的真实回执汇报成功或失败。专业画布节点收到受理回执时，使用 `await_generation_task` 等待，再调用 `update_storyboard_item_frame` 按原版本回填。
 
@@ -19,7 +19,7 @@
 
 当图片模型支持参考图时：
 - 有项目画风参考图时，将其放在 `imageUrls` 第 1 位；prompt 开头写：`仅参考图片1的画面风格，绝不参考其中的任何物品和构图，`
-- 角色、道具、场景参考图从后续位置开始，最多合计 5 张；prompt 中必须按顺序引用图片编号。
+- 角色、道具、场景参考图从后续位置开始，总张数遵守本次模型上限且最多 5 张；prompt 中必须按顺序引用图片编号。
 - 资产图若来自纯白背景设定图，prompt 必须要求剥离纯白背景，让主体自然融入镜头场景。
 
 当图片模型不支持参考图时：

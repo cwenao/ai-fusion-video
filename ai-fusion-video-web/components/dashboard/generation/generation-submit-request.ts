@@ -3,6 +3,7 @@ import type {
   VideoGenerationSubmitReq,
 } from "@/lib/api/generation";
 import type { GenerationFormState, WorkbenchMode } from "./generation-types";
+import { imageRequestResolution } from "@/lib/image-output-sizes";
 import type { GenerationCapabilities } from "@/lib/generation-capabilities";
 
 export type GenerationInput = Omit<
@@ -33,8 +34,7 @@ export function generationSubmitRequest(
   if (mode === "image") {
     const input: Omit<ImageGenerationSubmitReq, "requestId" | "scope"> = {
       ...common,
-      resolution: capabilities?.pixelResolutionTiers?.includes(form.resolution)
-        ? capabilities.imageSizes?.[form.resolution]?.[form.ratio] : common.resolution,
+      resolution: imageRequestResolution(capabilities, form.resolution, form.ratio),
       refImageUrls: referenceImages.length
         ? JSON.stringify(referenceImages)
         : undefined,

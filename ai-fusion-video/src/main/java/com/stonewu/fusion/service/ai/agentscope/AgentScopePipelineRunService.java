@@ -8,6 +8,7 @@ import com.stonewu.fusion.common.BusinessException;
 import com.stonewu.fusion.config.AgentScopeV2Properties;
 import com.stonewu.fusion.config.ai.AiAgentDefinition;
 import com.stonewu.fusion.controller.ai.vo.AiChatReqVO;
+import com.stonewu.fusion.service.generation.StoryboardFrameImageOptions;
 import com.stonewu.fusion.service.generation.review.GenerationReviewAdmission;
 import com.stonewu.fusion.controller.ai.vo.AiChatStreamRespVO;
 import com.stonewu.fusion.controller.ai.vo.AiMultimodalInputVO;
@@ -223,6 +224,10 @@ public final class AgentScopePipelineRunService {
 
     private PreparedRun prepare(AiChatReqVO request, long userId, Long actorTeamId) {
         CanvasActor actor = new CanvasActor(userId, actorTeamId);
+        if ("storyboard_frame_gen".equals(request.getAgentType()) && request.getProjectId() != null
+                && request.getCanvasContext() == null) {
+            StoryboardFrameImageOptions.validateRequest(modelService, request.getContext());
+        }
         String reviewPlan = reviews.pipeline(request, actor);
         var canvasScope = canvasScopes.capture(request.getCanvasContext(), request.getProjectId(), actor);
         if ("canvas_assistant".equals(request.getAgentType()) && canvasScope == null) {

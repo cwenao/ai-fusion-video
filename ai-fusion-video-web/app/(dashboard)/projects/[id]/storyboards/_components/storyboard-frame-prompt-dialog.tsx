@@ -8,6 +8,7 @@ import { DialogScrollBody } from "@/components/shared/dialog-scroll-body";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
+import { FrameModelFields, useFrameImageOptions, type FrameImageOptions } from "./storyboard-frame-model-fields";
 
 export function FramePromptDialog({
   open, title, defaultPrompt, submitting, onClose, onConfirm,
@@ -17,12 +18,13 @@ export function FramePromptDialog({
   defaultPrompt: string;
   submitting: boolean;
   onClose: () => void;
-  onConfirm: (prompt: string, reviewModelId?: number) => Promise<void> | void;
+  onConfirm: (prompt: string, image: FrameImageOptions, reviewModelId?: number) => Promise<void> | void;
 }) {
   const [prompt, setPrompt] = useState(defaultPrompt);
   const field = useId();
   const review = useGenerationReviewChoice("image");
-  const ready = prompt.trim().length > 0 && !submitting && review.ready;
+  const image = useFrameImageOptions(open);
+  const ready = prompt.trim().length > 0 && !submitting && review.ready && image.options !== null;
 
   return (
     <Dialog
@@ -46,13 +48,14 @@ export function FramePromptDialog({
               className="min-h-40 [field-sizing:fixed]"
               onChange={(event) => setPrompt(event.target.value)} />
           </div>
+          <FrameModelFields choice={image} disabled={submitting} />
           <GenerationReviewFields choice={review} disabled={submitting} />
         </DialogScrollBody>
         <div className="flex shrink-0 items-center justify-end gap-2 border-t border-border/20 px-5 py-3">
           <Button type="button" variant="ghost" onClick={onClose} disabled={submitting}>取消</Button>
           <Button type="button" variant="frame" disabled={!ready} onClick={() => {
-            if (ready) {
-              void onConfirm(prompt.trim(), review.modelId);
+            if (ready && image.options) {
+              void onConfirm(prompt.trim(), image.options, review.modelId);
             }
           }}>
             {submitting ? <Loader2 className="animate-spin motion-reduce:animate-none" /> : <Sparkles />}

@@ -72,3 +72,13 @@ export function imageOutputOptions(config: Record<string, unknown>, advertised: 
   const pixelResolutionTiers = advertised.length ? tiers.filter((tier) => !advertised.includes(tier)) : [];
   return { imageSizes, supportedResolutions, pixelResolutionTiers, supportAutoSize: config.supportAutoSize === true };
 }
+
+/** 有些模型的档位只用于界面分组，提交时使用该档位对应的像素尺寸。 */
+export function imageRequestResolution(
+  options: { pixelResolutionTiers?: string[]; imageSizes?: ImageSizeTable } | null | undefined,
+  resolution: string,
+  ratio: string,
+) {
+  return options?.pixelResolutionTiers?.includes(resolution)
+    ? options.imageSizes?.[resolution]?.[ratio] : resolution || undefined;
+}
