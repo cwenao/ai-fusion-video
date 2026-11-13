@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { videoInputState, videoPromptReady } from "@/lib/video-model-rules";
 
 import {
@@ -34,6 +35,7 @@ interface GenerationAdvancedPanelProps {
   form: GenerationFormState;
   submitting: boolean;
   submitDisabled?: boolean;
+  reviewControl: ReactNode;
   onModelChange: (modelId: number) => void;
   onFormChange: (patch: Partial<GenerationFormState>) => void;
   onSubmit: () => void;
@@ -52,6 +54,7 @@ export function GenerationAdvancedPanel({
   form,
   submitting,
   submitDisabled = false,
+  reviewControl,
   onModelChange,
   onFormChange,
   onSubmit,
@@ -344,6 +347,7 @@ export function GenerationAdvancedPanel({
             form={form}
             onChange={onFormChange}
           />
+          <div className="px-2">{reviewControl}</div>
         </div>
       </OverlayScrollArea>
 

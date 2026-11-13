@@ -1,7 +1,7 @@
 "use client";
 
 import type { AssetItem } from "@/lib/api/asset";
-import type { StoryboardItem, StoryboardScene } from "@/lib/api/storyboard";
+import type { StoryboardFrameType, StoryboardItem, StoryboardScene } from "@/lib/api/storyboard";
 import { MapPin, Package, Users } from "lucide-react";
 
 export // ========== 类型 ==========
@@ -30,10 +30,18 @@ export interface BatchFrameGeneratePayload {
   firstItemIds: number[];
   lastItemIds: number[];
   overwriteExisting: boolean;
+  reviewModelId?: number;
 }
 
 export type BatchFrameGenerateHandler = (
   payload: BatchFrameGeneratePayload,
+) => Promise<void> | void;
+
+export type FrameGenerateHandler = (
+  item: StoryboardItem,
+  frameType: StoryboardFrameType,
+  prompt: string,
+  reviewModelId?: number,
 ) => Promise<void> | void;
 
 export // ========== 常量 ==========

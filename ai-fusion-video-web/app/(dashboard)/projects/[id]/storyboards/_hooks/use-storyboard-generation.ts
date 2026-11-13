@@ -127,7 +127,7 @@ const handleGenerateEpisodeStoryboard = useCallback(async (episode: StoryboardEp
   ]);
 
 const handleGenerateItemFrame = useCallback(
-    async (item: StoryboardItem, frameType: StoryboardFrameType, prompt: string) => {
+    async (item: StoryboardItem, frameType: StoryboardFrameType, prompt: string, reviewModelId?: number) => {
       if (!storyboard) {
         throw new Error("缺少分镜上下文，无法生成首尾帧");
       }
@@ -144,6 +144,7 @@ const handleGenerateItemFrame = useCallback(
             category: "pipeline",
             title: `生成镜头 ${shotLabel} ${frameLabel}`,
             projectId,
+            generationReviewModelId: reviewModelId,
             context: {
               selectedStoryboardItemIds: [item.id],
               storyboardId: storyboard.id,
@@ -179,6 +180,7 @@ const handleBatchGenerateSceneFrames = useCallback(
       sceneId,
       firstItemIds,
       lastItemIds,
+      reviewModelId,
     }: BatchFrameGeneratePayload) => {
       if (!storyboard) {
         throw new Error("缺少分镜上下文，无法生成首尾帧");
@@ -236,6 +238,7 @@ const handleBatchGenerateSceneFrames = useCallback(
             category: "pipeline",
             title,
             projectId,
+            generationReviewModelId: reviewModelId,
             context: {
               selectedStoryboardItemIds: task.itemIds,
               storyboardId: storyboard.id,
@@ -270,29 +273,32 @@ const handleBatchGenerateSceneFrames = useCallback(
     ]
   );
 
-const handleVideoGen = useCallback(
-    (itemId: number) => {
-      if (!storyboard) return;
-      const addPipeline = usePipelineStore.getState().addPipeline;
-      const setNotificationOpen =
-        usePipelineStore.getState().setNotificationOpen;
-
+  const handleVideoGen = useCallback(
+    (itemId: number, promptOnly: boolean, reviewModelId?: number) => {
+      if (!storyboard) {
+        return;
+      }
       addPipeline({
-        label: `生成视频 (镜头 #${itemId})`,
+        label: `${promptOnly ? "生成视频提示词" : "生成视频"} (镜头 #${itemId})`,
         projectId,
         request: {
           agentType: "storyboard_video_gen",
           toolExecutionMode: "FULL_ACCESS",
           projectId,
+          generationReviewModelId: reviewModelId,
           context: {
             selectedStoryboardItemIds: [itemId],
             storyboardId: storyboard.id,
+            promptOnly,
           },
+        },
+        onComplete: () => {
+          void refreshStoryboardItems([itemId]);
         },
       });
       setNotificationOpen(true);
     },
-    [projectId, storyboard]
+    [addPipeline, projectId, refreshStoryboardItems, setNotificationOpen, storyboard]
   );
   return { handleAiStoryboard, handleGenerateEpisodeStoryboard, handleGenerateItemFrame, handleBatchGenerateSceneFrames, handleVideoGen };
 }

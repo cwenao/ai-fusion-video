@@ -1,5 +1,6 @@
 "use client";
 import { ManagedVideo } from "@/components/media/managed-video";
+import { Button } from "@/components/ui/button";
 
 
 import { Film, GripVertical, Plus, Trash2, Video, Play, ZoomIn, X } from "lucide-react";
@@ -742,15 +743,14 @@ export function StoryboardTableView({
                     <Tooltip>
                       <TooltipTrigger
                         render={
-                          <button
+                          <Button type="button" variant="ghost" size="icon-xs" aria-label="生成镜头视频"
                             onClick={(e) => {
                               e.stopPropagation();
                               onVideoGen(item.id);
                             }}
-                            className="p-1 rounded opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-purple-400 hover:bg-purple-500/10 transition-all"
                           >
-                            <Video className="h-3 w-3" />
-                          </button>
+                            <Video />
+                          </Button>
                         }
                       />
                       <TooltipContent className={TOOLTIP_CONTENT_CLASS}>

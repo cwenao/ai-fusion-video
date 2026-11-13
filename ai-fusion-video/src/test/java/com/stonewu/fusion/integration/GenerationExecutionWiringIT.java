@@ -2,6 +2,7 @@ package com.stonewu.fusion.integration;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.stonewu.fusion.security.TokenService;
 import com.stonewu.fusion.service.system.SystemConfigService;
 import com.stonewu.fusion.service.generation.job.GenerationAttemptRepository;
@@ -13,6 +14,7 @@ import com.stonewu.fusion.service.canvas.CanvasJson;
 import com.stonewu.fusion.service.canvas.model.CanvasActor;
 import com.stonewu.fusion.service.resource.ResourceToolRequests;
 import com.stonewu.fusion.service.resource.model.ResourceCommandContext;
+import org.flywaydb.core.Flyway;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import com.sun.net.httpserver.HttpExchange;
@@ -44,6 +46,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.URI;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -75,8 +78,10 @@ class GenerationExecutionWiringIT {
     static final AtomicLong IDS = new AtomicLong(28000);
     static final ObjectMapper JSON = new ObjectMapper();
     static final Map<String, Remote> REMOTES = new ConcurrentHashMap<>();
+    static final Map<String, ReviewRemote> REVIEWERS = new ConcurrentHashMap<>();
     static final HttpServer PROVIDER = provider();
     static final byte[] PNG = png();
+    static final AtomicReference<byte[]> VIDEO = new AtomicReference<>();
     @DynamicPropertySource static void properties(DynamicPropertyRegistry p) {
         p.add("spring.datasource.url", MYSQL::getJdbcUrl);
         p.add("spring.datasource.username", MYSQL::getUsername);
@@ -95,7 +100,145 @@ class GenerationExecutionWiringIT {
     @Autowired GenerationSubmissionService submissions;
     @Autowired CanvasJson json;
     @Autowired PlatformTransactionManager transactionManager;
+    @Autowired Flyway flyway;
     @AfterAll static void stopProvider() { PROVIDER.stop(0); }
+
+    @Test
+    void optedInOutputsAreReviewedSeparatelyWithoutBlockingGeneration() throws Exception {
+        flyway.validate();
+        var f = fixture("sync");
+        var outsider = fixture("sync");
+        var reviewer = reviewer(f, "图片审查桩", "image");
+        var remote = reviewer.remote();
+        assertThat(ok(get("/api/generation/reviews/models?kind=IMAGE", f.headers)).findValuesAsText("name"))
+                .contains("图片审查桩");
+        assertThat(ok(get("/api/generation/reviews/models?kind=VIDEO", f.headers)).findValuesAsText("name"))
+                .doesNotContain("图片审查桩");
+
+        String unchecked = submit(f, reviewImageRequest(f, 1));
+        String uncheckedReview = reviewPath(imageResults(f, unchecked).get(0));
+        assertThat(ok(get(uncheckedReview, f.headers)).isNull()).isTrue();
+        assertThat(remote.calls.get()).isZero();
+
+        var reviewedRequest = reviewImageRequest(f, 2);
+        reviewedRequest.put("reviewModelId", reviewer.id());
+        String task = submit(f, reviewedRequest);
+        assertThat(submit(f, reviewedRequest)).isEqualTo(task);
+        var changed = new HashMap<>(reviewedRequest);
+        changed.remove("reviewModelId");
+        assertThat(post(f, changed).getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        var items = imageResults(f, task);
+        assertThat(items).hasSize(2);
+        String first = reviewPath(items.get(0));
+        String second = reviewPath(items.get(1));
+        try {
+            assertThat(remote.started.await(20, TimeUnit.SECONDS)).isTrue();
+            assertThat(ok(get(first, f.headers)).path("state").asText()).isEqualTo("RUNNING");
+            assertThat(ok(get(second, f.headers)).path("state").asText()).isEqualTo("PENDING");
+            assertThat(get(first, outsider.headers).getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+            assertThat(ok(get("/api/generation/image/" + task, f.headers)).at("/execution/reviewRequested").asBoolean())
+                    .isTrue();
+        } finally {
+            remote.release.countDown();
+        }
+        await().pollInterval(Duration.ofMillis(150)).atMost(Duration.ofSeconds(20)).untilAsserted(() -> {
+            assertThat(ok(get(first, f.headers)).at("/result/verdict").asText()).isEqualTo("NEEDS_CHANGES");
+            assertThat(ok(get(second, f.headers)).path("state").asText()).isEqualTo("FAILED");
+        });
+        assertThat(remote.calls.get()).isEqualTo(2);
+        assertThat(remote.input.get()).contains(f.prompt, "image_url",
+                "data:image/png;base64," + Base64.getEncoder().encodeToString(PNG));
+        assertThat(imageResults(f, task).findValues("status")).allMatch(status -> status.asInt() == 1);
+        assertThat(ok(get(first + "?target=ASSET&targetId=7", f.headers)).isNull()).isTrue();
+    }
+
+    @Test
+    void optedInVideoReviewReceivesTheCompleteVideoAndNotItsThumbnail() throws Exception {
+        var f = fixture("sync");
+        byte[] clip = sampleVideo();
+        VIDEO.set(clip);
+        long videoModel = IDS.incrementAndGet();
+        jdbc.update("""
+                INSERT INTO afv_ai_model(id, name, code, model_type, model_protocol, api_config_id, config,
+                    max_concurrency, multimodal_input_types, multimodal_input_transports, reasoning_effort_levels)
+                VALUES (?, '视频生成桩', 'sora-2', 3, 'openai', ?, '{"asyncTaskPollIntervalSeconds":1}', 1,
+                    JSON_ARRAY(), JSON_OBJECT(), JSON_ARRAY())
+                """, videoModel, f.id);
+        var reviewer = reviewer(f, "视频审查桩", "video");
+        reviewer.remote().release.countDown();
+        assertThat(ok(get("/api/generation/reviews/models?kind=VIDEO", f.headers)).findValuesAsText("name"))
+                .contains("视频审查桩");
+        var request = Map.of("requestId", UUID.randomUUID().toString(), "scope", Map.of("userId", f.id),
+                "modelId", videoModel, "reviewModelId", reviewer.id(), "prompt", "蓝色背景，保留声音",
+                "generateMode", "text2video", "ratio", "16:9", "resolution", "1280x720", "duration", 4, "count", 1);
+        String task = ok(http.postForEntity("/api/generation/video/submit", new HttpEntity<>(request, f.headers),
+                JsonNode.class)).asText();
+        String statusPath = "/api/generation/video/" + task;
+        await().atMost(Duration.ofSeconds(30)).untilAsserted(() -> {
+            var execution = ok(get(statusPath + "/execution", f.headers));
+            assertThat(execution.path("state").asText()).as(execution.toString()).isEqualTo("SUCCEEDED");
+        });
+        long id = ok(get(statusPath, f.headers)).path("id").asLong();
+        var item = ok(get("/api/generation/video/" + id + "/items", f.headers)).get(0);
+        String source = item.path("videoUrl").asText();
+        assertThat(source).startsWith("media://").isNotEqualTo(item.path("coverUrl").asText());
+        String review = "/api/generation/reviews/media/" + source.substring("media://".length());
+        await().atMost(Duration.ofSeconds(15)).untilAsserted(() -> {
+            var report = ok(get(review, f.headers));
+            assertThat(report.path("state").asText()).as(report.toString()).isEqualTo("COMPLETED");
+        });
+        assertThat(reviewer.remote().calls.get()).isEqualTo(1);
+        assertThat(reviewer.remote().input.get()).contains("蓝色背景", "video_url",
+                "data:video/mp4;base64," + Base64.getEncoder().encodeToString(clip));
+    }
+
+    private Reviewer reviewer(Fixture f, String name, String kind) {
+        long modelId = IDS.incrementAndGet();
+        String modelCode = "review-" + kind + "-" + modelId;
+        var remote = new ReviewRemote();
+        REVIEWERS.put(modelCode, remote);
+        jdbc.update("""
+                INSERT INTO afv_ai_model(id, name, code, model_type, model_protocol, api_config_id, config,
+                    max_concurrency, multimodal_input_types, multimodal_input_transports, reasoning_effort_levels)
+                VALUES (?, ?, ?, 1, 'openai', ?, '{}', 1, JSON_ARRAY(?),
+                    JSON_OBJECT(?, JSON_ARRAY('base64')), JSON_ARRAY())
+                """, modelId, name, modelCode, f.id, kind, kind);
+        return new Reviewer(modelId, remote);
+    }
+
+    private byte[] sampleVideo() throws IOException, InterruptedException {
+        Path sample = Files.createTempFile("afv-review-fixture-", ".mp4");
+        try {
+            var encode = new ProcessBuilder("ffmpeg", "-nostdin", "-v", "error", "-y", "-f", "lavfi", "-i",
+                    "color=c=red:s=160x90:d=4:r=8", "-f", "lavfi", "-i", "sine=frequency=440:duration=4",
+                    "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", sample.toString())
+                    .redirectError(ProcessBuilder.Redirect.INHERIT).start();
+            if (!encode.waitFor(20, TimeUnit.SECONDS)) {
+                encode.destroyForcibly();
+                throw new IOException("未能在时限内生成视频测试素材");
+            }
+            assertThat(encode.exitValue()).isZero();
+            return Files.readAllBytes(sample);
+        } finally {
+            Files.deleteIfExists(sample);
+        }
+    }
+
+    private JsonNode imageResults(Fixture f, String task) {
+        var done = awaitState(f, task, "SUCCEEDED");
+        return ok(get("/api/generation/image/" + done.path("recordId").asLong() + "/items", f.headers));
+    }
+
+    private Map<String, Object> reviewImageRequest(Fixture fixture, int count) {
+        var request = new HashMap<>(fixture.request(count));
+        request.put("width", 1024);
+        request.put("height", 1024);
+        return request;
+    }
+
+    private String reviewPath(JsonNode image) {
+        return "/api/generation/reviews/media/" + image.path("imageUrl").asText().substring("media://".length());
+    }
 
     @Test
     void revokedProjectMemberCannotDeleteACompletedTaskTheyPreviouslySubmitted() {
@@ -518,9 +661,69 @@ class GenerationExecutionWiringIT {
         final CountDownLatch inputReleased = new CountDownLatch(1);
         Remote(String mode, String id) { this.mode = mode; this.id = id; }
     }
+
+    private static final class ReviewRemote {
+        final AtomicInteger calls = new AtomicInteger();
+        final AtomicReference<String> input = new AtomicReference<>();
+        final CountDownLatch started = new CountDownLatch(1);
+        final CountDownLatch release = new CountDownLatch(1);
+    }
+
+    private record Reviewer(long id, ReviewRemote remote) {
+    }
+
+    private static void review(HttpExchange exchange) throws IOException {
+        var body = JSON.readTree(exchange.getRequestBody());
+        var remote = REVIEWERS.get(body.path("model").asText());
+        if (remote == null) {
+            respond(exchange, 404, Map.of("error", "unknown review fixture"));
+            return;
+        }
+        remote.input.set(body.toString());
+        int attempt = remote.calls.incrementAndGet();
+        remote.started.countDown();
+        try {
+            if (!remote.release.await(20, TimeUnit.SECONDS)) {
+                throw new IOException("审查测试没有释放等待");
+            }
+        } catch (InterruptedException stopped) {
+            Thread.currentThread().interrupt();
+            throw new IOException(stopped);
+        }
+        String report = attempt == 1 ? """
+                {"verdict":"NEEDS_CHANGES","summary":"背景颜色不同","findings":[
+                {"issue":"背景不符","evidence":"背景是黑色","suggestion":"改为蓝色"}],"limitations":[]}
+                """ : "模型没有返回结构化结论";
+        var delta = JSON.createObjectNode().put("id", "review-" + attempt).put("object", "chat.completion.chunk")
+                .put("model", body.path("model").asText()).put("created", 1);
+        delta.putArray("choices").addObject().put("index", 0).putNull("finish_reason")
+                .putObject("delta").put("role", "assistant").put("content", report);
+        var end = delta.deepCopy();
+        ((ObjectNode) end.path("choices").get(0))
+                .put("finish_reason", "stop").putObject("delta");
+        byte[] bytes = ("data: " + delta + "\n\ndata: " + end + "\n\ndata: [DONE]\n\n")
+                .getBytes(StandardCharsets.UTF_8);
+        exchange.getResponseHeaders().add("Content-Type", "text/event-stream");
+        exchange.sendResponseHeaders(200, bytes.length);
+        try (var output = exchange.getResponseBody()) {
+            output.write(bytes);
+        }
+    }
+
     private static HttpServer provider() {
         try {
             var server = HttpServer.create(new InetSocketAddress(0), 0);
+            server.createContext("/v1/chat/completions", GenerationExecutionWiringIT::review);
+            server.createContext("/v1/videos", exchange -> {
+                String path = exchange.getRequestURI().getPath();
+                if (path.endsWith("/content")) {
+                    boolean thumbnail = "variant=thumbnail".equals(exchange.getRequestURI().getQuery());
+                    sendMedia(exchange, thumbnail ? "image/png" : "video/mp4", thumbnail ? PNG : VIDEO.get());
+                } else {
+                    exchange.getRequestBody().readAllBytes();
+                    respond(exchange, 200, Map.of("id", "synthetic-review-video", "status", "completed", "seconds", "4"));
+                }
+            });
             server.createContext("/preparation-input/", exchange -> {
                 var remote = REMOTES.get(exchange.getRequestURI().getPath().substring("/preparation-input/".length()));
                 if (remote == null) { respond(exchange, 404, Map.of("error", "unknown fixture")); return; }
@@ -576,6 +779,13 @@ class GenerationExecutionWiringIT {
         exchange.getResponseHeaders().add("Content-Type", "application/json");
         exchange.sendResponseHeaders(status, bytes.length);
         try (var output = exchange.getResponseBody()) { output.write(bytes); }
+    }
+    private static void sendMedia(HttpExchange exchange, String mime, byte[] bytes) throws IOException {
+        exchange.getResponseHeaders().add("Content-Type", mime);
+        exchange.sendResponseHeaders(200, bytes.length);
+        try (var output = exchange.getResponseBody()) {
+            output.write(bytes);
+        }
     }
     private static byte[] png() {
         try {

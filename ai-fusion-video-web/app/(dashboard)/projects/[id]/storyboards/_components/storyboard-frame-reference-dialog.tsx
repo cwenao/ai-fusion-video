@@ -4,7 +4,11 @@ import { useCallback, useRef, useState } from "react";
 import { Image as ImageIcon, Loader2, Sparkles, X, ZoomIn } from "lucide-react";
 import ImageInput from "@/components/dashboard/image-input";
 import { SafeImage } from "@/components/media/managed-image";
-import { Textarea } from "@/components/ui/textarea";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { DialogScrollBody } from "@/components/shared/dialog-scroll-body";
+import { GenerationReviewBadge } from "@/components/generation-review/generation-review-badge";
+import { FramePromptDialog } from "./storyboard-frame-prompt-dialog";
+import type { FrameGenerateHandler } from "./storyboard-reference/reference-shared";
 import { resolveMediaUrl } from "@/lib/api/client";
 import { toastApiError } from "@/lib/api/toast-api-error";
 import { useConfirm } from "@/components/ui/confirm-dialog";
@@ -16,12 +20,6 @@ type FrameUpdateHandler = (
   item: StoryboardItem,
   frameType: StoryboardFrameType,
   imageUrl: string | null
-) => Promise<void> | void;
-
-type FrameGenerateHandler = (
-  item: StoryboardItem,
-  frameType: StoryboardFrameType,
-  prompt: string
 ) => Promise<void> | void;
 
 function getFrameLabel(frameType: StoryboardFrameType) {
@@ -66,101 +64,6 @@ export function buildDefaultBatchFramePrompt(frameType: StoryboardFrameType) {
       : "生成每个分镜镜头视频的尾帧定格图，表现动作完成后的结尾状态，画面要能自然作为视频结束帧。";
 
   return `${frameInstruction}\n请结合每个镜头自身的画面内容、画面期望、对白/旁白、景别、运镜、机位角度、角色、道具、场景和项目画风补足构图、主体关系、环境氛围与细节。保持同一分镜集内角色、道具、场景和画面风格一致。`;
-}
-
-function FramePromptDialog({
-  open,
-  title,
-  defaultPrompt,
-  submitting,
-  onClose,
-  onConfirm,
-}: {
-  open: boolean;
-  title: string;
-  defaultPrompt: string;
-  submitting?: boolean;
-  onClose: () => void;
-  onConfirm: (prompt: string) => Promise<void> | void;
-}) {
-  const [prompt, setPrompt] = useState(defaultPrompt);
-
-  if (!open) return null;
-
-  const canSubmit = prompt.trim().length > 0 && !submitting;
-
-  const handleConfirm = async () => {
-    if (!canSubmit) return;
-    await onConfirm(prompt.trim());
-  };
-
-  return (
-    <div className="fixed inset-0 z-[10000] flex items-center justify-center">
-      <div
-        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-        onClick={() => !submitting && onClose()}
-      />
-      <div className="relative bg-card border border-border/30 rounded-xl shadow-2xl w-[520px] max-w-[92vw] max-h-[calc(100vh-2rem)] sm:max-h-[82vh] flex flex-col overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border/20 shrink-0">
-          <div className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
-              <Sparkles className="h-4 w-4 text-primary" />
-            </div>
-            <div>
-              <h3 className="text-sm font-semibold">{title}</h3>
-              <p className="text-[10px] text-muted-foreground">
-                编辑后提交到任务中心
-              </p>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={submitting}
-            className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground transition-colors disabled:opacity-40"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-
-        <div className="p-5 min-h-0 overflow-hidden">
-          <Textarea
-            value={prompt}
-            onChange={(event) => setPrompt(event.target.value)}
-            className="h-[min(52vh,28rem)] min-h-40 max-h-full overflow-y-auto overscroll-contain text-xs leading-relaxed resize-none [field-sizing:fixed]"
-          />
-        </div>
-
-        <div className="px-5 py-3.5 border-t border-border/20 flex items-center justify-end gap-2 shrink-0">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={submitting}
-            className="px-4 py-2 rounded-lg text-xs font-medium text-muted-foreground hover:bg-muted transition-colors disabled:opacity-40"
-          >
-            取消
-          </button>
-          <button
-            type="button"
-            onClick={handleConfirm}
-            disabled={!canSubmit}
-            className={cn(
-              "flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium transition-all",
-              "bg-primary text-primary-foreground hover:bg-primary/90",
-              "disabled:opacity-40 disabled:pointer-events-none"
-            )}
-          >
-            {submitting ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Sparkles className="h-3.5 w-3.5" />
-            )}
-            提交生成
-          </button>
-        </div>
-      </div>
-    </div>
-  );
 }
 
 export function FrameReferenceSection({
@@ -235,11 +138,13 @@ export function FrameReferenceSection({
     setPromptOpen(true);
   };
 
-  const handleConfirmPrompt = async (nextPrompt: string) => {
-    if (!onGenerateFrame) return;
+  const handleConfirmPrompt = async (nextPrompt: string, reviewModelId?: number) => {
+    if (!onGenerateFrame) {
+      return;
+    }
     try {
       setSubmitting(true);
-      await onGenerateFrame(item, frameType, nextPrompt);
+      await onGenerateFrame(item, frameType, nextPrompt, reviewModelId);
       setPromptOpen(false);
       setSubmitting(false);
       onGenerateSubmitted?.();
@@ -256,7 +161,9 @@ export function FrameReferenceSection({
         <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
           <ImageIcon className="h-3 w-3" /> {label}参考图
         </h4>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-2">
+          <GenerationReviewBadge source={imageUrl} target={frameType === "first" ? "SHOT_FIRST_FRAME" : "SHOT_LAST_FRAME"}
+            targetId={item.id} />
           {imageUrl && onPreviewImage && (
             <button
               type="button"
@@ -372,30 +279,16 @@ export function StoryboardFrameReferenceDialog({
 
   return (
     <>
-      <div className="fixed inset-0 z-[9000] flex items-center justify-center p-4">
-        <div
-          className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-          onClick={onClose}
-        />
-        <div className="relative w-[720px] max-w-[96vw] h-[min(780px,calc(100vh-2rem))] max-h-[calc(100vh-2rem)] overflow-hidden rounded-xl border border-border/30 bg-card shadow-2xl flex flex-col">
-          <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-border/20 shrink-0">
-            <div className="min-w-0">
-              <h3 className="text-sm font-semibold truncate">
-                镜头 #{shotLabel} 首尾帧
-              </h3>
-              <p className="text-[10px] text-muted-foreground mt-0.5">
-                设置该镜号视频生成时使用的首帧和尾帧参考
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={onClose}
-              className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground transition-colors shrink-0"
-              title="关闭"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
+      <Dialog open={open} onOpenChange={(next) => {
+        if (!next) {
+          onClose();
+        }
+      }}>
+        <DialogContent className="flex h-[min(780px,calc(100vh-2rem))] max-h-[calc(100vh-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl">
+          <DialogHeader className="shrink-0 border-b border-border/20 px-5 py-4 pr-14">
+            <DialogTitle>镜头 #{shotLabel} 首尾帧</DialogTitle>
+            <DialogDescription>设置该镜号视频生成时使用的首帧和尾帧参考</DialogDescription>
+          </DialogHeader>
 
           <div className="px-5 pt-4 shrink-0">
             <div className="grid grid-cols-2 gap-2 rounded-lg bg-muted/25 p-1">
@@ -431,7 +324,7 @@ export function StoryboardFrameReferenceDialog({
             </div>
           </div>
 
-          <div className="p-5 overflow-y-auto min-h-0 flex-1">
+          <DialogScrollBody className="flex-1 p-5">
             <FrameReferenceSection
               key={`${item.id}-${activeFrameType}`}
               item={item}
@@ -444,9 +337,9 @@ export function StoryboardFrameReferenceDialog({
               onGenerateFrame={onGenerateFrame}
               onPreviewImage={handlePreviewImage}
             />
-          </div>
-        </div>
-      </div>
+          </DialogScrollBody>
+        </DialogContent>
+      </Dialog>
 
       {previewImageUrl && (
         <div

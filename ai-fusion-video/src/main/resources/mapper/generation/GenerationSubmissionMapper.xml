@@ -1,6 +1,11 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.stonewu.fusion.mapper.generation.GenerationSubmissionMapper">
+    <select id="taskSummaries" resultType="com.stonewu.fusion.mapper.generation.GenerationSubmissionMapper$TaskSummary">
+        SELECT task_id, id, state, cancel_requested, actor_user_id, content_review_json IS NOT NULL AS review_requested
+        FROM afv_generation_submission WHERE kind = #{kind} AND task_id IN
+        <foreach collection="ids" item="id" open="(" close=")" separator=",">#{id}</foreach>
+    </select>
     <select id="lock" resultType="string">
         SELECT id FROM afv_generation_submission WHERE id = #{id} FOR UPDATE
     </select>
@@ -17,10 +22,10 @@
     <insert id="insertQueued">
         INSERT INTO afv_generation_submission(id, request_id, scope_key, request_hash, kind, task_id, public_task_id,
             actor_user_id, actor_team_id, project_id, canvas_node_run_id, context_json, model_snapshot_json,
-            api_config_id, api_config_hash, state, created_at, updated_at)
+            api_config_id, api_config_hash, content_review_json, state, created_at, updated_at)
         VALUES (#{row.id}, #{row.requestId}, #{row.scopeKey}, #{row.requestHash}, #{row.kind}, #{row.taskId}, #{row.publicTaskId},
             #{row.actorUserId}, #{row.actorTeamId}, #{row.projectId}, #{row.canvasNodeRunId}, #{row.contextJson}, #{row.modelSnapshotJson},
-            #{row.apiConfigId}, #{row.apiConfigHash}, 'QUEUED', UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+            #{row.apiConfigId}, #{row.apiConfigHash}, #{row.contentReviewJson}, 'QUEUED', UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
     </insert>
     <update id="aggregate">
         UPDATE afv_generation_submission SET state = #{state}, revision = revision + 1, updated_at = UTC_TIMESTAMP(6) WHERE id = #{id}

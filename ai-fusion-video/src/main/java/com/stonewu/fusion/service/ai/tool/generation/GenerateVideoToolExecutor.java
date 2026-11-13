@@ -15,6 +15,8 @@ import com.stonewu.fusion.service.canvas.agent.node.CanvasAgentNodeGeneration;
 import com.stonewu.fusion.service.generation.GenerationKind;
 import com.stonewu.fusion.service.generation.GenerationModelCapabilityService;
 import com.stonewu.fusion.service.generation.job.GenerationSubmissionService;
+import com.stonewu.fusion.service.generation.review.GenerationReviewAdmission;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.stonewu.fusion.service.generation.video.VideoGenerationService;
 import com.stonewu.fusion.service.resource.ResourceToolRequests;
 import lombok.RequiredArgsConstructor;
@@ -41,6 +43,7 @@ public class GenerateVideoToolExecutor implements ToolExecutor {
     private final AiModelService aiModelService;
     private final VideoGenerationService videoGenerationService;
     private final GenerationSubmissionService submissions;
+    private final GenerationReviewAdmission reviews;
     private final GenerationModelCapabilityService generationModelCapabilityService;
     private final CanvasJson json;
     private final CanvasAgentNodeGeneration canvasModels;
@@ -94,6 +97,8 @@ public class GenerateVideoToolExecutor implements ToolExecutor {
                                 .set("type", "string")
                                 .set("description",
                                         "视频生成提示词；是否允许仅使用素材由模型 videoRules.promptRequired 决定"))
+                        .set("reviewTargetId", JSONUtil.createObj().set("type", "integer")
+                                .set("description", "为项目镜头生成时填写本次生成对应的分镜镜头 ID"))
                         .set("firstFrameImageUrl", JSONUtil.createObj()
                                 .set("type", "string")
                                 .set("description", firstFrameDescription))
@@ -219,7 +224,10 @@ public class GenerateVideoToolExecutor implements ToolExecutor {
                     referenceImageUrlList.size());
 
             var mutation = context.requireMutationContext();
-            var accepted = submissions.video(task, ResourceToolRequests.requestId(json, mutation), mutation, null);
+            var review = reviews.agent(mutation, GenerationKind.VIDEO,
+                    json.read(toolInput, ObjectNode.class).get("reviewTargetId"));
+            var accepted = submissions.video(task, ResourceToolRequests.requestId(json, mutation), mutation, null,
+                    review);
             return JSONUtil.createObj()
                     .set("status", "pending")
                     .set("submissionId", accepted.id())

@@ -14,6 +14,8 @@ import com.stonewu.fusion.service.generation.GenerationKind;
 import com.stonewu.fusion.service.generation.GenerationModelCapabilityService;
 import com.stonewu.fusion.service.generation.image.ImageGenerationService;
 import com.stonewu.fusion.service.generation.job.GenerationSubmissionService;
+import com.stonewu.fusion.service.generation.review.GenerationReviewAdmission;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.stonewu.fusion.service.resource.ResourceToolRequests;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -41,6 +43,7 @@ public class GenerateImageToolExecutor implements ToolExecutor {
     private final GenerationModelCapabilityService generationModelCapabilityService;
     private final CanvasJson json;
     private final CanvasAgentNodeGeneration canvasModels;
+    private final GenerationReviewAdmission reviews;
 
     @Override
     public String getToolName() {
@@ -82,6 +85,8 @@ public class GenerateImageToolExecutor implements ToolExecutor {
                         .set("prompt", JSONUtil.createObj()
                                 .set("type", "string")
                                 .set("description", "图片生成提示词（英文效果更佳）"))
+                        .set("reviewTargetId", JSONUtil.createObj().set("type", "integer")
+                                .set("description", "项目生成时填写本次生成对应的子资产 ID 或分镜镜头 ID"))
                         .set("negativePrompt", JSONUtil.createObj()
                                 .set("type", "string")
                                 .set("description", "反向提示词，描述不希望出现的内容"))
@@ -154,7 +159,10 @@ public class GenerateImageToolExecutor implements ToolExecutor {
                     prompt, width, height, model.getId(), model.getCode(), refImageUrls != null ? "有" : "无");
 
             var mutation = context.requireMutationContext();
-            var accepted = submissions.image(task, ResourceToolRequests.requestId(json, mutation), mutation, null);
+            var review = reviews.agent(mutation, GenerationKind.IMAGE,
+                    json.read(toolInput, ObjectNode.class).get("reviewTargetId"));
+            var accepted = submissions.image(task, ResourceToolRequests.requestId(json, mutation), mutation, null,
+                    review);
             return JSONUtil.createObj()
                     .set("status", "pending")
                     .set("submissionId", accepted.id())

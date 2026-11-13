@@ -2,6 +2,7 @@ package com.stonewu.fusion.service.generation.job;
 
 import com.stonewu.fusion.entity.ai.AiModel;
 import com.stonewu.fusion.service.generation.GenerationKind;
+import com.stonewu.fusion.service.generation.review.GenerationContentReview.Criteria;
 import com.stonewu.fusion.service.resource.model.ResourceCommandContext;
 
 import java.time.LocalDateTime;
@@ -13,5 +14,6 @@ public record GenerationSubmission(String id, String requestId, GenerationKind k
                                    String publicTaskId, long userId, Long teamId, Long projectId,
                                    String canvasNodeRunId, ResourceCommandContext context, AiModel model,
                                    long apiConfigId, String apiConfigHash, String state,
-                                   boolean cancelRequested, long revision, LocalDateTime createdAt) {
+                                   boolean cancelRequested, long revision, LocalDateTime createdAt,
+                                   Criteria contentReview) {
 }

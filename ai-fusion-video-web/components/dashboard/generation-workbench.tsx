@@ -49,6 +49,8 @@ import { AssetReferencePickerDialog } from "@/components/assets/asset-reference-
 import { getApiErrorMessage } from "@/lib/api/api-error";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { generationReferenceUrls } from "./generation/generation-asset-inputs";
+import { GenerationReviewFields } from "@/components/generation-review/generation-review-fields";
+import { useGenerationReviewChoice } from "@/components/generation-review/use-generation-review-choice";
 
 interface GenerationWorkbenchProps {
   mode: WorkbenchMode;
@@ -77,6 +79,7 @@ function GenerationWorkbenchContent({ mode }: GenerationWorkbenchProps) {
   const [modelId, setModelId] = useState<number | undefined>();
   const [loadingModels, setLoadingModels] = useState(true);
   const [form, setForm] = useState<GenerationFormState>(EMPTY_GENERATION_FORM);
+  const review = useGenerationReviewChoice(mode);
   const submission = useGenerationSubmission(mode);
   const historyState = useGenerationHistory(mode);
   const {
@@ -95,6 +98,11 @@ function GenerationWorkbenchContent({ mode }: GenerationWorkbenchProps) {
   const formSnapshot = useRef(form);
   formSnapshot.current = form;
   const submitting = submission.busy || validatingAssets;
+  const reviewNeedsPrompt = review.checked && !form.prompt.trim();
+  const reviewControl = (
+    <GenerationReviewFields choice={review} disabled={submitting || !!submission.pending}
+      missingPrompt={reviewNeedsPrompt} />
+  );
   const [assetTarget, setAssetTarget] = useState<GenerationAssetTarget | null>(
     null,
   );
@@ -600,7 +608,7 @@ function GenerationWorkbenchContent({ mode }: GenerationWorkbenchProps) {
   };
 
   const submit = async () => {
-    if (submitGuard.current || assets.busy) {
+    if (submitGuard.current || assets.busy || !review.ready || reviewNeedsPrompt) {
       return;
     }
     const error = validate();
@@ -620,12 +628,13 @@ function GenerationWorkbenchContent({ mode }: GenerationWorkbenchProps) {
         throw new Error("生成参数已变化，请重新提交");
       }
       const receipt = await submission.submit(
-        generationSubmitRequest(mode, originalForm, modelId, capabilities, assets.projectId),
+        generationSubmitRequest(mode, originalForm, modelId, capabilities, assets.projectId, review.modelId),
         selectedModel!.name,
       );
       if (!receipt) {
         return;
       }
+      review.setEnabled(false);
       setForm((current) => current === originalForm ? { ...current, prompt: "", referenceImages: [], firstFrame: [], lastFrame: [], referenceVideos: [], referenceAudios: [] } : current);
       setHistoryLimit(10);
       await loadHistory(10);
@@ -721,7 +730,10 @@ function GenerationWorkbenchContent({ mode }: GenerationWorkbenchProps) {
         </motion.header>
         <GenerationSubmissionNotice
           submission={submission}
-          onConfirmed={() => void loadHistory(historyLimit)}
+          onConfirmed={() => {
+            review.setEnabled(false);
+            void loadHistory(historyLimit);
+          }}
         />
         <GenerationAssetNotice assets={assets} />
         {capabilities?.unavailable && (
@@ -743,7 +755,8 @@ function GenerationWorkbenchContent({ mode }: GenerationWorkbenchProps) {
             capabilities={capabilities}
             form={form}
             submitting={submitting}
-            submitDisabled={!submission.canSubmit || Boolean(capabilities?.unavailable)}
+            submitDisabled={!submission.canSubmit || Boolean(capabilities?.unavailable) || !review.ready || reviewNeedsPrompt}
+            reviewControl={reviewControl}
             onModelChange={changeModel}
             onFormChange={updateForm}
             onSubmit={() => void submit()}
@@ -838,7 +851,8 @@ function GenerationWorkbenchContent({ mode }: GenerationWorkbenchProps) {
                     mode === "video" ? capabilities?.minImageInputs || 0 : 0
                   }
                   submitting={submitting}
-                  submitDisabled={!submission.canSubmit || Boolean(capabilities?.unavailable)}
+                  submitDisabled={!submission.canSubmit || Boolean(capabilities?.unavailable) || !review.ready || reviewNeedsPrompt}
+                  reviewControl={reviewControl}
                   onModelChange={changeModel}
                   onFormChange={updateForm}
                   onAddAttachments={addSimpleAttachments}

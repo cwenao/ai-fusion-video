@@ -15,6 +15,7 @@ import com.stonewu.fusion.mapper.generation.VideoItemMapper;
 import com.stonewu.fusion.service.generation.GenerationExecutionContexts;
 import com.stonewu.fusion.service.generation.GenerationKind;
 import com.stonewu.fusion.service.generation.image.ImageGenerationService;
+import com.stonewu.fusion.service.generation.review.GenerationContentReviewJobs;
 import com.stonewu.fusion.service.generation.video.VideoGenerationService;
 import com.stonewu.fusion.service.media.MediaReference;
 import lombok.RequiredArgsConstructor;
@@ -44,6 +45,7 @@ public class GenerationJobLifecycle {
     private final VideoGenerationService videos;
     private final ImageItemMapper imageItems;
     private final VideoItemMapper videoItems;
+    private final GenerationContentReviewJobs reviews;
 
     @CacheEvict(value = {"imageTask", "videoTask"}, allEntries = true)
     @Transactional(isolation = Isolation.READ_COMMITTED)
@@ -113,6 +115,7 @@ public class GenerationJobLifecycle {
             item.setErrorMsg(null);
             videos.updateItem(item);
         }
+        reviews.enqueue(submission, itemId, output.media());
     }
 
     @CacheEvict(value = {"imageTask", "videoTask", "imageItems", "videoItems"}, allEntries = true)

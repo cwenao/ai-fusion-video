@@ -1,9 +1,14 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Video, X, ImageIcon, Check, Film, FileText } from "lucide-react";
+import { Video, ImageIcon, Check, Film, FileText } from "lucide-react";
+import { GenerationReviewFields } from "@/components/generation-review/generation-review-fields";
+import { useGenerationReviewChoice } from "@/components/generation-review/use-generation-review-choice";
+import { DialogScrollBody } from "@/components/shared/dialog-scroll-body";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
-import { resolveMediaUrl } from "@/lib/api/client";
+import { SafeImage } from "@/components/media/managed-image";
 import type { StoryboardItem } from "@/lib/api/storyboard";
 
 interface VideoGenDialogProps {
@@ -11,7 +16,7 @@ interface VideoGenDialogProps {
   onClose: () => void;
   /** 分镜条目列表 */
   items: StoryboardItem[];
-  onConfirm: (selectedItemIds: number[], promptOnly?: boolean) => void;
+  onConfirm: (selectedItemIds: number[], promptOnly: boolean, reviewModelId?: number) => void;
 }
 
 export function VideoGenDialog({
@@ -25,15 +30,22 @@ export function VideoGenDialog({
     [items]
   );
   const [selectedOverride, setSelectedOverride] = useState<Set<number> | null>(null);
-  const selected = selectedOverride ?? defaultSelected;
+  const selected = selectedOverride
+    ? new Set([...selectedOverride].filter((id) => defaultSelected.has(id))) : defaultSelected;
+  const review = useGenerationReviewChoice("video");
 
-  if (!open) return null;
+  if (!open) {
+    return null;
+  }
 
   const toggleItem = (id: number) => {
     setSelectedOverride((prev) => {
       const next = new Set(prev ?? selected);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
       return next;
     });
   };
@@ -46,8 +58,11 @@ export function VideoGenDialog({
     }
   };
 
-  const handleConfirm = (promptOnly?: boolean) => {
-    onConfirm(Array.from(selected), promptOnly);
+  const handleConfirm = (promptOnly: boolean) => {
+    if (!selected.size || (!promptOnly && !review.ready)) {
+      return;
+    }
+    onConfirm(Array.from(selected), promptOnly, promptOnly ? undefined : review.modelId);
     onClose();
   };
 
@@ -66,39 +81,20 @@ export function VideoGenDialog({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      {/* 遮罩 */}
-      <div
-        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-        onClick={onClose}
-      />
-
-      {/* 弹窗 */}
-      <div className="relative bg-card border border-border/30 rounded-2xl shadow-2xl w-[520px] max-w-[90vw] max-h-[80vh] flex flex-col overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border/20">
-          <div className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-lg bg-linear-to-br from-purple-500/20 to-pink-500/20 flex items-center justify-center">
-              <Video className="h-4 w-4 text-purple-400" />
-            </div>
-            <div>
-              <h3 className="text-sm font-semibold">批量生成视频</h3>
-              <p className="text-[10px] text-muted-foreground">
-                选择需要生成视频的分镜镜头
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground transition-colors"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
+    <Dialog open={open} onOpenChange={(next) => {
+      if (!next) {
+        onClose();
+      }
+    }}>
+      <DialogContent className="flex max-h-[calc(100vh-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-lg">
+        <DialogHeader className="shrink-0 border-b border-border/20 px-5 py-4 pr-14">
+          <DialogTitle>{items.length === 1 ? "生成镜头视频" : "批量生成视频"}</DialogTitle>
+          <DialogDescription>选择需要生成视频的分镜镜头</DialogDescription>
+        </DialogHeader>
 
         {/* 全选 */}
         {items.length > 0 && (
-          <div className="px-5 py-2.5 border-b border-border/10 flex items-center justify-between">
+          <div className="flex shrink-0 items-center justify-between border-b border-border/20 px-5 py-2">
             <button
               onClick={toggleAll}
               className="text-xs text-primary hover:text-primary/80 font-medium transition-colors"
@@ -112,7 +108,8 @@ export function VideoGenDialog({
         )}
 
         {/* 镜头列表 */}
-        <div className="flex-1 overflow-y-auto p-3 space-y-1.5 min-h-0">
+        <DialogScrollBody className="flex flex-col gap-2 p-4">
+          <GenerationReviewFields choice={review} />
           {items.length === 0 ? (
             <div className="text-center py-8">
               <Film className="h-8 w-8 text-muted-foreground/20 mx-auto mb-2" />
@@ -151,10 +148,11 @@ export function VideoGenDialog({
                   {/* 缩略图 */}
                   <div className="h-12 w-20 rounded-lg bg-muted/30 border border-border/10 overflow-hidden shrink-0 flex items-center justify-center">
                     {imgUrl ? (
-                      <img
-                        src={resolveMediaUrl(imgUrl) || ""}
+                      <SafeImage
+                        src={imgUrl}
                         alt={`镜头 ${item.shotNumber || item.autoShotNumber}`}
                         className="w-full h-full object-cover"
+                        fallbackType="image"
                       />
                     ) : (
                       <ImageIcon className="h-4 w-4 text-muted-foreground/30" />
@@ -198,46 +196,29 @@ export function VideoGenDialog({
               );
             })
           )}
-        </div>
+        </DialogScrollBody>
 
         {/* Footer */}
-        <div className="px-5 py-3.5 border-t border-border/20 flex items-center justify-end gap-2">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 rounded-xl text-xs font-medium text-muted-foreground hover:bg-muted transition-colors"
-          >
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-border/20 px-5 py-3">
+          <Button type="button" variant="ghost" onClick={onClose}>
             取消
-          </button>
-          <button
+          </Button>
+          <Button type="button" variant="outline"
             onClick={() => handleConfirm(true)}
             disabled={selected.size === 0}
-            className={cn(
-              "flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-medium transition-all",
-              "border border-purple-500/30 bg-purple-500/10 text-purple-600 dark:text-purple-400",
-              "hover:bg-purple-500/20 hover:shadow-sm",
-              "active:scale-[0.98]",
-              "disabled:opacity-40 disabled:pointer-events-none"
-            )}
           >
-            <FileText className="h-3.5 w-3.5" />
+            <FileText />
             只生提示词 ({selected.size})
-          </button>
-          <button
+          </Button>
+          <Button type="button" variant="video"
             onClick={() => handleConfirm(false)}
-            disabled={selected.size === 0}
-            className={cn(
-              "flex items-center gap-1.5 px-5 py-2 rounded-xl text-xs font-medium transition-all",
-              "bg-linear-to-r from-purple-600 to-pink-600 text-white",
-              "hover:shadow-lg hover:shadow-purple-500/20 hover:scale-[1.02]",
-              "active:scale-[0.98]",
-              "disabled:opacity-40 disabled:pointer-events-none"
-            )}
+            disabled={selected.size === 0 || !review.ready}
           >
-            <Video className="h-3.5 w-3.5" />
+            <Video />
             生成视频 ({selected.size})
-          </button>
+          </Button>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

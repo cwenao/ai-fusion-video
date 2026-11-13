@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.stonewu.fusion.mapper.generation.GenerationContentReviewMapper">
+    <select id="nextPending" resultType="long">
+        SELECT pending.id FROM afv_generation_content_review pending
+        WHERE pending.state = 'PENDING'
+          AND NOT EXISTS (SELECT 1 FROM afv_generation_content_review running
+                          WHERE running.state = 'RUNNING' AND running.model_id = pending.model_id)
+        ORDER BY pending.id LIMIT 1 FOR UPDATE SKIP LOCKED
+    </select>
+    <update id="claim">
+        UPDATE afv_generation_content_review
+        SET state = 'RUNNING', deadline_at = TIMESTAMPADD(MINUTE, 5, UTC_TIMESTAMP(6))
+        WHERE id = #{id} AND state = 'PENDING'
+    </update>
+    <update id="expire">
+        UPDATE afv_generation_content_review
+        SET state = 'FAILED', error_message = '审查超时或执行中断，生成结果仍可使用'
+        WHERE state = 'RUNNING' AND deadline_at &lt;= UTC_TIMESTAMP(6) LIMIT 32
+    </update>
+    <select id="active" resultType="boolean">
+        SELECT EXISTS(SELECT 1 FROM afv_generation_content_review
+                      WHERE id = #{id} AND state = 'RUNNING' AND deadline_at &gt; UTC_TIMESTAMP(6))
+    </select>
+    <update id="complete">
+        UPDATE afv_generation_content_review
+        SET state = #{state}, result_json = #{result}, error_message = #{message}
+        WHERE id = #{id} AND state = 'RUNNING' AND deadline_at &gt; UTC_TIMESTAMP(6)
+    </update>
+</mapper>

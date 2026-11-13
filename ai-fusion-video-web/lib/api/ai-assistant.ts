@@ -35,6 +35,7 @@ export interface AiChatReq {
   /** 自定义对话标题（不传则使用消息前50字） */
   title?: string;
   projectId?: number;
+  generationReviewModelId?: number;
   canvasContext?: CanvasAssistantContext;
   context?: Record<string, unknown>;
   systemPrompt?: string;

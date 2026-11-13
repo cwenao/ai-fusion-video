@@ -179,7 +179,7 @@ public class OpenAiCompatibleAiProvider extends AbstractAiProvider {
         return hasOptions ? builder.build() : null;
     }
 
-    private boolean shouldUseResponsesApi(AiProviderContext context) {
+    boolean shouldUseResponsesApi(AiProviderContext context) {
         Boolean useResponsesApi = getConfigBoolean(context.getConfig(),
                 "useResponsesApi", "useResponses", "responseApi", "responsesApi");
         if (useResponsesApi != null) {

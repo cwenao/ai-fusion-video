@@ -85,6 +85,8 @@ public class GenerationSubmissionEntity {
      */
     private String modelSnapshotJson;
 
+    private String contentReviewJson;
+
     /**
      * 供应商配置标识
      */

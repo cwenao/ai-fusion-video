@@ -44,7 +44,7 @@ export function GenerationSubmissionNotice({
         {submission.pending && (
           <p className="text-xs text-muted-foreground">
             {submission.pending.modelName} · {submission.pending.request.count}{" "}
-            个结果 ·{" "}
+            个结果{submission.pending.request.reviewModelId !== undefined && " · 含 AI 审查"} ·{" "}
             {new Date(submission.pending.createdAt).toLocaleString("zh-CN")}
           </p>
         )}

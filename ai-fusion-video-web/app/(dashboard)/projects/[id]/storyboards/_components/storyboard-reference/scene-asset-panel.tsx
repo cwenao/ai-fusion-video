@@ -161,7 +161,7 @@ function SceneAssetPanel({
     assetId: ai.assetId,
   }));
 
-  const handleBatchGenConfirm = (selectedItems: SelectedAssetItem[]) => {
+  const handleBatchGenConfirm = (selectedItems: SelectedAssetItem[], reviewModelId?: number) => {
     // 提取去重的主资产ID和选中的子资产ID
     const selectedAssetIds = [...new Set(selectedItems.map((s) => s.assetId))];
     const selectedAssetItemIds = selectedItems.map((s) => s.itemId);
@@ -174,9 +174,11 @@ function SceneAssetPanel({
         agentType: "asset_image_gen",
         toolExecutionMode: "FULL_ACCESS",
         projectId,
+        generationReviewModelId: reviewModelId,
         context: {
           selectedAssetIds,
           selectedAssetItemIds,
+          ...(reviewModelId === undefined ? {} : { storyboardSceneId: sceneGroup.scene.id }),
         },
       },
       onComplete: () => {
@@ -191,7 +193,8 @@ function SceneAssetPanel({
   /** 批量生视频确认 */
   const handleVideoGenConfirm = (
     selectedItemIds: number[],
-    promptOnly?: boolean,
+    promptOnly: boolean,
+    reviewModelId?: number,
   ) => {
     addPipeline({
       label: promptOnly
@@ -202,10 +205,11 @@ function SceneAssetPanel({
         agentType: "storyboard_video_gen",
         toolExecutionMode: "FULL_ACCESS",
         projectId,
+        generationReviewModelId: reviewModelId,
         context: {
           selectedStoryboardItemIds: selectedItemIds,
           storyboardId: storyboard.id,
-          promptOnly: promptOnly || false,
+          promptOnly,
         },
       },
       onComplete: () => {

@@ -22,6 +22,9 @@ import com.stonewu.fusion.service.generation.GenerationModelCapabilityService;
 import com.stonewu.fusion.service.generation.VideoModelRules;
 import com.stonewu.fusion.service.generation.image.ImageGenerationService;
 import com.stonewu.fusion.service.generation.image.strategy.ImageGenerationStrategyRouter;
+import com.stonewu.fusion.service.generation.review.GenerationContentReview.Criteria;
+import com.stonewu.fusion.service.generation.review.GenerationContentReview.Selection;
+import com.stonewu.fusion.service.generation.review.GenerationReviewAdmission;
 import com.stonewu.fusion.service.generation.video.VideoGenerationService;
 import com.stonewu.fusion.service.generation.video.strategy.VideoGenerationStrategyRouter;
 import com.stonewu.fusion.service.resource.model.ResourceCommandContext;
@@ -35,6 +38,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Stream;
 
 /**
  * 原页面、画布和 Agent 共用的受理事务：任务、条目、远端记录和投递一起提交。
@@ -58,30 +62,40 @@ public class GenerationSubmissionService {
     private final VideoGenerationStrategyRouter videoProtocols;
     private final GenerationInputVersions inputVersions;
     private final CanvasAgentNodeGeneration agentNodes;
+    private final GenerationReviewAdmission reviews;
 
     @CacheEvict(value = {"imageTask", "imageItems"}, allEntries = true)
     @Transactional(isolation = Isolation.READ_COMMITTED)
     public GenerationSubmission image(ImageTask task, String requestId, ResourceCommandContext context,
                                       String nodeRunId) {
-        return submitImage(task, requestId, context, nodeRunId, null, null);
+        return submitImage(task, requestId, context, nodeRunId, null, null, null);
+    }
+
+    @CacheEvict(value = {"imageTask", "imageItems"}, allEntries = true)
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    public GenerationSubmission image(ImageTask task, String requestId, ResourceCommandContext context,
+                                      String nodeRunId, Selection review) {
+        return submitImage(task, requestId, context, nodeRunId, null, null, review);
     }
 
     @CacheEvict(value = {"imageTask", "imageItems"}, allEntries = true)
     @Transactional(isolation = Isolation.READ_COMMITTED)
     public GenerationSubmission imageFrozen(ImageTask task, String requestId, ResourceCommandContext context,
                                             String nodeRunId, AiModel model, String apiHash) {
-        return submitImage(task, requestId, context, nodeRunId, model, apiHash);
+        return submitImage(task, requestId, context, nodeRunId, model, apiHash, null);
     }
 
     private GenerationSubmission submitImage(ImageTask task, String requestId, ResourceCommandContext context,
-                                             String nodeRunId, AiModel frozen, String apiHash) {
-        String hash = json.hash(Map.of("input", task, "nodeRunId", nodeRunId == null ? "" : nodeRunId));
+                                             String nodeRunId, AiModel frozen, String apiHash, Selection review) {
+        String hash = requestHash(task, nodeRunId, review);
         contexts.prepare(task, context);
         var existing = existing(requestId, hash, GenerationKind.IMAGE, context);
         if (existing != null) {
             return existing;
         }
         validateCommon(task.getPrompt(), task.getCount());
+        Criteria criteria = freezeReview(review, GenerationKind.IMAGE, task.getPrompt(), task.getProjectId(), context,
+                task.getRefImageUrls());
         var model = frozen == null ? freeze(task.getModelId(), GenerationKind.IMAGE, task.getWorkflowVersionId())
                 : models.frozen(frozen, GenerationKind.IMAGE, apiHash);
         if (!model.getId().equals(task.getModelId())) {
@@ -98,7 +112,7 @@ public class GenerationSubmissionService {
         task.setId(null);
         images.create(task);
         String submissionId = insert(GenerationKind.IMAGE, task.getId(), task.getTaskId(), task.getProjectId(),
-                requestId, hash, context, nodeRunId, model);
+                requestId, hash, context, nodeRunId, model, criteria);
         var itemIds = new ArrayList<Long>();
         for (int index = 0; index < task.getCount(); index++) {
             var item = images.createItem(ImageItem.builder().taskId(task.getId()).status(0).build());
@@ -115,24 +129,34 @@ public class GenerationSubmissionService {
     @Transactional(isolation = Isolation.READ_COMMITTED)
     public GenerationSubmission video(VideoTask task, String requestId, ResourceCommandContext context,
                                       String nodeRunId) {
-        return submitVideo(task, requestId, context, nodeRunId, null, null);
+        return submitVideo(task, requestId, context, nodeRunId, null, null, null);
+    }
+
+    @CacheEvict(value = {"videoTask", "videoItems"}, allEntries = true)
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    public GenerationSubmission video(VideoTask task, String requestId, ResourceCommandContext context,
+                                      String nodeRunId, Selection review) {
+        return submitVideo(task, requestId, context, nodeRunId, null, null, review);
     }
 
     @CacheEvict(value = {"videoTask", "videoItems"}, allEntries = true)
     @Transactional(isolation = Isolation.READ_COMMITTED)
     public GenerationSubmission videoFrozen(VideoTask task, String requestId, ResourceCommandContext context,
                                             String nodeRunId, AiModel model, String apiHash) {
-        return submitVideo(task, requestId, context, nodeRunId, model, apiHash);
+        return submitVideo(task, requestId, context, nodeRunId, model, apiHash, null);
     }
 
     private GenerationSubmission submitVideo(VideoTask task, String requestId, ResourceCommandContext context,
-                                             String nodeRunId, AiModel frozen, String apiHash) {
-        String hash = json.hash(Map.of("input", task, "nodeRunId", nodeRunId == null ? "" : nodeRunId));
+                                             String nodeRunId, AiModel frozen, String apiHash, Selection review) {
+        String hash = requestHash(task, nodeRunId, review);
         contexts.prepare(task, context);
         var existing = existing(requestId, hash, GenerationKind.VIDEO, context);
         if (existing != null) {
             return existing;
         }
+        Criteria criteria = freezeReview(review, GenerationKind.VIDEO, task.getPrompt(), task.getProjectId(), context,
+                task.getFirstFrameImageUrl(), task.getLastFrameImageUrl(), task.getReferenceImageUrls(),
+                task.getReferenceVideoUrls(), task.getReferenceAudioUrls());
         var model = frozen == null ? freeze(task.getModelId(), GenerationKind.VIDEO, task.getWorkflowVersionId())
                 : models.frozen(frozen, GenerationKind.VIDEO, apiHash);
         var modelConfig = capabilities.getMergedModelConfig(model);
@@ -164,7 +188,7 @@ public class GenerationSubmissionService {
         task.setId(null);
         videos.create(task);
         String submissionId = insert(GenerationKind.VIDEO, task.getId(), task.getTaskId(), task.getProjectId(),
-                requestId, hash, context, nodeRunId, model);
+                requestId, hash, context, nodeRunId, model, criteria);
         var itemIds = new ArrayList<Long>();
         for (int index = 0; index < task.getCount(); index++) {
             var item = videos.createItem(VideoItem.builder().taskId(task.getId()).status(0).build());
@@ -199,8 +223,30 @@ public class GenerationSubmissionService {
         return previous;
     }
 
+    private Criteria freezeReview(Selection review, GenerationKind kind, String prompt, Long projectId,
+                                  ResourceCommandContext context, String... references) {
+        if (review == null) {
+            return null;
+        }
+        boolean hasReferences = Stream.of(references)
+                .anyMatch(value -> value != null && !value.isBlank() && !value.strip().equals("[]"));
+        return reviews.freeze(review, kind, prompt, hasReferences, projectId, context.actor());
+    }
+
+    private String requestHash(Object task, String nodeRunId, Selection review) {
+        var input = json.object(Map.of("input", task, "nodeRunId", nodeRunId == null ? "" : nodeRunId));
+        if (review != null) {
+            input.put("reviewModelId", review.modelId());
+            if (review.targetId() != null) {
+                input.put("reviewTargetId", review.targetId());
+            }
+        }
+        return json.hash(input);
+    }
+
     private String insert(GenerationKind kind, long taskId, String publicId, Long projectId, String requestId,
-                          String hash, ResourceCommandContext context, String nodeRunId, AiModel model) {
+                          String hash, ResourceCommandContext context, String nodeRunId, AiModel model,
+                          Criteria review) {
         String id = UUID.randomUUID().toString();
         String apiHash = models.fingerprint(models.requireApi(model.getApiConfigId()));
         submissions.insertQueued(GenerationSubmissionEntity.builder().id(id).requestId(requestId)
@@ -208,7 +254,8 @@ public class GenerationSubmissionService {
                 .publicTaskId(publicId)
                 .actorUserId(context.actor().userId()).actorTeamId(context.actor().teamId()).projectId(projectId)
                 .canvasNodeRunId(nodeRunId).contextJson(json.write(context)).modelSnapshotJson(json.write(model))
-                .apiConfigId(model.getApiConfigId()).apiConfigHash(apiHash).build());
+                .apiConfigId(model.getApiConfigId()).apiConfigHash(apiHash)
+                .contentReviewJson(review == null ? null : json.write(review)).build());
         return id;
     }
 
