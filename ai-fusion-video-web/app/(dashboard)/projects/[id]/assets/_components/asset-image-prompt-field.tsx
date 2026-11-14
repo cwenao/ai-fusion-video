@@ -3,17 +3,14 @@
 import { useId, useRef, useState } from "react";
 import { Sparkles } from "lucide-react";
 import { ScriptSourcePreview } from "@/components/dashboard/script-source-preview";
-import { ProjectTextAiEditor } from "@/components/project-text/project-text-ai-editor";
 import { DialogScrollBody } from "@/components/shared/dialog-scroll-body";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import type { Asset } from "@/lib/api/asset";
-import { useProject } from "../../project-context";
-import { ASSET_IMAGE_PROMPT_TEMPLATES, defaultAssetImagePromptTemplate } from "./asset-image-prompt-templates";
-
-import { assetImagePromptContext, ASSET_IMAGE_PROMPT_INSTRUCTION, MAX_ASSET_IMAGE_PROMPT_LENGTH } from "./asset-image-prompt-context";
-import { AssetImagePromptTemplateSelect } from "./asset-image-prompt-template-select";
+import { AssetImagePromptAiEditor } from "./asset-image-prompt-ai-editor";
+import { MAX_ASSET_IMAGE_PROMPT_LENGTH } from "./asset-image-prompt-context";
+import { defaultAssetImagePromptTemplate } from "./asset-image-prompt-templates";
 
 interface AssetImagePromptFieldProps {
   projectId: number;
@@ -36,10 +33,7 @@ export function AssetImagePromptField({
   const [preview, setPreview] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
   const [templateId, setTemplateId] = useState(() => defaultAssetImagePromptTemplate(asset.type, itemType));
-  const { project } = useProject();
   const overflow = value.length > MAX_ASSET_IMAGE_PROMPT_LENGTH;
-  const template = ASSET_IMAGE_PROMPT_TEMPLATES.find(({ value: id }) => id === templateId);
-  const title = `AI 写生图提示词 · ${itemName}`;
 
   return (
     <section className="flex min-w-0 flex-col gap-2">
@@ -88,25 +82,13 @@ export function AssetImagePromptField({
           </DialogHeader>
           <DialogScrollBody className="p-5">
             {aiOpen && (
-              <ProjectTextAiEditor
+              <AssetImagePromptAiEditor
                 projectId={projectId}
-                kind="assetImagePrompt"
-                title={title}
-                context={assetImagePromptContext(project, asset, { name: itemName, type: itemType, appearance }, template)}
+                asset={asset}
+                item={{ name: itemName, type: itemType, appearance }}
                 draft={value}
-                disabled={!template}
-                quickLabel="一键生成"
-                quickInstruction={ASSET_IMAGE_PROMPT_INSTRUCTION}
-                renderSettings={(busy) => (
-                  <div className="flex min-w-0 flex-col gap-2">
-                    <AssetImagePromptTemplateSelect label="提示词模板" value={templateId}
-                      disabled={busy && !!template} onChange={setTemplateId} />
-                    {template && (
-                      <p className="text-xs text-muted-foreground">{template.sections.join(" · ")}</p>
-                    )}
-                  </div>
-                )}
-                placeholder="例如：保留主体设计，改为低机位视角"
+                templateId={templateId}
+                onSelect={setTemplateId}
                 onApply={(draft) => {
                   onChange(draft);
                   setPreview(false);

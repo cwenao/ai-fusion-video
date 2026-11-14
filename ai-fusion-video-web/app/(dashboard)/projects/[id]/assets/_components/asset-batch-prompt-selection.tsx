@@ -1,13 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { Check } from "lucide-react";
+import { usePromptTemplates } from "@/hooks/use-prompt-templates";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { getAssetImagePrompt } from "@/lib/asset-image-generation";
 import type { AssetWithItems } from "@/lib/api/asset";
 import { ASSET_TYPES } from "./asset-types";
-import { ASSET_IMAGE_PROMPT_TEMPLATES } from "./asset-image-prompt-templates";
+import { AssetImagePromptTemplateSelect } from "./asset-image-prompt-template-select";
+import { assetImagePromptTemplates, defaultAssetImagePromptTemplate } from "./asset-image-prompt-templates";
+import { AssetPromptTemplateCatalogStatus } from "./asset-prompt-template-catalog-status";
 import type { BatchPromptTarget } from "./use-asset-batch-prompts";
 
 export function AssetBatchPromptSelection({ assets, disabled, onGenerate }: {
@@ -16,29 +18,27 @@ export function AssetBatchPromptSelection({ assets, disabled, onGenerate }: {
   onGenerate: (targets: BatchPromptTarget[]) => void;
 }) {
   const [checked, setChecked] = useState<Set<number>>(() => new Set());
-  const [templates, setTemplates] = useState<Record<string, string>>({
-    character: "character", scene: "scene", prop: "prop", other: "general",
-  });
+  const status = usePromptTemplates();
+  const custom = status.catalog.status === "ready" ? status.catalog.templates : [];
+  const [templateIds, setTemplateIds] = useState<Record<string, string>>({});
   const groups = [...ASSET_TYPES, { value: "other", label: "其他资产" }].map(({ value, label }) => ({
     value,
     label,
     assets: assets.filter((asset) => asset.items.length > 0 && (
       value === "other" ? !ASSET_TYPES.some((type) => type.value === asset.type) : asset.type === value
     )),
-  })).filter((group) => group.assets.length > 0);
+  })).filter((group) => group.assets.length > 0).map((group) => {
+    const templates = assetImagePromptTemplates(group.value, custom);
+    const templateId = templateIds[group.value] ?? defaultAssetImagePromptTemplate(group.value, "");
+    return { ...group, templates, template: templates.find(({ value }) => value === templateId) };
+  });
   const items = assets.flatMap((asset) => asset.items);
   const missing = items.filter((item) => !getAssetImagePrompt(item).trim());
   const selected = items.filter((item) => checked.has(item.id));
   const existing = selected.filter((item) => getAssetImagePrompt(item).trim()).length;
 
-  function generate() {
-    const targets = groups.flatMap((group) => {
-      const template = ASSET_IMAGE_PROMPT_TEMPLATES.find(({ value }) => value === templates[group.value]);
-      return template ? group.assets.flatMap((asset) => asset.items
-        .filter((item) => checked.has(item.id)).map((item) => ({ asset, item, template }))) : [];
-    });
-    onGenerate(targets);
-  }
+  const targets = groups.flatMap(({ template, assets }) => template ? assets.flatMap((asset) => asset.items
+    .filter((item) => checked.has(item.id)).map((item) => ({ asset, item, template }))) : []);
 
   return (
     <div className="flex min-w-0 flex-col gap-5">
@@ -53,20 +53,13 @@ export function AssetBatchPromptSelection({ assets, disabled, onGenerate }: {
             onClick={() => setChecked(new Set())}>清空选择</Button>
         </div>
       </div>
+      <AssetPromptTemplateCatalogStatus {...status} />
       {groups.map((group) => (
         <section key={group.value} className="flex min-w-0 flex-col gap-2 border-t border-border/20 pt-3">
           <h3 className="text-sm font-medium">{group.label}</h3>
-          <div role="group" aria-label={`${group.label}模板`} className="flex flex-wrap gap-2">
-            {ASSET_IMAGE_PROMPT_TEMPLATES.filter((template) => template.value === group.value
-              || template.value === "general" || (group.value === "character" && template.value === "characterThreeView"))
-              .map(({ value, label }) => (
-                <Button key={value} variant="outline" aria-pressed={templates[group.value] === value} disabled={disabled}
-                  onClick={() => setTemplates((current) => ({ ...current, [group.value]: value }))}>
-                  {templates[group.value] === value && <Check />}
-                  {label}
-                </Button>
-              ))}
-          </div>
+          <AssetImagePromptTemplateSelect label={`${group.label}模板`}
+            value={group.template?.value ?? null} templates={group.templates} disabled={disabled}
+            onChange={(value) => setTemplateIds((current) => ({ ...current, [group.value]: value }))} />
           <div className="flex min-w-0 flex-col gap-1">
             {group.assets.flatMap((asset) => asset.items.map((item) => {
               const inputId = `batch-prompt-item-${item.id}`;
@@ -93,7 +86,8 @@ export function AssetBatchPromptSelection({ assets, disabled, onGenerate }: {
         </section>
       ))}
       <div className="flex justify-end">
-        <Button variant="ai" disabled={disabled || selected.length === 0} onClick={generate}>一键生成（{selected.length}）</Button>
+        <Button variant="ai" disabled={disabled || selected.length === 0 || targets.length !== selected.length}
+          onClick={() => onGenerate(targets)}>一键生成（{selected.length}）</Button>
       </div>
     </div>
   );

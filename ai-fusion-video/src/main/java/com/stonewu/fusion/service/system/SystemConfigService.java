@@ -46,6 +46,9 @@ public class SystemConfigService {
      */
     @CacheEvict(value = "systemConfig", key = "#key")
     public void setValue(String key, String value) {
+        if (PromptTemplateService.ownsKey(key)) {
+            throw new BusinessException(400, "请在提示词模板管理中保存模板");
+        }
         String normalizedValue = normalizeConfigValue(key, value);
         SystemConfig existing = systemConfigMapper.selectOne(
                 new LambdaQueryWrapper<SystemConfig>()
@@ -68,6 +71,7 @@ public class SystemConfigService {
     public List<SystemConfig> getAll() {
         return systemConfigMapper.selectList(
                 new LambdaQueryWrapper<SystemConfig>()
+                        .notLikeRight(SystemConfig::getConfigKey, PromptTemplateService.KEY_PREFIX)
                         .orderByAsc(SystemConfig::getConfigKey));
     }
 
