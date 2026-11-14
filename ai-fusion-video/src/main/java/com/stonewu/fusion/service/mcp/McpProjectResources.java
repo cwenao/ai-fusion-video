@@ -176,13 +176,10 @@ class McpProjectResources {
         if (type == SCRIPT_EPISODE) {
             fields.set("synopsis", source.get("synopsis"));
         }
-        if (type == SCRIPT || type == SCRIPT_EPISODE) {
-            fields.remove(List.of("rawContent", "originalText"));
-            if (includeRawContent) {
-                var rawContent = source.get("rawContent");
-                fields.set("rawContent", rawContent);
-                fields.set("originalText", rawContent);
-            }
+        if (includeRawContent) {
+            copy(source, fields, List.of("rawContent"));
+        } else {
+            fields.remove("rawContent");
         }
         return result;
     }

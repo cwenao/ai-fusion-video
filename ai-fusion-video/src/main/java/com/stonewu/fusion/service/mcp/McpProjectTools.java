@@ -153,7 +153,7 @@ class McpProjectTools {
     private Outcome create(ProjectGrant grant, CanvasValueType type, ObjectNode args, String key) {
         var input = (ObjectNode) args.path("fields");
         schemas.validateFields(type, true, input);
-        var fields = McpProjectValues.internalFields(type, input);
+        var fields = McpProjectValues.internalFields(input);
         requireReferences(grant, List.of(fields));
         Long projectId = null;
         if (type == ASSET) {
@@ -183,7 +183,7 @@ class McpProjectTools {
         var input = (ObjectNode) args.path("patch");
         schemas.validateFields(type, false, input);
         long target = id(args, "id");
-        var fields = McpProjectValues.internalFields(type, input);
+        var fields = McpProjectValues.internalFields(input);
         requireReferences(grant, List.of(fields));
         var receipt = patch(grant, type, target, args, key, fields);
         return new Outcome(written(grant, type, receipt), receipt);
@@ -193,7 +193,7 @@ class McpProjectTools {
         long sceneId = id(args, "sceneId");
         resources.requireHeader(grant, STORYBOARD_SCENE, sceneId);
         var shots = new ArrayList<ObjectNode>();
-        args.path("shots").forEach(shot -> shots.add(McpProjectValues.internalFields(SHOT, (ObjectNode) shot)));
+        args.path("shots").forEach(shot -> shots.add(McpProjectValues.internalFields((ObjectNode) shot)));
         requireReferences(grant, shots);
         var receipt = submit(grant, new StoryboardChildrenCommand(key, STORYBOARD_SCENE, sceneId,
                 args.path("expectedParentVersion").intValue(), StoryboardChildrenCommand.Mode.APPEND, shots,

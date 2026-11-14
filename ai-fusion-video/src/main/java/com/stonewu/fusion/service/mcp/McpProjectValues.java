@@ -85,18 +85,8 @@ final class McpProjectValues {
         };
     }
 
-    static ObjectNode internalFields(CanvasValueType type, ObjectNode fields) {
-        var result = (ObjectNode) convert(fields, true);
-        if (type == CanvasValueType.SCRIPT_EPISODE) {
-            var originalText = result.remove("originalText");
-            if (originalText != null) {
-                if (result.has("rawContent") && !originalText.equals(result.get("rawContent"))) {
-                    throw McpProjectFailure.invalid("originalText", "rawContent 和 originalText 必须填写相同的剧本原文");
-                }
-                result.set("rawContent", originalText);
-            }
-        }
-        return result;
+    static ObjectNode internalFields(ObjectNode fields) {
+        return (ObjectNode) convert(fields, true);
     }
 
     static JsonNode externalField(String field, JsonNode value) {
