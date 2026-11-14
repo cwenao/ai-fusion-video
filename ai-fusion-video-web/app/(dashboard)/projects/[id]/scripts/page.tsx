@@ -2,8 +2,8 @@
 
 import { useResourceChangeStore } from "@/lib/store/resource-change-store";
 
-import { useEffect, useState, useCallback, useRef, useMemo } from "react";
-import { useParams } from "next/navigation";
+import { Suspense, useEffect, useState, useCallback, useRef, useMemo } from "react";
+import { useParams, useSearchParams } from "next/navigation";
 import { Loader2, Menu, Info } from "lucide-react";
 import { motion } from "framer-motion";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -24,7 +24,8 @@ import { EpisodeTree } from "./_components/episode-tree";
 import { SceneList } from "./_components/scene-list";
 import { SceneDetail } from "./_components/scene-detail";
 import { ScriptOverview } from "./_components/script-overview";
-import { EpisodeParseDialog } from "@/components/dashboard/episode-parse-dialog";
+import { EpisodeParseDialog } from "./_components/episode-parse-dialog";
+import { episodeEditorHref } from "./_components/episode-routes";
 import { usePipelineStore } from "@/lib/store/pipeline-store";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { toastApiError } from "@/lib/api/toast-api-error";
@@ -33,8 +34,26 @@ import { useProject } from "../project-context";
 const SCRIPT_SIDEBAR_COLLAPSED_STORAGE_KEY = "fusion-script-sidebar-collapsed";
 
 export default function ScriptTabPage() {
+  return (
+    <Suspense fallback={<ScriptLoading />}>
+      <ScriptWorkspace />
+    </Suspense>
+  );
+}
+
+function ScriptLoading() {
+  return (
+    <div role="status" className="flex items-center justify-center py-20">
+      <Loader2 className="size-6 animate-spin text-muted-foreground motion-reduce:animate-none" />
+      <span className="sr-only">正在读取剧本…</span>
+    </div>
+  );
+}
+
+function ScriptWorkspace() {
   const params = useParams();
   const projectId = Number(params.id);
+  const requestedEpisodeId = Number(useSearchParams().get("episode"));
   const { project } = useProject();
   const { confirm, alert } = useConfirm();
 
@@ -79,7 +98,6 @@ export default function ScriptTabPage() {
   });
 
   // 分集解析弹窗
-  const [showEpisodeParseDialog, setShowEpisodeParseDialog] = useState(false);
   const [episodeToParseId, setEpisodeToParseId] = useState<number | null>(null);
 
   // Pipeline store
@@ -148,7 +166,8 @@ export default function ScriptTabPage() {
         setEpisodes(eps);
         await loadStoryboardForScript(scr.id);
         if (eps.length > 0) {
-          setActiveEpisodeId(eps[0].id);
+          setActiveEpisodeId(eps.find((episode) => episode.id === requestedEpisodeId)?.id ?? eps[0].id);
+          setSelectedSceneId(null);
           // 默认展开所有分集，并并行加载场次
           setExpandedEpisodes(new Set(eps.map((e) => e.id)));
           await Promise.all(eps.map((e) => loadEpisodeScenes(e.id)));
@@ -165,7 +184,7 @@ export default function ScriptTabPage() {
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loadStoryboardForScript, projectId]);
+  }, [loadStoryboardForScript, projectId, requestedEpisodeId]);
 
   useEffect(() => {
     loadScript();
@@ -307,53 +326,39 @@ export default function ScriptTabPage() {
     script, episodes, episodeScenes, setEpisodeScenes, setExpandedEpisodes, setActiveEpisodeId,
     setSelectedSceneId, refreshScript, scrollToScene,
   });
-  const episodeParseRequest = useCommandRequestKey();
   const storyboardRebuildRequest = useCommandRequestKey();
 
   // ========== 分集 AI 解析 ==========
 
   const handleOpenEpisodeParse = (episodeId: number) => {
+    setLeftSheetOpen(false);
     setEpisodeToParseId(episodeId);
-    setShowEpisodeParseDialog(true);
   };
 
-  const handleEpisodeParse = async (rawContent: string) => {
-    if (!script || !episodeToParseId) return;
-    const ep = episodes.find((e) => e.id === episodeToParseId);
-    if (!ep) return;
-
-    try {
-      // 1. 先保存原文到分集记录
-      const update = { id: episodeToParseId, version: ep.version, rawContent };
-      await scriptApi.updateEpisode(update, episodeParseRequest.forPayload(update));
-      episodeParseRequest.clear();
-      await refreshScript();
-
-      // 2. 启动 script_episode_parse Pipeline
-      const pipelineId = addPipeline({
-        label: `AI 解析 · 第 ${ep.episodeNumber} 集`,
+  const handleEpisodeParse = (episode: ScriptEpisode) => {
+    const title = `AI 解析 · 第 ${episode.episodeNumber} 集`;
+    const pipelineId = addPipeline({
+      label: title,
+      projectId,
+      request: {
+        agentType: "script_episode_parse",
+        toolExecutionMode: "FULL_ACCESS",
+        category: "pipeline",
+        title,
         projectId,
-        request: {
-          agentType: "script_episode_parse",
-          toolExecutionMode: "FULL_ACCESS",
-          category: "pipeline",
-          title: `AI 解析 · 第 ${ep.episodeNumber} 集`,
-          projectId,
-          context: { episodeId: episodeToParseId, scriptId: script.id },
+        context: {
+          episodeId: episode.id,
+          scriptId: episode.scriptId,
+          episodeVersion: episode.version,
         },
-        onComplete: () => {
-          // Pipeline 完成后重新加载该集场次
-          reloadEpisodeScenes(episodeToParseId);
-        },
-      });
+      },
+      onComplete: () => {
+        void refreshScript();
+      },
+    });
 
-      // 3. 打开任务面板
-      setPanelExpanded(true);
-      setExpandedTaskId(pipelineId);
-    } catch (err) {
-      console.error("启动分集解析失败:", err);
-      toastApiError(err, "启动分集解析失败");
-    }
+    setPanelExpanded(true);
+    setExpandedTaskId(pipelineId);
   };
 
   const ensureStoryboardForScript = async () => {
@@ -430,24 +435,6 @@ export default function ScriptTabPage() {
     }
   };
 
-  /** 重新加载指定分集的场次（强制刷新忽略缓存） */
-  const reloadEpisodeScenes = async (episodeId: number) => {
-    setLoadingEpisodes((prev) => new Set(prev).add(episodeId));
-    try {
-      const scenes = await scriptApi.listScenes(episodeId);
-      setEpisodeScenes((prev) => ({ ...prev, [episodeId]: scenes }));
-    } catch (err) {
-      console.error("重新加载场次失败:", err);
-      toastApiError(err, "重新加载场次失败");
-    } finally {
-      setLoadingEpisodes((prev) => {
-        const s = new Set(prev);
-        s.delete(episodeId);
-        return s;
-      });
-    }
-  };
-
   // ========== 派生数据 ==========
 
   const selectedScene = selectedSceneId
@@ -508,11 +495,7 @@ export default function ScriptTabPage() {
   // ========== 渲染 ==========
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-      </div>
-    );
+    return <ScriptLoading />;
   }
 
   if (!script) {
@@ -611,6 +594,7 @@ export default function ScriptTabPage() {
         </div>
         <div ref={scrollContainerRef} className="flex-1 overflow-y-auto">
           <SceneList
+            projectId={projectId}
             activeEpisode={activeEpisode}
             activeScenes={activeScenes}
             isLoading={isActiveLoading}
@@ -640,14 +624,15 @@ export default function ScriptTabPage() {
       </motion.div>
 
       {/* 分集解析弹窗 */}
-      <EpisodeParseDialog
-        open={showEpisodeParseDialog}
-        episode={episodes.find((e) => e.id === episodeToParseId) ?? null}
-        hasExistingScenes={(episodeToParseId && (episodeScenes[episodeToParseId]?.length ?? 0) > 0) || false}
-        existingSceneCount={episodeToParseId ? (episodeScenes[episodeToParseId]?.length ?? 0) : 0}
-        onClose={() => setShowEpisodeParseDialog(false)}
-        onStartParse={handleEpisodeParse}
-      />
+      {episodeToParseId !== null && (
+        <EpisodeParseDialog
+          key={episodeToParseId}
+          episodeId={episodeToParseId}
+          editHref={episodeEditorHref(projectId, episodeToParseId)}
+          onClose={() => setEpisodeToParseId(null)}
+          onStartParse={handleEpisodeParse}
+        />
+      )}
     </motion.div>
   );
 }

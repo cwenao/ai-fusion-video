@@ -18,7 +18,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
-import static com.stonewu.fusion.config.ai.AiAgentRegistry.PROJECT_TEXT_EDITOR;
+import static com.stonewu.fusion.config.ai.AiAgentRegistry.fixedTextEditor;
 
 @Service
 @RequiredArgsConstructor
@@ -46,7 +46,7 @@ public class AgentUserConfigurationService {
 
     public List<Summary> list(long userId) {
         return registry.getAll().stream()
-                .filter(base -> !PROJECT_TEXT_EDITOR.equals(base.getType()))
+                .filter(base -> !fixedTextEditor(base.getType()))
                 .map(base -> {
                     var value = definitions.get(base.getType(), userId);
                     return new Summary(base.getType(), base.getName(), value.effective().name(),
@@ -62,7 +62,7 @@ public class AgentUserConfigurationService {
     @Transactional
     @CacheEvict(value = AgentUserOverrideRepository.CACHE, key = "#userId + ':' + #type")
     public long save(long userId, String type, long expectedRevision, AgentSettingsOverride overrides) {
-        if (PROJECT_TEXT_EDITOR.equals(type)) {
+        if (fixedTextEditor(type)) {
             throw new BusinessException(400, "该智能体使用固定的文本编辑配置");
         }
         if (overrides == null || expectedRevision < 0) {

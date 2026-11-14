@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import type { ScriptEpisode, SceneItem } from "@/lib/api/script";
 import {
   DndContext,
@@ -267,13 +268,15 @@ export function EpisodeTree({
                   </span>
                 </button>
                 {onParseEpisode && (
-                  <button
-                    onClick={(e) => { e.stopPropagation(); onParseEpisode(ep.id); }}
-                    className="p-1.5 shrink-0 rounded-full opacity-0 group-hover/ep:opacity-100 text-purple-400 hover:text-purple-300 hover:bg-purple-500/10 transition-all"
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    onClick={() => onParseEpisode(ep.id)}
                     title="AI 解析该集"
+                    aria-label={`AI 解析第 ${ep.episodeNumber} 集`}
                   >
-                    <Sparkles className="h-3 w-3" />
-                  </button>
+                    <Sparkles />
+                  </Button>
                 )}
                 {onGenerateStoryboard && (
                   <button

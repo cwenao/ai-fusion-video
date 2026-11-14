@@ -163,6 +163,21 @@ class AgentKernelSpecFactoryTests {
     }
 
     @Test
+    void episodeRewriteUsesTextOnlyEvenWithAvailableMcpTools() {
+        var type = AiAgentRegistry.SCRIPT_EPISODE_REWRITE;
+        var externalTool = new AgentKernelToolManifest("external_writer", AgentKernelToolManifest.schemaSha256("{}"),
+                false, false);
+        when(mcp.manifestsForAgent(type, 42L)).thenReturn(List.of(externalTool));
+        var spec = factory.createRoot(request().setAgentType(type), model, registry.getByType(type).getSystemPrompt(),
+                42L);
+
+        assertThat(spec.toolWhitelist()).isEmpty();
+        assertThat(spec.toolManifest()).isEmpty();
+        assertThat(factory.restore(new CanonicalAgentKernelSnapshotBuilder().build(spec).payload(), model,
+                spec.key().modelConfigFingerprint()).toolManifest()).isEmpty();
+    }
+
+    @Test
     void activeReferenceContextUsesSupportedPromptVariableNames() {
         AiChatReqVO request = request().setContext(Map.of(
                 "activeSkillReferences", "test-skill",

@@ -273,8 +273,7 @@ public final class AgentRunQueryService {
                 .setCreatedAt(identity.createdAt());
 
         switch (event.outputType()) {
-            case "CONTENT" -> response.setContent(firstText(
-                    payload, "content", "delta"));
+            case "CONTENT" -> response.setContent(firstText(true, payload, "content", "delta"));
             case "REASONING" -> response.setReasoningContent(firstText(
                     payload, "reasoningContent", "delta"));
             case "TOOL_CALL_STARTED" -> projectToolCallStart(response, event, payload);
@@ -394,9 +393,13 @@ public final class AgentRunQueryService {
     }
 
     private String firstText(JsonNode payload, String... fields) {
+        return firstText(false, payload, fields);
+    }
+
+    private String firstText(boolean preserveWhitespace, JsonNode payload, String... fields) {
         for (String field : fields) {
             JsonNode value = payload.get(field);
-            if (value != null && value.isTextual() && !value.textValue().isBlank()) {
+            if (value != null && value.isTextual() && (preserveWhitespace || !value.textValue().isBlank())) {
                 return value.textValue();
             }
         }
