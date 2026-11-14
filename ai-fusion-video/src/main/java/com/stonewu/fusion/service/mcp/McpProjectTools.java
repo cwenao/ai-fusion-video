@@ -119,15 +119,20 @@ class McpProjectTools {
     }
 
     private Outcome scriptDetail(ProjectGrant grant, CanvasValueType type, ObjectNode args) {
+        return Outcome.read(resources.detail(grant, type, id(args, "id"), includeRawContent(type, args)));
+    }
+
+    private boolean includeRawContent(CanvasValueType type, ObjectNode args) {
         if (type == SCRIPT_SCENE && args.has("includeRawContent")) {
             throw McpProjectFailure.invalid("includeRawContent", "原稿参数适用于剧本主档或分集");
         }
-        return Outcome.read(resources.detail(grant, type, id(args, "id"), args.path("includeRawContent").asBoolean()));
+        return args.path("includeRawContent").asBoolean(type == SCRIPT_EPISODE);
     }
 
     private Outcome list(ProjectGrant grant, CanvasValueType child, ObjectNode args, CanvasValueType selectedParent) {
         var parent = selectedParent == null ? McpProjectValues.parent(child) : selectedParent;
-        return Outcome.read(resources.children(grant, child, parent, id(args, "parentId"), PageRequest.from(args)));
+        return Outcome.read(resources.children(grant, child, parent, id(args, "parentId"), PageRequest.from(args),
+                includeRawContent(child, args)));
     }
 
     private Outcome assetList(ProjectGrant grant, CanvasValueType type, ObjectNode args) {

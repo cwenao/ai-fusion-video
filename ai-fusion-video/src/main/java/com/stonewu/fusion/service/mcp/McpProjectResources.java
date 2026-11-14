@@ -92,14 +92,14 @@ class McpProjectResources {
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public ObjectNode children(ProjectGrant grant, CanvasValueType child, CanvasValueType parentType, long parentId,
-                               PageRequest page) {
+                               PageRequest page, boolean rawContent) {
         var header = requireHeader(grant, parentType, parentId);
         IPage<Long> found = switch (child) {
             case SCRIPT_EPISODE, SCRIPT_SCENE -> resources.pageScriptChildren(child, parentId, page.number(), page.size());
             case ASSET_ITEM -> assets.pageItems(parentId, page.number(), page.size());
             default -> storyboards.pageChildren(child, parentType, parentId, page.number(), page.size());
         };
-        var result = page(grant, child, found.getRecords(), found.getTotal(), page);
+        var result = page(grant, child, found.getRecords(), found.getTotal(), page, rawContent);
         return result.put("parentId", Long.toString(parentId)).put("parentVersion", header.version());
     }
 
@@ -108,7 +108,7 @@ class McpProjectResources {
         long projectId = grant.projectId();
         var allowed = List.of(projectId);
         var ids = assets.ids(grant.actor(), allowed, projectId, type, keyword, page.number(), page.size());
-        return page(grant, ASSET, ids, assets.count(grant.actor(), allowed, projectId, type, keyword), page);
+        return page(grant, ASSET, ids, assets.count(grant.actor(), allowed, projectId, type, keyword), page, false);
     }
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
@@ -147,12 +147,13 @@ class McpProjectResources {
         return result;
     }
 
-    private ObjectNode page(ProjectGrant grant, CanvasValueType type, List<Long> ids, long total, PageRequest page) {
+    private ObjectNode page(ProjectGrant grant, CanvasValueType type, List<Long> ids, long total, PageRequest page,
+                            boolean rawContent) {
         var result = json.object(Map.of("page", page.number(), "pageSize", page.size(),
                 "hasMore", (long) page.number() * page.size() < total));
         var items = result.putArray("items");
         for (long id : ids) {
-            items.add(view(grant, type, queries.get(type, id, grant.actor()).data(), true, false));
+            items.add(view(grant, type, queries.get(type, id, grant.actor()).data(), true, rawContent));
         }
         return result;
     }

@@ -155,6 +155,7 @@ class McpProjectToolSchemas {
             case SCRIPT_LIST -> {
                 list(params, required, choice("episode", "scene"));
                 required(params, required, "parentId", ID);
+                params.put("includeRawContent", BOOLEAN);
             }
             case SCRIPT_GET -> {
                 get(params, required, choice("script", "episode", "scene"));

@@ -37,8 +37,8 @@
 
 | 工具 | 参数 | 结果与行为 |
 |---|---|---|
-| `fusion_script_list` | `kind: episode / scene`，`parentId`，`page?`，`pageSize?` | 列出剧本下的分集或分集下的场次。 |
-| `fusion_script_get` | `kind: script / episode / scene`，`id`，`includeRawContent?` | 读取剧本主档、分集或场次。`includeRawContent` 仅适用于主档和分集，默认 `false`。场次详情返回对白。 |
+| `fusion_script_list` | `kind: episode / scene`，`parentId`，`page?`，`pageSize?`，`includeRawContent?` | 列出剧本下的分集或分集下的场次。分集默认在每项的 `fields.rawContent` 返回原文，传 `includeRawContent: false` 可省略。场次列表不接受该参数。 |
+| `fusion_script_get` | `kind: script / episode / scene`，`id`，`includeRawContent?` | 读取剧本主档、分集或场次。分集默认返回原文，剧本主档传 `includeRawContent: true` 后返回原文。场次详情返回对白。 |
 | `fusion_script_create` | `kind: episode / scene`，`parentId`，`expectedParentVersion`，`fields` | 在对应剧本或分集下追加子对象，返回新对象和更新后的版本。剧本主档由工作区初始化创建。 |
 | `fusion_script_update` | `kind: script / episode / scene`，`id`，`expectedVersion`，`patch` | 更新指定字段并返回提交回执。普通编辑使用 `ResourcePatchCommand`。源稿重导入由现有专用流程处理。 |
 
