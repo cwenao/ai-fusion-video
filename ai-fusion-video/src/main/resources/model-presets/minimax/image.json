@@ -1,0 +1,96 @@
+[
+  {
+    "code": "MiniMax-H3-Image",
+    "name": "MiniMax H3 Image",
+    "platform": "openai_compatible",
+    "modelProtocol": "minimax_h3_image",
+    "modelType": 2,
+    "description": "MiniMax 官方图片模型，支持文生图和图片编辑，最多 16 张参考图，单次生成 1–10 张。",
+    "capabilities": [
+      "文生图",
+      "图片编辑",
+      "多图参考",
+      "1K/2K/4K"
+    ],
+    "config": {
+      "supportReferenceImages": true,
+      "referenceImageInputFormats": [
+        "url",
+        "data_uri"
+      ],
+      "minReferenceImages": 1,
+      "maxReferenceImages": 16,
+      "maxCount": 10,
+      "supportedResolutions": [
+        "1K",
+        "2K",
+        "4K"
+      ],
+      "defaultResolution": "4K",
+      "supportedAspectRatios": [
+        "auto",
+        "1:1",
+        "16:9",
+        "9:16",
+        "4:3",
+        "3:4",
+        "3:2",
+        "2:3",
+        "21:9",
+        "9:21",
+        "3:1",
+        "1:3"
+      ],
+      "defaultAspectRatio": "auto",
+      "minPixels": 655360,
+      "maxPixels": 20000000
+    }
+  },
+  {
+    "code": "MiniMax-H3-Image-Highspeed",
+    "name": "MiniMax H3 Image Highspeed",
+    "platform": "openai_compatible",
+    "modelProtocol": "minimax_h3_image",
+    "modelType": 2,
+    "description": "MiniMax 官方图片模型，支持文生图和图片编辑，最多 16 张参考图，单次生成 1–10 张。",
+    "capabilities": [
+      "文生图",
+      "图片编辑",
+      "多图参考",
+      "1K/2K/4K"
+    ],
+    "config": {
+      "supportReferenceImages": true,
+      "referenceImageInputFormats": [
+        "url",
+        "data_uri"
+      ],
+      "minReferenceImages": 1,
+      "maxReferenceImages": 16,
+      "maxCount": 10,
+      "supportedResolutions": [
+        "1K",
+        "2K",
+        "4K"
+      ],
+      "defaultResolution": "4K",
+      "supportedAspectRatios": [
+        "auto",
+        "1:1",
+        "16:9",
+        "9:16",
+        "4:3",
+        "3:4",
+        "3:2",
+        "2:3",
+        "21:9",
+        "9:21",
+        "3:1",
+        "1:3"
+      ],
+      "defaultAspectRatio": "auto",
+      "minPixels": 655360,
+      "maxPixels": 20000000
+    }
+  }
+]

@@ -160,6 +160,31 @@ class OfficialVideoRulesTests {
                 "2147483647");
     }
 
+    /** H3 Lite 的参考比例限制不能影响单独尾帧，也不能扩展到 H3 Highspeed。 */
+    @Test
+    void miniMaxLiteRequiresExplicitReferenceRatioAndAllowsLastFrameOnly() {
+        var lite = config("MiniMax-H3-Lite");
+        var task = task();
+        task.setDuration(4);
+        task.setResolution("480P");
+        task.setLastFrameImageUrl("https://example.com/end.png");
+        VideoModelRules.normalizeTask(lite, task);
+        assertThat(task.getRatio()).isEqualTo("adaptive");
+
+        task.setLastFrameImageUrl(null);
+        task.setReferenceImageUrls("[\"https://example.com/reference.png\"]");
+        assertThatThrownBy(() -> VideoModelRules.normalizeTask(lite, task)).hasMessageContaining("明确画面比例");
+        task.setRatio(null);
+        assertThatThrownBy(() -> VideoModelRules.normalizeTask(lite, task)).hasMessageContaining("明确画面比例");
+        task.setRatio("9:16");
+        VideoModelRules.normalizeTask(lite, task);
+        assertThat(task.getRatio()).isEqualTo("9:16");
+
+        task.setRatio(null);
+        VideoModelRules.normalizeTask(config("MiniMax-H3-Highspeed"), task);
+        assertThat(task.getRatio()).isEqualTo("adaptive");
+    }
+
     @Test
     void advancedOptionsAreExplicitAndTyped() {
         var cfg = config("MiniMax-H3");

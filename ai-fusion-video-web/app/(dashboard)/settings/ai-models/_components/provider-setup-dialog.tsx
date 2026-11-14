@@ -165,6 +165,13 @@ export function ProviderSetupDialog({
             className="flex min-w-0 flex-col gap-4"
           >
             <SponsorNotice provider={provider} />
+            {stage === "connection" && provider.discovery === "preset" && provider.credentialUrl && (
+              <Button variant="link" className="self-start" render={
+                <a href={provider.credentialUrl} target="_blank" rel="noopener noreferrer" />
+              }>
+                获取 API Key
+              </Button>
+            )}
             {stage === "connection" && (
               <ProviderConnectionFields
                 configuration={configuration}

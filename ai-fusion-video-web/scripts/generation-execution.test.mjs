@@ -371,6 +371,19 @@ test("H3 only offers concrete ratios for text and adaptive for frames without se
   );
 });
 
+test("H3 Lite 参考模式仅允许固定比例，单独尾帧仍使用自适应", () => {
+  const cap = officialCapabilities("MiniMax-H3-Lite");
+  const form = labels.generationFormForModel(forms.EMPTY_GENERATION_FORM, cap);
+  const prompt = "海风吹过灯塔";
+  assert.match(videoRules.videoFormIssue(cap, {
+    ...form, prompt, ratio: "adaptive", referenceImages: ["media://reference"],
+  }), /重新选择画面比例/);
+  assert.equal(videoRules.videoFormIssue(cap, {
+    ...form, prompt, ratio: "adaptive", lastFrame: ["media://last"],
+    duration: 4, resolution: "480P",
+  }), null);
+});
+
 test("media-only requests survive persistence and retain automatic duration", () => {
   const cap = officialCapabilities("doubao-seedance-2-5-260628");
   const form = {

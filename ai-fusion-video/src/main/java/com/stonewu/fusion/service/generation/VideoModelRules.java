@@ -15,8 +15,9 @@ import java.util.List;
  */
 public record VideoModelRules(
         Integer version, String profile, Boolean promptRequired, Integer promptMaxLength,
-        Boolean automaticDuration, String defaultRatio, String frameRatio, String frameRatioMode,
-        Boolean textRequiresFixedRatio, Boolean fixedGenerateAudio, Boolean defaultGenerateAudio,
+        Boolean automaticDuration, String defaultRatio, String referenceDefaultRatio, String frameRatio, String frameRatioMode,
+        Boolean textRequiresFixedRatio, Boolean referenceRequiresFixedRatio,
+        Boolean fixedGenerateAudio, Boolean defaultGenerateAudio,
         Boolean lastFrameRequiresFirst,
         Integer maxReferenceInputs, Integer maxInputOutputVideoSeconds,
         MediaLimits imageLimits, MediaLimits referenceVideoLimits, MediaLimits referenceAudioLimits,
@@ -129,8 +130,10 @@ public record VideoModelRules(
 
         String resolution = choice(config, "supportedResolutions",
                 StrUtil.blankToDefault(supplied.resolution(), config.getStr("defaultResolution")), "分辨率");
+        String inputDefaultRatio = inputs.references() && referenceDefaultRatio != null
+                ? referenceDefaultRatio : defaultRatio;
         String ratio = choice(config, "supportedAspectRatios",
-                StrUtil.blankToDefault(supplied.ratio(), defaultRatio), "画面比例");
+                StrUtil.blankToDefault(supplied.ratio(), inputDefaultRatio), "画面比例");
         if (inputs.frames() && StrUtil.isNotBlank(frameRatio)) {
             if (StrUtil.isNotBlank(supplied.ratio()) && !frameRatio.equals(ratio) && !"inferred".equals(
                     frameRatioMode)) {
@@ -140,6 +143,10 @@ public record VideoModelRules(
         }
         if (!inputs.any() && Boolean.TRUE.equals(textRequiresFixedRatio) && "adaptive".equals(ratio)) {
             throw new BusinessException("此模型的纯文本生成需要明确画面比例，请选择 16:9、9:16 等比例");
+        }
+        if (inputs.references() && Boolean.TRUE.equals(referenceRequiresFixedRatio)
+                && (StrUtil.isBlank(supplied.ratio()) || "adaptive".equals(ratio))) {
+            throw new BusinessException("此模型的参考生成需要明确画面比例，请选择 16:9、9:16 等比例");
         }
 
         Integer duration = supplied.duration() == null ? config.getInt("defaultDuration") : supplied.duration();

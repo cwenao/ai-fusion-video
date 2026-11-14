@@ -2,12 +2,14 @@ package com.stonewu.fusion.service.ai.provider;
 
 import cn.hutool.core.util.StrUtil;
 import com.stonewu.fusion.controller.ai.vo.RemoteModelVO;
+import com.stonewu.fusion.common.BusinessException;
 import com.stonewu.fusion.entity.ai.ApiConfig;
 import com.stonewu.fusion.service.ai.proxy.AiProxySupport;
 import io.agentscope.core.model.ChatModelBase;
 import io.agentscope.core.model.GenerateOptions;
 import io.agentscope.core.model.transport.HttpTransport;
 import io.agentscope.extensions.model.openai.OpenAIChatModel;
+import io.agentscope.extensions.model.openai.compat.minimax.MiniMaxFormatter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.openai.OpenAiChatModel;
@@ -15,6 +17,7 @@ import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.openai.api.OpenAiApi;
 import org.springframework.stereotype.Component;
 
+import java.math.BigDecimal;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -27,8 +30,12 @@ import java.util.Set;
 @Slf4j
 public class OpenAiCompatibleAiProvider extends AbstractAiProvider {
 
+    private static final String MINIMAX_CHAT = "minimax_chat";
+    private static final String MINIMAX_FLASH = "MiniMax-M3.1-Flash";
+    private static final Set<String> MINIMAX_EFFORT_LEVELS = Set.of("low", "medium", "high", "xhigh", "max");
     private static final Set<String> SUPPORTED_PLATFORMS = Set.of(
-            "openai_compatible", "openai", "deepseek", "zhipu", "moonshot", "volcengine", "siliconflow", "newapi");
+            "openai_compatible", "openai", "deepseek", "zhipu", "moonshot", "volcengine", "siliconflow",
+            "newapi", MINIMAX_CHAT);
 
     @Override
     public boolean supports(String platform) {
@@ -65,9 +72,14 @@ public class OpenAiCompatibleAiProvider extends AbstractAiProvider {
         apiBuilder.embeddingsPath(embeddingsPath);
 
         OpenAiChatOptions.Builder optionsBuilder = OpenAiChatOptions.builder().model(modelName);
-        applyDouble(config, "temperature", optionsBuilder::temperature);
-        applyDouble(config, "topP", optionsBuilder::topP);
-        applyInt(config, "maxTokens", optionsBuilder::maxTokens);
+        if (MINIMAX_CHAT.equals(platform)) {
+            optionsBuilder.temperature(1.0).topP(0.95)
+                    .maxCompletionTokens(miniMaxMaxTokens(context)).reasoningEffort(miniMaxEffort(context));
+        } else {
+            applyDouble(config, "temperature", optionsBuilder::temperature);
+            applyDouble(config, "topP", optionsBuilder::topP);
+            applyInt(config, "maxTokens", optionsBuilder::maxTokens);
+        }
 
         return OpenAiChatModel.builder()
                 .openAiApi(apiBuilder.build())
@@ -84,7 +96,8 @@ public class OpenAiCompatibleAiProvider extends AbstractAiProvider {
 
         requireApiKey(apiKey, "OpenAI Compatible (" + platform + ")");
 
-        GenerateOptions generateOptions = buildGenerateOptions(context);
+        boolean miniMax = MINIMAX_CHAT.equals(platform);
+        GenerateOptions generateOptions = miniMax ? miniMaxOptions(context) : buildGenerateOptions(context);
         if (shouldUseResponsesApi(context)) {
             return new OpenAiResponsesAgentScopeModel(
                     context.getApiConfig(),
@@ -99,11 +112,14 @@ public class OpenAiCompatibleAiProvider extends AbstractAiProvider {
                 .apiKey(apiKey)
                 .modelName(context.getModelName())
                 .stream(true);
-        if (context.isSingleRequest()) {
-            builder.formatter(new StreamingOpenAiFormatter());
+        if (miniMax) {
+            builder.contextWindowSize(1_000_000).nativeStructuredOutput(false);
         }
         if (context.isSingleRequest()) {
+            builder.formatter(new StreamingOpenAiFormatter(miniMax ? new MiniMaxFormatter() : null));
             generateOptions = SingleRequestModelSupport.options(generateOptions);
+        } else if (miniMax) {
+            builder.formatter(new MiniMaxFormatter());
         }
         if (generateOptions != null) {
             builder.generateOptions(generateOptions);
@@ -179,7 +195,48 @@ public class OpenAiCompatibleAiProvider extends AbstractAiProvider {
         return hasOptions ? builder.build() : null;
     }
 
+    private GenerateOptions miniMaxOptions(AiProviderContext context) {
+        var builder = GenerateOptions.builder().maxCompletionTokens(miniMaxMaxTokens(context));
+        String effort = miniMaxEffort(context);
+        if (effort != null) {
+            // SDK 的 MiniMax 格式化器仍按旧模型移除类型化字段，官网 Flash 支持该参数。
+            builder.additionalBodyParam("reasoning_effort", effort);
+        }
+        return builder.build();
+    }
+
+    private int miniMaxMaxTokens(AiProviderContext context) {
+        Object value = getConfigValue(context.getConfig(), "maxTokens", "max_completion_tokens");
+        if (value == null) {
+            return 131_072;
+        }
+        try {
+            int tokens = new BigDecimal(value.toString()).intValueExact();
+            if (tokens >= 1 && tokens <= 524_288) {
+                return tokens;
+            }
+        } catch (NumberFormatException | ArithmeticException invalid) {
+            throw new BusinessException("MiniMax 最大输出 token 数须为 1 至 524288 的整数");
+        }
+        throw new BusinessException("MiniMax 最大输出 token 数须为 1 至 524288 的整数");
+    }
+
+    private String miniMaxEffort(AiProviderContext context) {
+        if (!MINIMAX_FLASH.equals(context.getModelName())) {
+            return null;
+        }
+        String value = StrUtil.blankToDefault(
+                getConfigString(context.getConfig(), "reasoningEffort", "reasoning_effort"), "max");
+        if (!MINIMAX_EFFORT_LEVELS.contains(value)) {
+            throw new BusinessException("MiniMax 思考深度须为 low、medium、high、xhigh 或 max");
+        }
+        return value;
+    }
+
     boolean shouldUseResponsesApi(AiProviderContext context) {
+        if (MINIMAX_CHAT.equals(context.getPlatform())) {
+            return false;
+        }
         Boolean useResponsesApi = getConfigBoolean(context.getConfig(),
                 "useResponsesApi", "useResponses", "responseApi", "responsesApi");
         if (useResponsesApi != null) {
@@ -234,6 +291,13 @@ public class OpenAiCompatibleAiProvider extends AbstractAiProvider {
     }
 
     private String resolveRootBaseUrl(String platform, String baseUrl) {
+        if (MINIMAX_CHAT.equals(platform)) {
+            if (StrUtil.isBlank(baseUrl)) {
+                throw new BusinessException("请填写 MiniMax API 地址");
+            }
+            String root = normalizeBaseUrl(baseUrl.trim());
+            return root.endsWith("/v1") ? root.substring(0, root.length() - 3) : root;
+        }
         return StrUtil.isBlank(baseUrl) ? inferRootBaseUrl(platform) : normalizeBaseUrl(baseUrl);
     }
 

@@ -627,7 +627,7 @@ export default function AiModelsPage() {
           models={models}
           onManual={(initial, existing, candidate) => {
             setInitialCandidate(candidate ?? null);
-            if (existing && candidate) {
+            if (existing && (candidate || setupTarget.provider.discovery === "preset")) {
               setEditingModel(null);
               setModelDialogApiConfigId(existing.id);
               setModelDialogOpen(true);

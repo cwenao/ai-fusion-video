@@ -34,7 +34,7 @@ export function ProviderPresetPicker({
       <div className="flex flex-col gap-1">
         <h3 className="text-xs font-medium">常用提供商</h3>
         <p className="text-xs text-muted-foreground">
-          选择平台自动填写地址；赞助商可快速配置模型。
+          选择提供商自动填写地址，部分提供商可批量添加模型。
         </p>
       </div>
       {loading && (

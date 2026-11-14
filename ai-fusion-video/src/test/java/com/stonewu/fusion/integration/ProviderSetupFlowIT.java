@@ -15,6 +15,7 @@ import com.stonewu.fusion.service.ai.ApiConfigService;
 import com.stonewu.fusion.service.ai.ChatModelFactory;
 import com.stonewu.fusion.service.ai.ModelPresetService;
 import com.stonewu.fusion.service.ai.catalog.MetasoModelDiscovery;
+import com.stonewu.fusion.service.ai.catalog.PresetModelDiscovery;
 import com.stonewu.fusion.service.ai.catalog.ProviderCatalogService;
 import com.stonewu.fusion.service.ai.catalog.ProviderDiscoveryService;
 import com.stonewu.fusion.service.ai.catalog.ProviderModelCandidate;
@@ -22,6 +23,7 @@ import com.stonewu.fusion.service.ai.catalog.ProviderSetupService;
 import com.stonewu.fusion.service.ai.catalog.ProviderSetupWriter;
 import com.stonewu.fusion.service.ai.comfyui.ComfyUiWorkflowService;
 import com.stonewu.fusion.service.ai.model.AiModelMetadataResolver;
+import com.stonewu.fusion.service.generation.GenerationModelCapabilityService;
 import com.sun.net.httpserver.HttpServer;
 import com.zaxxer.hikari.HikariDataSource;
 import org.flywaydb.core.Flyway;
@@ -115,9 +117,12 @@ class ProviderSetupFlowIT {
         context.registerBean(CacheManager.class, () -> new ConcurrentMapCacheManager());
         context.registerBean(ChatModelFactory.class, () -> mock(ChatModelFactory.class));
         context.registerBean(ComfyUiWorkflowService.class, () -> mock(ComfyUiWorkflowService.class));
+        context.registerBean(GenerationModelCapabilityService.class,
+                () -> new GenerationModelCapabilityService(context.getBean(AiModelMetadataResolver.class),
+                        context.getBean(ModelPresetService.class)));
         MybatisTestSupport.register(context, source, ApiConfigMapper.class, AiModelMapper.class);
         context.register(ProviderCatalogService.class, ModelPresetService.class, ApiConfigService.class,
-                AiModelMetadataResolver.class, AiModelService.class, MetasoModelDiscovery.class,
+                AiModelMetadataResolver.class, AiModelService.class, MetasoModelDiscovery.class, PresetModelDiscovery.class,
                 ProviderDiscoveryService.class, ProviderSetupWriter.class, ProviderSetupService.class,
                 ProviderCatalogController.class);
         context.refresh();
@@ -159,6 +164,38 @@ class ProviderSetupFlowIT {
     @AfterEach
     void logout() {
         SecurityContextHolder.clearContext();
+    }
+
+    /** 同一次配置保存三类模型及能力，已配置的官方线路可追加其他型号。 */
+    @Test
+    void miniMaxSetupPersistsOfficialProtocolsAndPresetMetadata() {
+        var config = new ApiConfigSaveReqVO();
+        config.setName("MiniMax 测试");
+        config.setProviderId("minimax-cn");
+        config.setApiKey("fixture-key");
+        var request = new ProviderSetupReqVO(config, UUID.randomUUID().toString(),
+                List.of("MiniMax-M3.1-Flash", "MiniMax-H3-Image", "MiniMax-H3-Lite"));
+        var created = setup.apply(request);
+        var saved = configs.selectById(created.apiConfigId());
+        assertThat(saved.getApiUrl()).isEqualTo("https://api.minimax.cn");
+        assertThat(saved.getTextProtocol()).isEqualTo("minimax_chat");
+        assertThat(saved.getImageProtocol()).isEqualTo("minimax_h3_image");
+        assertThat(saved.getVideoProtocol()).isEqualTo("minimax_h3");
+        var registered = models.selectList(new LambdaQueryWrapper<AiModel>()
+                .eq(AiModel::getApiConfigId, saved.getId()));
+        assertThat(registered).extracting(AiModel::getCapabilityPresetCode)
+                .containsExactlyInAnyOrderElementsOf(request.modelIds());
+        var flash = registered.stream().filter(model -> model.getModelType() == 1).findFirst().orElseThrow();
+        assertThat(flash.getReasoningEffortLevels()).containsExactly("low", "medium", "high", "xhigh", "max");
+        assertThat(flash.getMultimodalInputTypes()).containsExactly("image", "video");
+        assertThat(flash.getContextWindow()).isEqualTo(1_000_000);
+
+        var append = new ApiConfigSaveReqVO();
+        append.setId(saved.getId());
+        append.setName(saved.getName());
+        append.setProviderId(saved.getProviderId());
+        assertThat(setup.apply(new ProviderSetupReqVO(append, UUID.randomUUID().toString(),
+                List.of("MiniMax-H3-Max"))).createdModels()).isEqualTo(1);
     }
 
     /** 重试不能创建第二份账号；追加不能覆盖原模型的名称、默认选择、并发和参数。 */

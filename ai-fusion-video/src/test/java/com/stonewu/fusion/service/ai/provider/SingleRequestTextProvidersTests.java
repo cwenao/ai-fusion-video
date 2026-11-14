@@ -1,5 +1,6 @@
 package com.stonewu.fusion.service.ai.provider;
 
+import cn.hutool.json.JSONUtil;
 import com.google.auth.oauth2.AccessToken;
 import com.google.auth.oauth2.GoogleCredentials;
 import com.google.genai.GenerationHttpApiClient;
@@ -12,8 +13,11 @@ import com.sun.net.httpserver.HttpServer;
 import io.agentscope.core.message.Msg;
 import io.agentscope.core.message.MsgRole;
 import io.agentscope.core.message.TextBlock;
+import io.agentscope.core.message.URLSource;
+import io.agentscope.core.message.VideoBlock;
 import io.agentscope.core.model.ChatModelBase;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
@@ -26,6 +30,7 @@ import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import reactor.test.StepVerifier;
@@ -39,6 +44,48 @@ class SingleRequestTextProvidersTests {
     private static final List<String> PROTOCOLS = List.of("openai", "responses", "anthropic", "gemini", "vertex", "dashscope", "ollama");
     private static final List<Msg> MESSAGES = List.of(Msg.builder().name("user").role(MsgRole.USER)
             .content(TextBlock.builder().text("生成一句场景描述").build()).build());
+
+    /** Flash 要收到当前官网支持的思考档位、最大输出字段和视频消息。 */
+    @Test
+    void miniMaxFlashSendsDocumentedChatOptionsAndVideo() throws Exception {
+        var captured = new AtomicReference<String>();
+        var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/chat/completions", exchange -> {
+            try (exchange) {
+                captured.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+                byte[] response = (StreamingProviderFixtures.first("openai") + StreamingProviderFixtures.last("openai"))
+                        .getBytes(StandardCharsets.UTF_8);
+                exchange.getResponseHeaders().set("Content-Type", "text/event-stream");
+                exchange.sendResponseHeaders(200, response.length);
+                exchange.getResponseBody().write(response);
+            }
+        });
+        server.start();
+        try {
+            String baseUrl = "http://127.0.0.1:" + server.getAddress().getPort() + "/v1";
+            var api = ApiConfig.builder().platform("openai_compatible").apiUrl(baseUrl).build();
+            var context = AiProviderContext.builder().apiConfig(api).apiKey("fixture-key").baseUrl(baseUrl)
+                    .modelName("MiniMax-M3.1-Flash").platform("minimax_chat")
+                    .config(Map.of("reasoningEffort", "xhigh", "maxTokens", 4096))
+                    .singleRequest(true).build();
+            var video = VideoBlock.builder().source(URLSource.builder().url("https://example.com/a.mp4").build()).build();
+            var message = Msg.builder().name("user").role(MsgRole.USER)
+                    .content(List.of(TextBlock.builder().text("描述视频").build(), video)).build();
+            try (var model = OwnedChatModel.owned(new OpenAiCompatibleAiProvider().createAgentScopeModel(context))) {
+                assertThat(model.model().getContextWindowSize()).isEqualTo(1_000_000);
+                assertThat(model.model().supportsNativeStructuredOutput()).isFalse();
+                var response = model.model().stream(List.of(message), List.of(), null).collectList().block(Duration.ofSeconds(8));
+                assertThat(response).isNotEmpty();
+            }
+            var request = JSONUtil.parseObj(captured.get());
+            assertThat(request.getRaw()).containsEntry("reasoning_effort", "xhigh").containsEntry("reasoning_split", true)
+                    .containsEntry("max_completion_tokens", 4096).doesNotContainKeys("max_tokens", "include_reasoning");
+            var media = request.getJSONArray("messages").getJSONObject(0).getJSONArray("content").getJSONObject(1);
+            assertThat(media.getJSONObject("video_url").getStr("url")).isEqualTo("https://example.com/a.mp4");
+        } finally {
+            server.stop(0);
+        }
+    }
 
     static Stream<Object[]> failures() {
         return PROTOCOLS.stream().flatMap(protocol -> Stream.of(307, 408, 429, 503).map(status -> new Object[]{protocol, status}));

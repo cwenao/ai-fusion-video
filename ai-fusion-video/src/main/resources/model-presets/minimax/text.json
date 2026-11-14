@@ -1,0 +1,72 @@
+[
+  {
+    "code": "MiniMax-M3.1-Flash",
+    "name": "MiniMax M3.1 Flash",
+    "platform": "openai_compatible",
+    "modelProtocol": "minimax_chat",
+    "modelType": 1,
+    "description": "MiniMax 官方多模态对话模型，支持图片、视频理解和工具调用，100 万 token 上下文。支持五档思考深度，默认 max。",
+    "capabilities": [
+      "文本对话",
+      "图片理解",
+      "视频理解",
+      "工具调用"
+    ],
+    "supportReasoning": true,
+    "reasoningEffortLevels": [
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ],
+    "contextWindow": 1000000,
+    "multimodalInputTypes": [
+      "image",
+      "video"
+    ],
+    "multimodalInputTransports": {
+      "image": [
+        "url",
+        "base64"
+      ],
+      "video": [
+        "url",
+        "base64"
+      ]
+    },
+    "config": {}
+  },
+  {
+    "code": "MiniMax-M3",
+    "name": "MiniMax M3",
+    "platform": "openai_compatible",
+    "modelProtocol": "minimax_chat",
+    "modelType": 1,
+    "description": "MiniMax 官方多模态对话模型，支持图片、视频理解和工具调用，100 万 token 上下文。默认使用自适应思考。",
+    "capabilities": [
+      "文本对话",
+      "图片理解",
+      "视频理解",
+      "工具调用"
+    ],
+    "supportReasoning": true,
+    "reasoningEffortLevels": [],
+    "contextWindow": 1000000,
+    "multimodalInputTypes": [
+      "image",
+      "video"
+    ],
+    "multimodalInputTransports": {
+      "image": [
+        "url",
+        "base64"
+      ],
+      "video": [
+        "url",
+        "base64"
+      ]
+    },
+    "config": {}
+  }
+]

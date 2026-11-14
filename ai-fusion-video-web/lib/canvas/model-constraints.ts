@@ -323,7 +323,7 @@ export function validateModelNode(
   if (
     rules &&
     node.config.ratio !== undefined &&
-    rules.frameRatioMode !== "inferred" &&
+    !(rules.frameRatioMode === "inferred" && (mediaInputs.firstFrame || mediaInputs.lastFrame)) &&
     !videoRatioOptions(
       (model.parameters.supportedAspectRatios as string[]) ?? [],
       rules,

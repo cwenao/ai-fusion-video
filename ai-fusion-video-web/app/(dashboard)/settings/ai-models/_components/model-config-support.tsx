@@ -133,6 +133,8 @@ export const OPENAI_IMAGE_MODE_CONFIG_KEYS = [
   "responsesImageApi",
 ];
 export const MODEL_PROTOCOL_LABELS: Record<string, string> = {
+  minimax_chat: "MiniMax 对话协议",
+  minimax_h3_image: "MiniMax H3 图片协议",
   openai_compatible: "OpenAI 兼容文本协议",
   openai: "OpenAI 官方协议",
   deepseek: "OpenAI 兼容文本协议",
@@ -156,6 +158,7 @@ export const MODEL_PROTOCOL_LABELS: Record<string, string> = {
 };
 
 export const TEXT_PROTOCOL_OPTIONS = [
+  { value: "minimax_chat", label: MODEL_PROTOCOL_LABELS.minimax_chat },
   { value: "openai_compatible", label: "OpenAI 兼容文本协议" },
   { value: "anthropic", label: "Anthropic 协议" },
   { value: "gemini", label: "Gemini 协议" },
@@ -166,6 +169,7 @@ export const TEXT_PROTOCOL_OPTIONS = [
 ] as const;
 
 export const IMAGE_PROTOCOL_OPTIONS = [
+  { value: "minimax_h3_image", label: MODEL_PROTOCOL_LABELS.minimax_h3_image },
   { value: "openai", label: "OpenAI 官方协议" },
   { value: "newapi", label: "New API 协议" },
   { value: "agnes", label: "Agnes 协议" },
@@ -523,6 +527,18 @@ export function getChatSamplingFields(
   platform: string | null | undefined,
 ): ConfigFieldDef[] {
   const normalized = normalizePlatform(platform);
+  if (normalized === "minimax_chat") {
+    return [{
+      key: "maxTokens",
+      label: "最大输出 Token 数",
+      type: "number",
+      min: 1,
+      max: 524288,
+      step: 1,
+      placeholder: "131072",
+      hint: "官方推荐 131072，最高 524288。Temperature 固定为 1，Top P 固定为 0.95。",
+    }];
+  }
   const fields: ConfigFieldDef[] = [
     {
       key: "temperature",

@@ -46,16 +46,24 @@
     "discovery": "manual", "modelPresetCodes": []
   },
   {
-    "id": "minimax-cn", "platform": "openai_compatible", "label": "MiniMax 视频（国内）",
-    "url": "https://api.minimaxi.com", "textProtocol": "", "imageProtocol": "",
+    "id": "minimax-cn", "platform": "openai_compatible", "label": "MiniMax（国内）",
+    "url": "https://api.minimax.cn", "textProtocol": "minimax_chat", "imageProtocol": "minimax_h3_image",
     "videoProtocol": "minimax_h3", "appendV1": false, "vendor": "minimax", "sponsored": false,
-    "supportedModelTypes": [3], "discovery": "preset", "modelPresetCodes": ["MiniMax-H3", "MiniMax-H3-Max"]
+    "hint": "官方直连 · 对话、图片、视频", "quickSetup": true,
+    "credentialUrl": "https://platform.minimax.cn/console/keys",
+    "documentationUrl": "https://platform.minimax.cn/docs/api-reference/api-overview",
+    "supportedModelTypes": [1, 2, 3], "discovery": "preset",
+    "modelPresetCodes": ["MiniMax-M3.1-Flash", "MiniMax-M3", "MiniMax-H3-Image", "MiniMax-H3-Image-Highspeed", "MiniMax-H3", "MiniMax-H3-Highspeed", "MiniMax-H3-Lite", "MiniMax-H3-Max"]
   },
   {
-    "id": "minimax-global", "platform": "openai_compatible", "label": "MiniMax 视频（国际）",
-    "url": "https://api.minimax.io", "textProtocol": "", "imageProtocol": "",
+    "id": "minimax-global", "platform": "openai_compatible", "label": "MiniMax（国际）",
+    "url": "https://api.minimax.io", "textProtocol": "minimax_chat", "imageProtocol": "minimax_h3_image",
     "videoProtocol": "minimax_h3", "appendV1": false, "vendor": "minimax", "sponsored": false,
-    "supportedModelTypes": [3], "discovery": "preset", "modelPresetCodes": ["MiniMax-H3", "MiniMax-H3-Max"]
+    "hint": "官方直连 · 对话、图片、视频", "quickSetup": true,
+    "credentialUrl": "https://platform.minimax.io/console/keys",
+    "documentationUrl": "https://platform.minimax.io/docs/api-reference/api-overview",
+    "supportedModelTypes": [1, 2, 3], "discovery": "preset",
+    "modelPresetCodes": ["MiniMax-M3.1-Flash", "MiniMax-M3", "MiniMax-H3-Image", "MiniMax-H3-Image-Highspeed", "MiniMax-H3", "MiniMax-H3-Highspeed", "MiniMax-H3-Lite", "MiniMax-H3-Max"]
   },
   {
     "id": "wan3", "platform": "dashscope", "label": "万相 3.0（官方）",

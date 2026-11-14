@@ -1,6 +1,9 @@
 package com.stonewu.fusion.service.ai.provider;
 
 import io.agentscope.core.model.ChatResponse;
+import io.agentscope.core.model.GenerateOptions;
+import io.agentscope.core.model.ToolChoice;
+import io.agentscope.extensions.model.openai.dto.OpenAIRequest;
 import io.agentscope.extensions.model.openai.dto.OpenAIResponse;
 import io.agentscope.extensions.model.openai.formatter.OpenAIChatFormatter;
 
@@ -13,6 +16,34 @@ import java.util.Map;
  */
 final class StreamingOpenAiFormatter extends OpenAIChatFormatter {
     private final Map<Integer, ToolIdentity> toolCalls = new HashMap<>();
+    private final OpenAIChatFormatter requestFormatter;
+
+    StreamingOpenAiFormatter(OpenAIChatFormatter requestFormatter) {
+        this.requestFormatter = requestFormatter;
+    }
+
+    @Override
+    public void applyOptions(OpenAIRequest request, GenerateOptions options, GenerateOptions defaults) {
+        if (requestFormatter == null) {
+            super.applyOptions(request, options, defaults);
+        } else {
+            requestFormatter.applyOptions(request, options, defaults);
+        }
+    }
+
+    @Override
+    public void applyToolChoice(OpenAIRequest request, ToolChoice choice) {
+        if (requestFormatter == null) {
+            super.applyToolChoice(request, choice);
+        } else {
+            requestFormatter.applyToolChoice(request, choice);
+        }
+    }
+
+    @Override
+    protected boolean supportsStrict() {
+        return requestFormatter == null && super.supportsStrict();
+    }
 
     @Override
     public ChatResponse parseResponse(OpenAIResponse response, Instant started) {

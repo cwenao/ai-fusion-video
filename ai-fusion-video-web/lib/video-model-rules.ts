@@ -11,6 +11,7 @@ export interface VideoModelRules {
   frameRatio?: string;
   frameRatioMode?: "required" | "inferred";
   textRequiresFixedRatio?: boolean;
+  referenceRequiresFixedRatio?: boolean;
   fixedGenerateAudio?: boolean;
   defaultGenerateAudio?: boolean;
   lastFrameRequiresFirst?: boolean;
@@ -137,7 +138,8 @@ export function videoRatioOptions(
   if (rules?.frameRatio && (inputs.firstFrame || inputs.lastFrame)) {
     return [rules.frameRatio];
   }
-  if (rules?.textRequiresFixedRatio && !inputs.any) {
+  if ((rules?.textRequiresFixedRatio && !inputs.any)
+    || (rules?.referenceRequiresFixedRatio && inputs.references)) {
     return values.filter((value) => value !== "adaptive");
   }
   return values;

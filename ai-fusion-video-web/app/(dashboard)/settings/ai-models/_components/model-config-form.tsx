@@ -34,12 +34,14 @@ import {
 export function ModelConfigForm({
   modelType,
   platform,
+  protocol,
   supportReasoning,
   configJson,
   onChange,
 }: {
   modelType: number;
   platform?: string | null;
+  protocol?: string;
   supportReasoning: boolean;
   configJson: string | undefined;
   onChange: (json: string) => void;
@@ -50,8 +52,9 @@ export function ModelConfigForm({
 
   const configObj = parseConfigJson(configJson);
   const normalizedPlatform = normalizePlatform(platform);
-  const fields = getConfigFieldsByModelType(modelType, platform);
-  const showReasoningConfig = modelType === 1 && supportReasoning;
+  const miniMaxChat = protocol === "minimax_chat";
+  const fields = getConfigFieldsByModelType(modelType, miniMaxChat ? protocol : platform);
+  const showReasoningConfig = modelType === 1 && supportReasoning && !miniMaxChat;
   const includeReasoningMode = configObj.includeReasoning === true
     ? "true"
     : configObj.includeReasoning === false
@@ -362,7 +365,7 @@ export function ModelConfigForm({
                 </div>
               )}
 
-              {modelType === 2 && normalizedPlatform === "openai_compatible" && (
+              {modelType === 2 && normalizedPlatform === "openai_compatible" && protocol !== "minimax_h3_image" && (
                 <div className="rounded-lg border border-border/40 bg-muted/20 p-3 space-y-3">
                   <div>
                     <Label className="text-[11px] text-muted-foreground">OpenAI 兼容图片任务模式</Label>

@@ -6,6 +6,7 @@ import com.stonewu.fusion.common.BusinessException;
 import com.stonewu.fusion.entity.ai.AiModel;
 import com.stonewu.fusion.entity.ai.ApiConfig;
 import com.stonewu.fusion.service.ai.ApiConfigService;
+import com.stonewu.fusion.service.ai.ModelPresetService;
 import com.stonewu.fusion.service.ai.model.AiModelMetadataResolver;
 import org.junit.jupiter.api.Test;
 
@@ -24,6 +25,34 @@ class ProviderCatalogServiceTests {
     private final ProviderCatalogService catalog = new ProviderCatalogService(new ObjectMapper());
 
     ProviderCatalogServiceTests() throws Exception {
+    }
+
+    /** 两个官方入口都提供三类同名模型，并保留各自的请求协议。 */
+    @Test
+    void miniMaxListsOfficialPresetsForBothRegions() {
+        var presets = new ModelPresetService();
+        presets.init();
+        var discovery = new PresetModelDiscovery(presets);
+        for (String id : List.of("minimax-cn", "minimax-global")) {
+            var provider = catalog.require(id);
+            assertThat(provider.quickSetup()).isTrue();
+            assertThat(provider.supportedModelTypes()).containsExactly(1, 2, 3);
+            var result = discovery.discover(ApiConfig.builder().build(), provider);
+            assertThat(result.keyVerified()).isFalse();
+            assertThat(result.models()).extracting(ProviderModelCandidate::id)
+                    .containsExactly("MiniMax-M3.1-Flash", "MiniMax-M3", "MiniMax-H3-Image",
+                            "MiniMax-H3-Image-Highspeed", "MiniMax-H3", "MiniMax-H3-Highspeed",
+                            "MiniMax-H3-Lite", "MiniMax-H3-Max");
+            assertThat(result.models()).allSatisfy(model -> {
+                String expected = switch (model.modelType()) {
+                    case 1 -> provider.textProtocol();
+                    case 2 -> provider.imageProtocol();
+                    case 3 -> provider.videoProtocol();
+                    default -> throw new AssertionError("模型类型无效");
+                };
+                assertThat(model.modelProtocol()).isEqualTo(expected);
+            });
+        }
     }
 
     /** 隐藏平台不进入配置目录，已保存配置仍能按原平台校验。 */

@@ -182,18 +182,21 @@ export function AiModelDialog({ open, onOpenChange, editingModel, apiConfigs, pr
     ? presets.find(p => p.code === form.capabilityPresetCode) || null
     : null;
   const visiblePresets = presets.filter((preset) => preset.modelType === form.modelType &&
-    (selectedProvider?.quickSetup
-      ? preset.providerId === selectedProvider.id || form.modelType === 1 && !preset.providerId
+    (selectedProvider?.discovery === "preset"
+      ? selectedProvider.modelPresetCodes.includes(preset.code)
+      : selectedProvider?.quickSetup
+        ? preset.providerId === selectedProvider.id || form.modelType === 1 && !preset.providerId
       : !preset.providerId));
   const selectedPresetConfig = selectedCapabilityPreset?.config as Record<string, unknown> | undefined;
   const effectiveModelConfig = mergeConfigObjects(selectedPresetConfig || {}, parseConfigJson(form.config));
-  const showOpenAiResponsesMode = form.modelType === 1 && supportsOpenAiResponsesMode(selectedPlatform);
   const apiModeValue = getFirstConfigString(effectiveModelConfig, OPENAI_RESPONSE_MODE_CONFIG_KEYS) ?? "__unset__";
   const hasRequestProtocol = form.modelType >= 1 && form.modelType <= 3;
   const apiConfigDefaultProtocol = getApiConfigDefaultProtocol(selectedApiConfig, form.modelType);
   const protocolOptions = getProtocolOptionsForModelType(form.modelType);
   const modelProtocolOverride = form.modelProtocol?.trim() || "";
   const effectiveModelProtocol = modelProtocolOverride || apiConfigDefaultProtocol;
+  const showOpenAiResponsesMode = form.modelType === 1
+    && effectiveModelProtocol !== "minimax_chat" && supportsOpenAiResponsesMode(selectedPlatform);
   const modelProtocolSelectOptions = [
     {
       value: INHERIT_PROVIDER_PROTOCOL_VALUE,
@@ -804,6 +807,7 @@ export function AiModelDialog({ open, onOpenChange, editingModel, apiConfigs, pr
           {showAdvanced && <ModelConfigForm
             modelType={form.modelType}
             platform={selectedPlatform}
+            protocol={effectiveModelProtocol}
             supportReasoning={!!form.supportReasoning}
             configJson={stringifyConfigObject(effectiveModelConfig)}
             onChange={updateCustomCapabilityConfig}
