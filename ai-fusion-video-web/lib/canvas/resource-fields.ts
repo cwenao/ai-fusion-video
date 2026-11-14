@@ -93,8 +93,8 @@ export const RESOURCE_FIELDS: Record<ResourceType, ResourceField[]> = {
   scriptEpisode: [
     field("episodeNumber", "集号", "number", { min: 1, required: true }),
     field("title", "分集名称"),
-    field("synopsis", "梗概", "long"),
-    field("rawContent", "分集原文", "long"),
+    field("synopsis", "剧情概述", "long"),
+    field("rawContent", "分集剧本原文", "long"),
     field("durationEstimate", "预计时长（秒）", "number", { min: 0 }),
     status,
   ],

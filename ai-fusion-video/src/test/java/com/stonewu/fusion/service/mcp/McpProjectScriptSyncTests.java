@@ -33,7 +33,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 class McpProjectScriptSyncTests {
-    private static final String RAW_CONTENT = "  第一集\n人物：我会回来。\r\n\n";
+    private static final String RAW_CONTENT = "  # 第一集\n\n> **林：**我会回来。\r\n\n";
     private static final String SYNOPSIS = "主角在雨夜收到一封信。";
 
     private final CanvasJson json = new CanvasJson(new ObjectMapper());
@@ -63,19 +63,21 @@ class McpProjectScriptSyncTests {
         var first = call(SCRIPT_LIST, Map.of("kind", "episode", "parentId", "21", "pageSize", 1));
         assertThat(first.at("/data/hasMore").booleanValue()).isTrue();
         assertThat(first.at("/data/items/0/fields/episodeNumber").intValue()).isEqualTo(1);
-        assertThat(first.at("/data/items/0/fields/rawContent").textValue()).isEqualTo(SYNOPSIS);
+        assertThat(first.at("/data/items/0/fields/rawContent").textValue()).isEqualTo(RAW_CONTENT);
         assertThat(first.at("/data/items/0/fields/synopsis").textValue()).isEqualTo(SYNOPSIS);
         assertThat(first.at("/data/items/0/fields/originalText").textValue()).isEqualTo(RAW_CONTENT);
 
         var second = call(SCRIPT_LIST, Map.of("kind", "episode", "parentId", "21", "pageSize", 1, "page", 2));
         assertThat(second.at("/data/hasMore").booleanValue()).isFalse();
         assertThat(second.at("/data/items/0/fields/episodeNumber").intValue()).isEqualTo(2);
-        assertThat(second.at("/data/items/0/fields/rawContent").textValue()).isEqualTo("第二集概述");
+        assertThat(second.at("/data/items/0/fields/synopsis").textValue()).isEqualTo("第二集概述");
+        assertThat(second.at("/data/items/0/fields/rawContent").isNull()).isTrue();
         assertThat(second.at("/data/items/0/fields/originalText").isNull()).isTrue();
 
         var directory = call(SCRIPT_LIST, Map.of("kind", "episode", "parentId", "21", "pageSize", 1,
                 "includeRawContent", false));
-        assertThat(directory.at("/data/items/0/fields/rawContent").textValue()).isEqualTo(SYNOPSIS);
+        assertThat(directory.at("/data/items/0/fields/synopsis").textValue()).isEqualTo(SYNOPSIS);
+        assertThat(directory.at("/data/items/0/fields/rawContent").isMissingNode()).isTrue();
         assertThat(directory.at("/data/items/0/fields/originalText").isMissingNode()).isTrue();
     }
 
@@ -85,16 +87,18 @@ class McpProjectScriptSyncTests {
         episode(31L, 1, null, RAW_CONTENT);
 
         var episode = call(SCRIPT_GET, Map.of("kind", "episode", "id", "31"));
-        assertThat(episode.at("/data/fields/rawContent").isNull()).isTrue();
+        assertThat(episode.at("/data/fields/rawContent").textValue()).isEqualTo(RAW_CONTENT);
         assertThat(episode.at("/data/fields/originalText").textValue()).isEqualTo(RAW_CONTENT);
         var withoutSource = call(SCRIPT_GET, Map.of("kind", "episode", "id", "31", "includeRawContent", false));
-        assertThat(withoutSource.at("/data/fields/rawContent").isNull()).isTrue();
+        assertThat(withoutSource.at("/data/fields/rawContent").isMissingNode()).isTrue();
         assertThat(withoutSource.at("/data/fields/originalText").isMissingNode()).isTrue();
 
         var script = call(SCRIPT_GET, Map.of("kind", "script", "id", "21"));
         assertThat(script.at("/data/fields/rawContent").isMissingNode()).isTrue();
+        assertThat(script.at("/data/fields/originalText").isMissingNode()).isTrue();
         var withSource = call(SCRIPT_GET, Map.of("kind", "script", "id", "21", "includeRawContent", true));
         assertThat(withSource.at("/data/fields/rawContent").textValue()).isEqualTo("剧本主档原文");
+        assertThat(withSource.at("/data/fields/originalText").textValue()).isEqualTo("剧本主档原文");
     }
 
     @Test

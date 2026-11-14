@@ -30,7 +30,9 @@ export interface ScriptEpisode {
   scriptId: number;
   episodeNumber: number;
   title: string;
+  /** 本集剧情概述 */
   synopsis: string | null;
+  /** 已保存的分集剧本原文 */
   rawContent: string | null;
   durationEstimate: number | null;
   totalScenes: number;

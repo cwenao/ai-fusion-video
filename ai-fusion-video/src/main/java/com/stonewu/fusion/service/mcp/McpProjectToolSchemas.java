@@ -91,9 +91,10 @@ class McpProjectToolSchemas {
         script.put("charactersJson", nullable(array(character, 0, 10_000)));
         addFields(SCRIPT, script, false);
 
-        var episode = textFields("title", "synopsis");
-        episode.put("rawContent", described(nullable(TEXT), "本集剧情概述，与 synopsis 含义相同"));
-        episode.put("originalText", described(nullable(TEXT), "本集剧本原文，保留原有空白和换行"));
+        var episode = textFields("title");
+        episode.put("synopsis", described(nullable(TEXT), "本集剧情概述"));
+        episode.put("rawContent", described(nullable(TEXT), "本集剧本原文，支持纯文本和 Markdown，保留空白和换行"));
+        episode.put("originalText", described(nullable(TEXT), "本集剧本原文，与 rawContent 同义；同时提供时两者必须完全相同"));
         episode.put("episodeNumber", integer(1, 1_000_000));
         episode.put("durationEstimate", nullable(integer(0, 1_000_000)));
         addFields(SCRIPT_EPISODE, episode, true, "episodeNumber");
@@ -157,12 +158,12 @@ class McpProjectToolSchemas {
             case SCRIPT_LIST -> {
                 list(params, required, choice("episode", "scene"));
                 required(params, required, "parentId", ID);
-                params.put("includeRawContent", described(BOOLEAN, "是否返回分集剧本原文 originalText，默认 true"));
+                params.put("includeRawContent", described(BOOLEAN, "是否返回分集剧本原文字段 rawContent 和 originalText，默认 true"));
             }
             case SCRIPT_GET -> {
                 get(params, required, choice("script", "episode", "scene"));
                 params.put("includeRawContent", described(BOOLEAN,
-                        "是否返回剧本原文。分集的 originalText 默认返回，主档的 rawContent 默认省略"));
+                        "是否返回剧本原文字段 rawContent 和 originalText。分集默认返回，主档默认省略"));
             }
             case SCRIPT_CREATE -> create(params, required, choice("episode", "scene"), true,
                     forms(create, SCRIPT_EPISODE, SCRIPT_SCENE));

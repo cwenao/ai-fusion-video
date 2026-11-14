@@ -76,10 +76,10 @@ class McpProjectResources {
     }
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
-    public ObjectNode detail(ProjectGrant grant, CanvasValueType type, long id, boolean rawContent) {
+    public ObjectNode detail(ProjectGrant grant, CanvasValueType type, long id, boolean includeRawContent) {
         requireHeader(grant, type, id);
         var source = queries.get(type, id, grant.actor()).data();
-        var result = view(grant, type, source, false, rawContent);
+        var result = view(grant, type, source, false, includeRawContent);
         var parent = parent(type, source);
         if (parent != null) {
             result.put("parentVersion", requireHeader(grant, parent.type(), parent.id()).version());
@@ -92,14 +92,14 @@ class McpProjectResources {
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public ObjectNode children(ProjectGrant grant, CanvasValueType child, CanvasValueType parentType, long parentId,
-                               PageRequest page, boolean rawContent) {
+                               PageRequest page, boolean includeRawContent) {
         var header = requireHeader(grant, parentType, parentId);
         IPage<Long> found = switch (child) {
             case SCRIPT_EPISODE, SCRIPT_SCENE -> resources.pageScriptChildren(child, parentId, page.number(), page.size());
             case ASSET_ITEM -> assets.pageItems(parentId, page.number(), page.size());
             default -> storyboards.pageChildren(child, parentType, parentId, page.number(), page.size());
         };
-        var result = page(grant, child, found.getRecords(), found.getTotal(), page, rawContent);
+        var result = page(grant, child, found.getRecords(), found.getTotal(), page, includeRawContent);
         return result.put("parentId", Long.toString(parentId)).put("parentVersion", header.version());
     }
 
@@ -148,18 +148,18 @@ class McpProjectResources {
     }
 
     private ObjectNode page(ProjectGrant grant, CanvasValueType type, List<Long> ids, long total, PageRequest page,
-                            boolean rawContent) {
+                            boolean includeRawContent) {
         var result = json.object(Map.of("page", page.number(), "pageSize", page.size(),
                 "hasMore", (long) page.number() * page.size() < total));
         var items = result.putArray("items");
         for (long id : ids) {
-            items.add(view(grant, type, queries.get(type, id, grant.actor()).data(), true, rawContent));
+            items.add(view(grant, type, queries.get(type, id, grant.actor()).data(), true, includeRawContent));
         }
         return result;
     }
 
     private ObjectNode view(ProjectGrant grant, CanvasValueType type, ObjectNode source, boolean summary,
-                            boolean includeOriginalText) {
+                            boolean includeRawContent) {
         var result = json.object(Map.of("id", source.path("id").asText(), "kind", McpProjectValues.kind(type),
                 "projectId", Long.toString(grant.projectId()), "version", source.path("version").intValue()));
         var parent = parent(type, source);
@@ -174,14 +174,15 @@ class McpProjectResources {
             copy(source, fields, List.of("aiPrompt", "firstFramePrompt", "lastFramePrompt", "videoPrompt"));
         }
         if (type == SCRIPT_EPISODE) {
-            var synopsis = source.get("synopsis");
-            fields.set("synopsis", synopsis);
-            fields.set("rawContent", synopsis);
-            if (includeOriginalText) {
-                fields.set("originalText", source.get("rawContent"));
+            fields.set("synopsis", source.get("synopsis"));
+        }
+        if (type == SCRIPT || type == SCRIPT_EPISODE) {
+            fields.remove(List.of("rawContent", "originalText"));
+            if (includeRawContent) {
+                var rawContent = source.get("rawContent");
+                fields.set("rawContent", rawContent);
+                fields.set("originalText", rawContent);
             }
-        } else if (includeOriginalText && source.has("rawContent")) {
-            fields.set("rawContent", source.get("rawContent"));
         }
         return result;
     }

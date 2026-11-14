@@ -153,9 +153,9 @@ https://github.com/user-attachments/assets/acd181a0-541c-4163-a000-fa9ed72a5106
 
 从 `fusion_workspace_get` 读取项目结构和上传入口。先在系统设置中启用一项默认存储配置，再通过同域 HTTP 上传图片、视频和音频原件。取得媒体 ID 后用 `fusion_media_bind` 绑定。更新前读回对象版本，网络重试沿用原业务 `requestId`。可通过同一项目的凭证管理接口查询和撤销授权。
 
-同步剧本时，用 `fusion_script_list` 传入 `kind: "episode"` 和剧本 ID 作为 `parentId`，按 `hasMore` 逐页读取。每集的剧情概述在 `fields.rawContent` 和 `fields.synopsis`，剧本原文在 `fields.originalText`。单集详情 `fusion_script_get` 使用相同的字段。只读概述时可传 `includeRawContent: false`。通过 MCP 新建或更新分集时，用 `rawContent` 或 `synopsis` 写入剧情概述，用 `originalText` 写入剧本原文。
+同步剧本时，用 `fusion_script_list` 传入 `kind: "episode"` 和剧本 ID 作为 `parentId`，按 `hasMore` 逐页读取。分集剧情概述在 `fields.synopsis`，剧本原文在 `fields.rawContent` 和 `fields.originalText`，两者内容相同。单集详情 `fusion_script_get` 使用相同字段。传 `includeRawContent: false` 可省略两个原文字段；读取剧本主档时默认省略，传 `true` 可获取。新建或更新分集时，通过 `synopsis` 写剧情概述，通过 `rawContent` 或 `originalText` 写原文（支持纯文本和 Markdown）；两个原文字段同时提供时必须完全相同。此前把 `rawContent` 用作概述的客户端应改用 `synopsis`。
 
-已用 `rawContent` 同步分集原文的客户端，需要把原文的读写字段改为 `originalText`。
+两种写法更新同一个原文字段。传 `null` 可清空原文，省略原文字段的更新只修改请求中指定的其他字段。网页和内部 AI 工具直接使用 `rawContent` 读取与保存分集原文。
 
 ### ComfyUI 工作流
 

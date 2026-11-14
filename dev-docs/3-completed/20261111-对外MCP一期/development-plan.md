@@ -37,15 +37,15 @@
 
 | 工具 | 参数 | 结果与行为 |
 |---|---|---|
-| `fusion_script_list` | `kind: episode / scene`，`parentId`，`page?`，`pageSize?`，`includeRawContent?` | 列出剧本下的分集或分集下的场次。分集返回 `fields.rawContent` 和 `fields.synopsis`（剧情概述）及 `fields.originalText`（剧本原文）。传 `includeRawContent: false` 可省略 `originalText`。场次列表不接受该参数。 |
-| `fusion_script_get` | `kind: script / episode / scene`，`id`，`includeRawContent?` | 读取剧本主档、分集或场次。分集和列表使用相同的正文与概述字段，剧本主档传 `includeRawContent: true` 后在 `fields.rawContent` 返回主档原稿。场次详情返回对白。 |
+| `fusion_script_list` | `kind: episode / scene`，`parentId`，`page?`，`pageSize?`，`includeRawContent?` | 列出剧本下的分集或分集下的场次。分集返回 `fields.synopsis`（剧情概述），以及同义的 `fields.rawContent` 和 `fields.originalText`（剧本原文）。传 `includeRawContent: false` 同时省略两个原文字段。场次列表不接受该参数。 |
+| `fusion_script_get` | `kind: script / episode / scene`，`id`，`includeRawContent?` | 读取剧本主档、分集或场次。分集和列表使用相同的正文与概述字段。剧本主档默认省略原稿，传 `includeRawContent: true` 后通过 `fields.rawContent` 和 `fields.originalText` 返回同一份原稿。场次详情返回对白。 |
 | `fusion_script_create` | `kind: episode / scene`，`parentId`，`expectedParentVersion`，`fields` | 在对应剧本或分集下追加子对象，返回新对象和更新后的版本。剧本主档由工作区初始化创建。 |
 | `fusion_script_update` | `kind: script / episode / scene`，`id`，`expectedVersion`，`patch` | 更新指定字段并返回提交回执。普通编辑使用 `ResourcePatchCommand`。源稿重导入由现有专用流程处理。 |
 
 | 类型 | 一期可写字段 |
 |---|---|
 | `script` | `content`、`storySynopsis`、`summary`、`genre`、`targetAudience`、`durationEstimate`、`charactersJson`。`content` 用于外部 Agent 保存格式化正文。 |
-| `episode` | `episodeNumber*`（正整数）、`title`、`rawContent` 或 `synopsis`（剧情概述，两者同时传入须相同）、`originalText`（本集剧本原文）、`durationEstimate`。 |
+| `episode` | `episodeNumber*`（正整数）、`title`、`synopsis`（剧情概述）、`rawContent` 或 `originalText`（本集剧本原文，支持纯文本和 Markdown，同时传入须完全相同）、`durationEstimate`。 |
 | `scene` | `sceneHeading*`、`sceneNumber`、`location`、`timeOfDay`、`intExt`、`sceneDescription`、`characters: string[]`、`dialogues`、`characterAssetIds`、`sceneAssetId`、`propAssetIds`。未传 `sceneNumber` 时沿用系统编号。 |
 
 `durationEstimate` 沿用现有分钟单位，为 0–1000000 的整数。`charactersJson` 为人物对象数组，每项必填 `name`，可传 `description`、`importance`、`assetId`。`dialogues` 为对白对象数组，每项必填 `type`（整数 1–5）、`content`（文本），可传 `character_name`、`parenthetical`、`character_asset_id`、`sortOrder`。`characterAssetIds`、`propAssetIds` 为 ID 数组，`sceneAssetId` 为单个 ID。上述引用使用同项目且类型匹配的**资产主档** ID。其余文本字段使用字符串，长度沿用领域校验。 [剧本字段校验](../../../ai-fusion-video/src/main/java/com/stonewu/fusion/service/resource/ScriptFields.java) · [剧本新增命令](../../../ai-fusion-video/src/main/java/com/stonewu/fusion/service/resource/ScriptResourceCreateHandler.java)

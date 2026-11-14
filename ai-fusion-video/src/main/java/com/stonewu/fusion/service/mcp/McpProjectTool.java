@@ -5,8 +5,8 @@ import java.util.Locale;
 enum McpProjectTool {
     WORKSPACE_GET(false, "读取项目、剧本和分镜主档 ID 与版本"),
     WORKSPACE_INITIALIZE(true, "补齐项目缺失的剧本或分镜主档"),
-    SCRIPT_LIST(false, "分页读取分集或场次。分集返回剧情概述 rawContent 和原文 originalText，可用 includeRawContent=false 省略原文"),
-    SCRIPT_GET(false, "读取剧本、分集或场次详情。分集返回剧情概述 rawContent 和原文 originalText，主档可用 includeRawContent=true 读取原文"),
+    SCRIPT_LIST(false, "分页读取分集或场次。分集剧情概述为 synopsis，剧本原文为 rawContent，可用 includeRawContent=false 省略原文"),
+    SCRIPT_GET(false, "读取剧本、分集或场次详情。分集默认返回剧情概述 synopsis 和剧本原文 rawContent；主档可用 includeRawContent=true 读取原文"),
     SCRIPT_CREATE(true, "在剧本或分集中追加分集或场次"),
     SCRIPT_UPDATE(true, "按版本更新剧本、分集或场次"),
     STORYBOARD_LIST(false, "分页读取分镜分集、场景或镜头"),

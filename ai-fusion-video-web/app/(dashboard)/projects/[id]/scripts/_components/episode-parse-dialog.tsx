@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Loader2, Sparkles } from "lucide-react";
+import { ScriptSourcePreview } from "@/components/dashboard/script-source-preview";
 import { DialogScrollBody } from "@/components/shared/dialog-scroll-body";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -92,8 +93,10 @@ export function EpisodeParseDialog({ episodeId, editHref, onClose, onStartParse 
               )}
               <section aria-labelledby="episode-parse-source" className="flex min-w-0 flex-col gap-2">
                 <h3 id="episode-parse-source" className="text-sm font-medium">已保存的剧本原文</h3>
-                {hasSource ? (
-                  <p className="rounded-lg border border-border/20 bg-background/70 p-3 text-sm leading-6 whitespace-pre-wrap wrap-anywhere">{rawContent}</p>
+                {rawContent?.trim() ? (
+                  <div className="min-w-0 overflow-x-auto rounded-lg border border-border/20 bg-background/70 p-3">
+                    <ScriptSourcePreview content={rawContent} />
+                  </div>
                 ) : (
                   <p className="text-sm text-muted-foreground">请填写并保存本集原文后再解析。</p>
                 )}

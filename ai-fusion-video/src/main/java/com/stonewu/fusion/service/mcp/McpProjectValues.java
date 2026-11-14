@@ -88,15 +88,11 @@ final class McpProjectValues {
     static ObjectNode internalFields(CanvasValueType type, ObjectNode fields) {
         var result = (ObjectNode) convert(fields, true);
         if (type == CanvasValueType.SCRIPT_EPISODE) {
-            var synopsis = result.remove("rawContent");
-            if (synopsis != null) {
-                if (result.has("synopsis") && !synopsis.equals(result.get("synopsis"))) {
-                    throw McpProjectFailure.invalid("rawContent", "rawContent 和 synopsis 必须填写相同的剧情概述");
-                }
-                result.set("synopsis", synopsis);
-            }
             var originalText = result.remove("originalText");
             if (originalText != null) {
+                if (result.has("rawContent") && !originalText.equals(result.get("rawContent"))) {
+                    throw McpProjectFailure.invalid("originalText", "rawContent 和 originalText 必须填写相同的剧本原文");
+                }
                 result.set("rawContent", originalText);
             }
         }

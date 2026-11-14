@@ -39,8 +39,8 @@ public class ScriptEpisodeDetailQueryToolExecutor implements ToolExecutor {
     public String getToolDescription() {
         return """
                 查询某一集的内容，支持不同详细程度：
-                - summary（默认）：返回集基本信息、episode_version 和场次概要（不含对白），适合了解轮廓和获取 version
-                - full：返回完整内容含所有对白，数据量大
+                - summary（默认）：返回分集剧情概述 synopsis、episode_version 和场次概要
+                - full：返回分集剧本原文 rawContent、剧情概述 synopsis 和完整场次及对白
                 - scenes_only：仅返回 scriptSceneItemIds 指定场次的完整对白，适合按需查看前后衔接
                 返回值中包含 episode_version，调用 save_script_scene_items 时必须传入。
                 """;
@@ -59,7 +59,7 @@ public class ScriptEpisodeDetailQueryToolExecutor implements ToolExecutor {
                         "detailLevel": {
                             "type": "string",
                             "enum": ["summary", "full", "scenes_only"],
-                            "description": "返回详细程度。summary=概要含version和场次概述不含对白（默认）；full=完整含对白；scenes_only=仅返回scriptSceneItemIds指定场次的完整对白"
+                            "description": "返回详细程度。summary=剧情概述和场次概要（默认）；full=包含 rawContent 原文及完整场次和对白；scenes_only=按指定 ID 读取场次对白"
                         },
                         "scriptSceneItemIds": {
                             "type": "array",

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Loader2, Pencil } from "lucide-react";
+import { ScriptSourcePreview } from "@/components/dashboard/script-source-preview";
 import { Button } from "@/components/ui/button";
 import { useCommandRequestKey } from "@/hooks/use-command-request-key";
 import { scriptApi, type ScriptEpisode } from "@/lib/api/script";
@@ -16,7 +17,8 @@ export function EpisodeDetailsEditor({ episode, scenesCount, editHref, onSaved }
   scenesCount: number;
   editHref: string;
 }) {
-  const hasSource = Boolean(episode.rawContent?.trim());
+  const rawContent = episode.rawContent;
+  const hasSource = Boolean(rawContent?.trim());
 
   return (
     <div className="mb-5 flex flex-col gap-4">
@@ -25,7 +27,7 @@ export function EpisodeDetailsEditor({ episode, scenesCount, editHref, onSaved }
         <span className="text-xs text-muted-foreground">共 {scenesCount} 场</span>
       </div>
       <EpisodeField key={`title:${episode.id}`} episode={episode} field="title" label="分集标题" onSaved={onSaved} />
-      <EpisodeField key={`synopsis:${episode.id}`} episode={episode} field="synopsis" label="剧情概览" onSaved={onSaved} />
+      <EpisodeField key={`synopsis:${episode.id}`} episode={episode} field="synopsis" label="剧情概述" onSaved={onSaved} />
       <section className="flex min-w-0 flex-col gap-2 border-t border-border/20 pt-3">
         <div className="flex items-center justify-between gap-2">
           <h2 id="episode-source-heading" className="text-sm font-medium">分集剧本原文</h2>
@@ -35,10 +37,10 @@ export function EpisodeDetailsEditor({ episode, scenesCount, editHref, onSaved }
             {hasSource ? "编辑" : "填写"}
           </Button>
         </div>
-        {hasSource ? (
+        {rawContent?.trim() ? (
           <div tabIndex={0} role="region" aria-labelledby="episode-source-heading"
-            className="max-h-48 overflow-y-auto rounded-lg border border-border/20 bg-background/70 p-3 text-sm leading-6 whitespace-pre-wrap wrap-anywhere focus-visible:outline-2 focus-visible:outline-ring">
-            {episode.rawContent}
+            className="max-h-48 min-w-0 overflow-auto rounded-lg border border-border/20 bg-background/70 p-3 focus-visible:outline-2 focus-visible:outline-ring">
+            <ScriptSourcePreview content={rawContent} />
           </div>
         ) : (
           <p className="text-sm text-muted-foreground">本集原文未填写</p>

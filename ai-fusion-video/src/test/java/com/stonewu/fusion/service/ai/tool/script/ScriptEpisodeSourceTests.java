@@ -27,8 +27,8 @@ class ScriptEpisodeSourceTests {
             new ScriptToolQueries(resources, new CanvasJson(mapper)));
 
     @Test
-    void returnsSavedTextAndVersionWithoutLoadingScenes() throws Exception {
-        String source = "外景 站台 夜\n\n  ▲ 雨落在站牌上。\n林：车什么时候来？\n";
+    void returnsSavedMarkdownAndVersionWithoutLoadingScenes() throws Exception {
+        String source = "  ## 外景 站台 夜\r\n\r\n- 雨落在站牌上。\n> **林：**车什么时候来？\n";
         givenSavedSource(source);
 
         var result = mapper.readTree(tool.execute("""
@@ -70,7 +70,7 @@ class ScriptEpisodeSourceTests {
 
     private void givenSavedSource(String source) {
         var data = mapper.createObjectNode().put("id", 26L).put("scriptId", 15L).put("version", 4)
-                .put("rawContent", source);
+                .put("rawContent", source).put("synopsis", "两人在站台等末班车。");
         when(resources.get(SCRIPT_EPISODE, 26L, actor)).thenReturn(new ResourceSnapshot(
                 new ResourceHeader(SCRIPT_EPISODE, 26L, 5L, 4, false), data));
     }

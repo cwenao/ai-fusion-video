@@ -64,7 +64,7 @@ public class SaveScriptEpisodeToolExecutor implements ToolExecutor {
                         },
                         "rawContent": {
                             "type": "string",
-                            "description": "本集原始剧本文本"
+                            "description": "本集剧本原文，保留纯文本或 Markdown 的标记、空白和换行"
                         },
                         "sourceType": {
                             "type": "integer",

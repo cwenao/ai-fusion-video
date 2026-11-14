@@ -27,7 +27,7 @@ public class GetScriptEpisodeSourceToolExecutor implements ToolExecutor {
 
     @Override
     public String getToolDescription() {
-        return "读取分集已保存的 rawContent 和 episode_version，不读取场次和对白。若原文为空或确认版本有变化则返回错误。";
+        return "读取分集已保存的剧本原文 rawContent（纯文本或 Markdown）和 episode_version，不读取场次和对白。若原文为空或确认版本有变化则返回错误。";
     }
 
     @Override

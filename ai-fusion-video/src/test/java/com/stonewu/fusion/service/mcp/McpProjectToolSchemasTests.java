@@ -7,6 +7,8 @@ import com.stonewu.fusion.service.canvas.model.CanvasValueType;
 import com.stonewu.fusion.service.canvas.run.mcp.CanvasMcpSchemas;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 class McpProjectToolSchemasTests {
@@ -57,27 +59,30 @@ class McpProjectToolSchemasTests {
     }
 
     @Test
-    void episodeWriteKeepsSynopsisAndOriginalTextInTheirOwnStorageFields() {
-        var args = input("""
-                {"episodeNumber":1,"rawContent":"雨夜来信","synopsis":"雨夜来信","originalText":"  第一集\\n对白。"}
-                """);
-        schemas.validateFields(CanvasValueType.SCRIPT_EPISODE, true, args);
-        var stored = McpProjectValues.internalFields(CanvasValueType.SCRIPT_EPISODE, args);
-        assertEquals("雨夜来信", stored.path("synopsis").textValue());
-        assertEquals("  第一集\n对白。", stored.path("rawContent").textValue());
-        assertFalse(stored.has("originalText"));
+    void episodeWritesAcceptEitherOriginalTextNameAndKeepSynopsisSeparate() {
+        var episode = CanvasValueType.SCRIPT_EPISODE;
+        String markdown = "  ## 第一集\n\n> **林：**信到了。\n";
+        var fields = input("{\"episodeNumber\":1,\"synopsis\":\"雨夜来信\"}");
+        var expected = fields.deepCopy().put("rawContent", markdown);
 
-        var patch = input("""
-                {"rawContent":null}
-                """);
-        schemas.validateFields(CanvasValueType.SCRIPT_EPISODE, false, patch);
-        assertEquals(input("{\"synopsis\":null}"), McpProjectValues.internalFields(CanvasValueType.SCRIPT_EPISODE, patch));
-        var sourcePatch = input("{\"originalText\":null}");
-        schemas.validateFields(CanvasValueType.SCRIPT_EPISODE, false, sourcePatch);
-        assertEquals(input("{\"rawContent\":null}"), McpProjectValues.internalFields(CanvasValueType.SCRIPT_EPISODE, sourcePatch));
+        var canonical = fields.deepCopy().put("rawContent", markdown);
+        var alias = fields.deepCopy().put("originalText", markdown);
+        var both = canonical.deepCopy().put("originalText", markdown);
+        for (var args : List.of(canonical, alias, both)) {
+            schemas.validateFields(episode, true, args);
+            assertEquals(expected, McpProjectValues.internalFields(episode, args));
+        }
 
-        args.put("synopsis", "另一份概述");
-        assertThrows(McpProjectFailure.class, () -> McpProjectValues.internalFields(CanvasValueType.SCRIPT_EPISODE, args));
+        var clear = input("{\"originalText\":null}");
+        schemas.validateFields(episode, false, clear);
+        assertEquals(input("{\"rawContent\":null}"), McpProjectValues.internalFields(episode, clear));
+        var synopsisOnly = input("{\"synopsis\":\"新的概述\"}");
+        schemas.validateFields(episode, false, synopsisOnly);
+        assertEquals(synopsisOnly, McpProjectValues.internalFields(episode, synopsisOnly));
+        assertThrows(McpProjectFailure.class,
+                () -> McpProjectValues.internalFields(episode, both.deepCopy().put("originalText", markdown.strip())));
+        assertThrows(McpProjectFailure.class,
+                () -> McpProjectValues.internalFields(episode, both.deepCopy().putNull("originalText")));
     }
 
     private ObjectNode input(String value) {
