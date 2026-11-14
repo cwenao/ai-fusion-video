@@ -7,13 +7,13 @@ import { ProjectTextAiEditor } from "@/components/project-text/project-text-ai-e
 import { DialogScrollBody } from "@/components/shared/dialog-scroll-body";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import type { Asset } from "@/lib/api/asset";
 import { useProject } from "../../project-context";
 import { ASSET_IMAGE_PROMPT_TEMPLATES, defaultAssetImagePromptTemplate } from "./asset-image-prompt-templates";
 
-export const MAX_ASSET_IMAGE_PROMPT_LENGTH = 5_000;
+import { assetImagePromptContext, ASSET_IMAGE_PROMPT_INSTRUCTION, MAX_ASSET_IMAGE_PROMPT_LENGTH } from "./asset-image-prompt-context";
+import { AssetImagePromptTemplateSelect } from "./asset-image-prompt-template-select";
 
 interface AssetImagePromptFieldProps {
   projectId: number;
@@ -30,7 +30,6 @@ export function AssetImagePromptField({
   projectId, asset, itemName, itemType, appearance, value, disabled, onChange,
 }: AssetImagePromptFieldProps) {
   const field = useId();
-  const templateField = useId();
   const sourceRef = useRef<HTMLTextAreaElement>(null);
   const aiRef = useRef<HTMLButtonElement>(null);
   const returnToSource = useRef(false);
@@ -93,47 +92,15 @@ export function AssetImagePromptField({
                 projectId={projectId}
                 kind="assetImagePrompt"
                 title={title}
-                context={{
-                  项目: {
-                    类型: project?.properties?.type,
-                    画风: project?.artStyle,
-                    画风描述: project?.artStyleDescription,
-                    画风提示词: project?.artStyleImagePrompt,
-                    画面比例: project?.properties?.aspectRatio,
-                  },
-                  资产定义: {
-                    类型: asset.type,
-                    名称: asset.name,
-                    描述: asset.description,
-                    属性: asset.properties,
-                  },
-                  子资产: { 名称: itemName, 类别: itemType, 外观描写: appearance },
-                  提示词模板: template,
-                }}
+                context={assetImagePromptContext(project, asset, { name: itemName, type: itemType, appearance }, template)}
                 draft={value}
                 disabled={!template}
                 quickLabel="一键生成"
-                quickInstruction="根据项目设置、资产定义和外观描写，按选中的模板生成完整的 Markdown 生图提示词。"
+                quickInstruction={ASSET_IMAGE_PROMPT_INSTRUCTION}
                 renderSettings={(busy) => (
                   <div className="flex min-w-0 flex-col gap-2">
-                    <label htmlFor={templateField} className="text-sm font-medium">提示词模板</label>
-                    <Select items={ASSET_IMAGE_PROMPT_TEMPLATES} value={templateId} disabled={busy && !!template}
-                      onValueChange={(next) => {
-                        if (next !== null) {
-                          setTemplateId(next);
-                        }
-                      }}>
-                      <SelectTrigger id={templateField} className="w-full">
-                        <SelectValue placeholder="选择提示词模板" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectGroup>
-                          {ASSET_IMAGE_PROMPT_TEMPLATES.map(({ value: id, label }) => (
-                            <SelectItem key={id} value={id}>{label}</SelectItem>
-                          ))}
-                        </SelectGroup>
-                      </SelectContent>
-                    </Select>
+                    <AssetImagePromptTemplateSelect label="提示词模板" value={templateId}
+                      disabled={busy && !!template} onChange={setTemplateId} />
                     {template && (
                       <p className="text-xs text-muted-foreground">{template.sections.join(" · ")}</p>
                     )}

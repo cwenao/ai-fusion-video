@@ -1,4 +1,4 @@
-interface AssetImagePromptTemplate {
+export interface AssetImagePromptTemplate {
   value: string;
   label: string;
   sections: string[];

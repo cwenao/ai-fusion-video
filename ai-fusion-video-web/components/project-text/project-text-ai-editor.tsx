@@ -4,6 +4,7 @@ import { useId, useRef, useState, type ReactNode } from "react";
 import { Loader2, Send, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { enqueueProjectText, projectTextOutput } from "@/lib/project-text-generation";
 import { usePipelineStore } from "@/lib/store/pipeline-store";
 import { userFacingError } from "@/lib/user-facing-error";
 
@@ -32,9 +33,7 @@ export function ProjectTextAiEditor({
   const task = usePipelineStore((state) => state.tasks.find((entry) => entry.id === turn?.id));
   const running = task?.status === "running";
   const unavailable = disabled || running;
-  const output = task?.status === "done"
-    ? task.state.timeline.flatMap((entry) => entry.type === "content" ? [entry.text] : []).join("").trim()
-    : "";
+  const output = projectTextOutput(task);
   const candidate = output || turn?.previous || "";
   let error = "";
   if (task?.status === "error") {
@@ -52,18 +51,8 @@ export function ProjectTextAiEditor({
       return;
     }
     conversationId.current ??= crypto.randomUUID();
-    const id = usePipelineStore.getState().addPipeline({
-      label: title,
-      projectId,
-      request: {
-        agentType: "project_text_editor",
-        category: "pipeline",
-        conversationId: conversationId.current,
-        projectId,
-        title,
-        toolExecutionMode: "DEFAULT",
-        message: JSON.stringify({ kind, context, draft: candidate || draft, instruction }),
-      },
+    const id = enqueueProjectText({
+      projectId, kind, title, context, draft: candidate || draft, instruction, conversationId: conversationId.current,
     });
     setTurn({ id, instruction, previous: candidate });
   };

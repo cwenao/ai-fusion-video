@@ -21,7 +21,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { AssetAppearanceDialog } from "./asset-appearance-dialog";
-import { AssetImagePromptField, MAX_ASSET_IMAGE_PROMPT_LENGTH } from "./asset-image-prompt-field";
+import { AssetImagePromptField } from "./asset-image-prompt-field";
+import { MAX_ASSET_IMAGE_PROMPT_LENGTH } from "./asset-image-prompt-context";
 import { AssetItemMedia } from "./asset-item-media";
 import { getAppearance, getAppearanceHints } from "./asset-types";
 

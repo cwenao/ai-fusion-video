@@ -4,7 +4,7 @@ import { useResourceInvalidation } from "@/hooks/use-resource-invalidation";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { Images, Loader2, Plus, X } from "lucide-react";
+import { Images, Loader2, Plus, Sparkles, X } from "lucide-react";
 import { useCommandRequestKey } from "@/hooks/use-command-request-key";
 import { assetApi, type Asset, type AssetItem, type AssetWithItems } from "@/lib/api/asset";
 import { AssetImageGenerationDialog } from "@/components/assets/asset-image-generation-dialog";
@@ -12,6 +12,7 @@ import type { ImageModelOptions } from "@/components/dashboard/generation/image-
 import { enqueueAssetImageGeneration, getAssetImagePrompt } from "@/lib/asset-image-generation";
 import { Button } from "@/components/ui/button";
 import { OverlayScrollArea } from "@/components/dashboard/overlay-scroll-area";
+import { AssetBatchPromptDialog } from "./_components/asset-batch-prompt-dialog";
 import { AssetSidebar } from "./_components/asset-sidebar";
 import { MasterAssetForm, MasterAssetHeader } from "./_components/asset-master-panels";
 import { AssetItemTabs } from "./_components/asset-item-tabs";
@@ -45,6 +46,7 @@ export default function ProjectAssetsPage() {
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   const [error, setError] = useState("");
+  const [batchPromptOpen, setBatchPromptOpen] = useState(false);
   const [batchGeneration, setBatchGeneration] = useState<BatchGeneration | null>(null);
 
   const selectedAssetIdRef = useRef<number | null>(null);
@@ -237,7 +239,12 @@ export default function ProjectAssetsPage() {
           <h1 className="text-3xl font-semibold tracking-tight">资产管理</h1>
           <p className="mt-1 text-sm text-muted-foreground">角色、场景与道具</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="ai" disabled={saving || !assets.some((asset) => asset.items.length > 0)}
+            onClick={() => setBatchPromptOpen(true)}>
+            <Sparkles />
+            批量生成提示词
+          </Button>
           <Button
             size="sm"
             onClick={() => {
@@ -371,6 +378,8 @@ export default function ProjectAssetsPage() {
           )}
         </section>
       </div>
+      <AssetBatchPromptDialog key={projectId} open={batchPromptOpen} assets={assets}
+        onClose={() => setBatchPromptOpen(false)} onSaved={() => void loadAssets(true, true)} />
       {batchGeneration && (
         <AssetImageGenerationDialog
           title={batchGeneration.title}

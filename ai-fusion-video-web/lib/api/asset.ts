@@ -90,6 +90,7 @@ export interface AssetItemUpdateReq {
   imageUrl?: string | null;
   thumbnailUrl?: string | null;
   properties?: Record<string, unknown> | null;
+  propertyChanges?: Record<string, unknown>;
   sortOrder?: number;
 }
 
