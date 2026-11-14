@@ -153,7 +153,9 @@ https://github.com/user-attachments/assets/acd181a0-541c-4163-a000-fa9ed72a5106
 
 从 `fusion_workspace_get` 读取项目结构和上传入口。先在系统设置中启用一项默认存储配置，再通过同域 HTTP 上传图片、视频和音频原件。取得媒体 ID 后用 `fusion_media_bind` 绑定。更新前读回对象版本，网络重试沿用原业务 `requestId`。可通过同一项目的凭证管理接口查询和撤销授权。
 
-同步剧本时，用 `fusion_script_list` 传入 `kind: "episode"` 和剧本 ID 作为 `parentId`，按 `hasMore` 逐页读取。每集的原文在 `data.items[].fields.rawContent`。单集详情 `fusion_script_get` 也默认返回 `data.fields.rawContent`。只同步目录时可传 `includeRawContent: false`。
+同步剧本时，用 `fusion_script_list` 传入 `kind: "episode"` 和剧本 ID 作为 `parentId`，按 `hasMore` 逐页读取。每集的剧情概述在 `fields.rawContent` 和 `fields.synopsis`，剧本原文在 `fields.originalText`。单集详情 `fusion_script_get` 使用相同的字段。只读概述时可传 `includeRawContent: false`。通过 MCP 新建或更新分集时，用 `rawContent` 或 `synopsis` 写入剧情概述，用 `originalText` 写入剧本原文。
+
+已用 `rawContent` 同步分集原文的客户端，需要把原文的读写字段改为 `originalText`。
 
 ### ComfyUI 工作流
 

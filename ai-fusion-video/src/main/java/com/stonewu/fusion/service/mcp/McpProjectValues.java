@@ -85,8 +85,22 @@ final class McpProjectValues {
         };
     }
 
-    static ObjectNode internalFields(ObjectNode fields) {
-        return (ObjectNode) convert(fields, true);
+    static ObjectNode internalFields(CanvasValueType type, ObjectNode fields) {
+        var result = (ObjectNode) convert(fields, true);
+        if (type == CanvasValueType.SCRIPT_EPISODE) {
+            var synopsis = result.remove("rawContent");
+            if (synopsis != null) {
+                if (result.has("synopsis") && !synopsis.equals(result.get("synopsis"))) {
+                    throw McpProjectFailure.invalid("rawContent", "rawContent 和 synopsis 必须填写相同的剧情概述");
+                }
+                result.set("synopsis", synopsis);
+            }
+            var originalText = result.remove("originalText");
+            if (originalText != null) {
+                result.set("rawContent", originalText);
+            }
+        }
+        return result;
     }
 
     static JsonNode externalField(String field, JsonNode value) {

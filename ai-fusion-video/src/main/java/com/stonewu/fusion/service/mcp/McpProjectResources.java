@@ -158,7 +158,8 @@ class McpProjectResources {
         return result;
     }
 
-    private ObjectNode view(ProjectGrant grant, CanvasValueType type, ObjectNode source, boolean summary, boolean raw) {
+    private ObjectNode view(ProjectGrant grant, CanvasValueType type, ObjectNode source, boolean summary,
+                            boolean includeOriginalText) {
         var result = json.object(Map.of("id", source.path("id").asText(), "kind", McpProjectValues.kind(type),
                 "projectId", Long.toString(grant.projectId()), "version", source.path("version").intValue()));
         var parent = parent(type, source);
@@ -172,9 +173,14 @@ class McpProjectResources {
             copy(source, fields, schemas.readFields(type));
             copy(source, fields, List.of("aiPrompt", "firstFramePrompt", "lastFramePrompt", "videoPrompt"));
         }
-        if (!raw) {
-            fields.remove("rawContent");
-        } else if (source.has("rawContent")) {
+        if (type == SCRIPT_EPISODE) {
+            var synopsis = source.get("synopsis");
+            fields.set("synopsis", synopsis);
+            fields.set("rawContent", synopsis);
+            if (includeOriginalText) {
+                fields.set("originalText", source.get("rawContent"));
+            }
+        } else if (includeOriginalText && source.has("rawContent")) {
             fields.set("rawContent", source.get("rawContent"));
         }
         return result;

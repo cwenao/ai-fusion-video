@@ -48,12 +48,36 @@ class McpProjectToolSchemasTests {
                 {"dialogues":[{"type":1,"content":"到岸了","character_asset_id":"9007199254740993"}]}
                 """);
         schemas.validateFields(CanvasValueType.SCRIPT_SCENE, false, args);
-        var stored = McpProjectValues.internalFields(args);
+        var stored = McpProjectValues.internalFields(CanvasValueType.SCRIPT_SCENE, args);
         assertEquals(9_007_199_254_740_993L, stored.at("/dialogues/0/character_asset_id").longValue());
         assertEquals(args.get("dialogues"), McpProjectValues.externalField("dialogues", stored.get("dialogues")));
         assertThrows(McpProjectFailure.class, () -> McpProjectValues.id(input("""
                 {"id":"9223372036854775808"}
                 """), "id"));
+    }
+
+    @Test
+    void episodeWriteKeepsSynopsisAndOriginalTextInTheirOwnStorageFields() {
+        var args = input("""
+                {"episodeNumber":1,"rawContent":"雨夜来信","synopsis":"雨夜来信","originalText":"  第一集\\n对白。"}
+                """);
+        schemas.validateFields(CanvasValueType.SCRIPT_EPISODE, true, args);
+        var stored = McpProjectValues.internalFields(CanvasValueType.SCRIPT_EPISODE, args);
+        assertEquals("雨夜来信", stored.path("synopsis").textValue());
+        assertEquals("  第一集\n对白。", stored.path("rawContent").textValue());
+        assertFalse(stored.has("originalText"));
+
+        var patch = input("""
+                {"rawContent":null}
+                """);
+        schemas.validateFields(CanvasValueType.SCRIPT_EPISODE, false, patch);
+        assertEquals(input("{\"synopsis\":null}"), McpProjectValues.internalFields(CanvasValueType.SCRIPT_EPISODE, patch));
+        var sourcePatch = input("{\"originalText\":null}");
+        schemas.validateFields(CanvasValueType.SCRIPT_EPISODE, false, sourcePatch);
+        assertEquals(input("{\"rawContent\":null}"), McpProjectValues.internalFields(CanvasValueType.SCRIPT_EPISODE, sourcePatch));
+
+        args.put("synopsis", "另一份概述");
+        assertThrows(McpProjectFailure.class, () -> McpProjectValues.internalFields(CanvasValueType.SCRIPT_EPISODE, args));
     }
 
     private ObjectNode input(String value) {

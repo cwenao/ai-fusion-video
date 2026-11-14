@@ -91,7 +91,9 @@ class McpProjectToolSchemas {
         script.put("charactersJson", nullable(array(character, 0, 10_000)));
         addFields(SCRIPT, script, false);
 
-        var episode = textFields("title", "synopsis", "rawContent");
+        var episode = textFields("title", "synopsis");
+        episode.put("rawContent", described(nullable(TEXT), "本集剧情概述，与 synopsis 含义相同"));
+        episode.put("originalText", described(nullable(TEXT), "本集剧本原文，保留原有空白和换行"));
         episode.put("episodeNumber", integer(1, 1_000_000));
         episode.put("durationEstimate", nullable(integer(0, 1_000_000)));
         addFields(SCRIPT_EPISODE, episode, true, "episodeNumber");
@@ -155,11 +157,12 @@ class McpProjectToolSchemas {
             case SCRIPT_LIST -> {
                 list(params, required, choice("episode", "scene"));
                 required(params, required, "parentId", ID);
-                params.put("includeRawContent", BOOLEAN);
+                params.put("includeRawContent", described(BOOLEAN, "是否返回分集剧本原文 originalText，默认 true"));
             }
             case SCRIPT_GET -> {
                 get(params, required, choice("script", "episode", "scene"));
-                params.put("includeRawContent", BOOLEAN);
+                params.put("includeRawContent", described(BOOLEAN,
+                        "是否返回剧本原文。分集的 originalText 默认返回，主档的 rawContent 默认省略"));
             }
             case SCRIPT_CREATE -> create(params, required, choice("episode", "scene"), true,
                     forms(create, SCRIPT_EPISODE, SCRIPT_SCENE));
@@ -217,6 +220,12 @@ class McpProjectToolSchemas {
     private static void list(Map<String, Object> params, List<String> required, Map<String, Object> kind) {
         required(params, required, "kind", kind);
         params.putAll(properties("page", integer(1, Integer.MAX_VALUE), "pageSize", integer(1, 50)));
+    }
+
+    private static Map<String, Object> described(Map<String, Object> schema, String description) {
+        var result = new LinkedHashMap<>(schema);
+        result.put("description", description);
+        return result;
     }
 
     private static void get(Map<String, Object> params, List<String> required, Map<String, Object> kind) {
