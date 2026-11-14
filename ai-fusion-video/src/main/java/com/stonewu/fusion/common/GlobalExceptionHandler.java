@@ -1,6 +1,7 @@
 package com.stonewu.fusion.common;
 
 import lombok.extern.slf4j.Slf4j;
+import org.apache.tomcat.util.http.fileupload.impl.FileCountLimitExceededException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
@@ -10,6 +11,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.io.IOException;
@@ -81,6 +83,17 @@ public class GlobalExceptionHandler {
             log.error("IO 异常", e);
         }
         // 连接已断开，无法写回响应，直接返回
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    @ResponseStatus(HttpStatus.PAYLOAD_TOO_LARGE)
+    public CommonResult<?> handleUploadLimit(MaxUploadSizeExceededException error) {
+        for (Throwable cause = error.getCause(); cause != null; cause = cause.getCause()) {
+            if (cause instanceof FileCountLimitExceededException) {
+                return CommonResult.error(413, "上传表单分段过多，请减少文件数量或分批上传");
+            }
+        }
+        return CommonResult.error(413, "上传文件或请求超过大小限制");
     }
 
     @ExceptionHandler(Exception.class)

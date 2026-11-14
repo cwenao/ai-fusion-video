@@ -11,16 +11,21 @@ import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.MySQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
@@ -137,6 +142,73 @@ class AgentUserConfigurationIT {
         }
         assertThat(call(HttpMethod.GET, endpoint, null, headers).path("data").path("configuration").path("revision")
                 .asLong()).isZero();
+    }
+
+    @Test
+    void directoryPreviewAndImportBothAcceptTwentyFiveFiles() {
+        var headers = user();
+        headers.setContentType(MediaType.MULTIPART_FORM_DATA);
+        var upload = skillDirectory(25);
+        String path = "/api/ai/agent-config/skills/import";
+        var preview = http.postForEntity(path + "/preview", new HttpEntity<>(upload, headers), JsonNode.class);
+        assertThat(preview.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(preview.getBody().at("/data/skills/0/fileCount").asInt()).isEqualTo(25);
+        assertThat(preview.getBody().at("/data/skills/0/valid").asBoolean()).isTrue();
+
+        addImportSelection(upload);
+        var imported = http.postForEntity(path, new HttpEntity<>(upload, headers), JsonNode.class);
+        assertThat(imported.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(imported.getBody().at("/data/createdCount").asInt()).isEqualTo(1);
+        headers.remove(HttpHeaders.CONTENT_TYPE);
+        var catalog = call(HttpMethod.GET, "/api/ai/agent-config/skills", null, headers);
+        assertThat(catalog.at("/data/0/name").asText()).isEqualTo("import-regression");
+    }
+
+    @Test
+    void directoryUploadRespectsFileLimitAndExplainsExcessParts() {
+        var headers = user();
+        headers.setContentType(MediaType.MULTIPART_FORM_DATA);
+        String path = "/api/ai/agent-config/skills/import/preview";
+        var atLimit = http.postForEntity(path, new HttpEntity<>(skillDirectory(1000), headers), JsonNode.class);
+        assertThat(atLimit.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(atLimit.getBody().at("/data/totalFiles").asInt()).isEqualTo(1000);
+
+        var excess = http.postForEntity(path, new HttpEntity<>(skillDirectory(1001), headers), JsonNode.class);
+        assertThat(excess.getStatusCode()).isEqualTo(HttpStatus.PAYLOAD_TOO_LARGE);
+        assertThat(excess.getBody().path("msg").asText()).contains("上传表单分段过多");
+    }
+
+    private MultiValueMap<String, Object> skillDirectory(int files) {
+        var multipart = new LinkedMultiValueMap<String, Object>();
+        addSkillFile(multipart, "SKILL.md", """
+                ---
+                name: import-regression
+                description: 检查目录上传
+                ---
+                # 导入验证
+                """);
+        for (int index = 1; index < files; index++) {
+            addSkillFile(multipart, "references/note-" + index + ".md", "参考内容");
+        }
+        return multipart;
+    }
+
+    private void addSkillFile(MultiValueMap<String, Object> multipart, String path, String content) {
+        String filename = path.substring(path.lastIndexOf('/') + 1);
+        multipart.add("files", new ByteArrayResource(content.getBytes(StandardCharsets.UTF_8)) {
+            @Override
+            public String getFilename() {
+                return filename;
+            }
+        });
+        multipart.add("paths", "import-regression/" + path);
+    }
+
+    private void addImportSelection(MultiValueMap<String, Object> multipart) {
+        var partHeaders = new HttpHeaders();
+        partHeaders.setContentType(MediaType.APPLICATION_JSON);
+        multipart.add("request", new HttpEntity<>(Map.of("selections", List.of(Map.of(
+                "rootPath", "import-regression", "displayName", "导入验证", "action", "CREATE"))), partHeaders));
     }
 
     HttpHeaders user() {

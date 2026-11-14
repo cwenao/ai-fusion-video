@@ -48,6 +48,9 @@ springdoc:
 server:
   port: 18080
   forward-headers-strategy: framework
+  tomcat:
+    # Skill 目录最多 1000 个文件，每个文件附带一个路径字段，正式导入再附带一段选择参数。
+    max-part-count: 2001
 
 # 应用配置
 app:
