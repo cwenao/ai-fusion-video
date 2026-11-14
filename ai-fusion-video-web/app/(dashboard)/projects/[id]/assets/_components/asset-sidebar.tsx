@@ -54,7 +54,7 @@ export function AssetSidebar({
               variant="image"
               size="sm"
               onClick={onBatchGenerate}
-              disabled={!assets.length}
+              disabled={!assets.some((asset) => asset.items.length > 0)}
               title="批量生成资产目录中的全部子资产图片"
             >
               <Images className="h-3.5 w-3.5" />

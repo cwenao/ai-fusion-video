@@ -13,7 +13,7 @@ import com.stonewu.fusion.service.canvas.agent.node.CanvasAgentNodeGeneration;
 import com.stonewu.fusion.service.generation.GenerationKind;
 import com.stonewu.fusion.service.generation.ProjectMediaCompletion;
 import com.stonewu.fusion.service.generation.GenerationModelCapabilityService;
-import com.stonewu.fusion.service.generation.StoryboardFrameImageOptions;
+import com.stonewu.fusion.service.generation.ProjectImageOptions;
 import com.stonewu.fusion.service.generation.job.GenerationSubmissionService;
 import com.stonewu.fusion.service.generation.review.GenerationReviewAdmission;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -46,7 +46,7 @@ public class GenerateImageToolExecutor implements ToolExecutor {
     private final CanvasAgentNodeGeneration canvasModels;
     private final GenerationReviewAdmission reviews;
     private final ProjectMediaCompletion projectMedia;
-    private final StoryboardFrameImageOptions frameOptions;
+    private final ProjectImageOptions projectImageOptions;
 
     @Override
     public String getToolName() {
@@ -74,7 +74,7 @@ public class GenerateImageToolExecutor implements ToolExecutor {
                 - 可以使用中文提示词，系统会自动处理
                 - 如果你打算传 imageUrls，或不确定当前默认模型是否支持参考图，请先调用 get_generation_model_capabilities
                 
-                项目首尾帧和画布专业节点使用用户选择的模型。项目首尾帧的输出参数由系统应用，实际限制请查询能力工具。
+                项目首尾帧、项目资产和画布专业节点使用用户选择的模型。项目首尾帧和项目资产的输出参数由系统应用，实际限制请查询能力工具。
                 """;
     }
 
@@ -138,7 +138,7 @@ public class GenerateImageToolExecutor implements ToolExecutor {
                 prompt += "\n请避免：" + params.getStr("negativePrompt");
             }
 
-            var selection = frameOptions.selected(context);
+            var selection = projectImageOptions.selected(context);
             int width = selection == null ? params.getInt("width", 0) : 0;
             int height = selection == null ? params.getInt("height", 0) : 0;
 

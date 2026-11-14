@@ -7,7 +7,9 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Images, Loader2, Plus, X } from "lucide-react";
 import { useCommandRequestKey } from "@/hooks/use-command-request-key";
 import { assetApi, type Asset, type AssetItem, type AssetWithItems } from "@/lib/api/asset";
-import { usePipelineStore } from "@/lib/store/pipeline-store";
+import { AssetImageGenerationDialog } from "@/components/assets/asset-image-generation-dialog";
+import type { ImageModelOptions } from "@/components/dashboard/generation/image-model-fields";
+import { enqueueAssetImageGeneration } from "@/lib/asset-image-generation";
 import { Button } from "@/components/ui/button";
 import { OverlayScrollArea } from "@/components/dashboard/overlay-scroll-area";
 import { AssetSidebar } from "./_components/asset-sidebar";
@@ -17,27 +19,10 @@ import { AssetItemWorkspace } from "./_components/asset-item-workspace";
 import { getApiErrorMessage } from "@/lib/api/api-error";
 import { parseProperties } from "./_components/asset-types";
 
-function enqueueAssetGeneration(
-  projectId: number,
-  assetIds: number[],
-  itemIds?: number[],
-  label = "批量生成资产图",
-) {
-  const { addPipeline, setNotificationOpen } = usePipelineStore.getState();
-  addPipeline({
-    label,
-    projectId,
-    request: {
-      agentType: "asset_image_gen",
-      toolExecutionMode: "FULL_ACCESS",
-      projectId,
-      context: {
-        selectedAssetIds: assetIds,
-        ...(itemIds?.length ? { selectedAssetItemIds: itemIds } : {}),
-      },
-    },
-  });
-  setNotificationOpen(true);
+interface BatchGeneration {
+  assetIds: number[];
+  itemIds: number[];
+  title: string;
 }
 
 export default function ProjectAssetsPage() {
@@ -59,6 +44,7 @@ export default function ProjectAssetsPage() {
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   const [error, setError] = useState("");
+  const [batchGeneration, setBatchGeneration] = useState<BatchGeneration | null>(null);
 
   const selectedAssetIdRef = useRef<number | null>(null);
 
@@ -205,7 +191,7 @@ export default function ProjectAssetsPage() {
     name: string,
     appearance: string,
     imageUrl: string,
-    generateAfterCreate: boolean,
+    image?: ImageModelOptions,
   ) => {
     if (!selectedAsset || !name.trim()) return;
     setSaving(true);
@@ -223,13 +209,14 @@ export default function ProjectAssetsPage() {
       await loadAssets(true);
       setSelectedItemId(created.id);
       setCreatingItem(false);
-      if (generateAfterCreate) {
-        enqueueAssetGeneration(
+      if (image) {
+        enqueueAssetImageGeneration({
           projectId,
-          [selectedAsset.id],
-          [created.id],
-          `生成 ${created.name || name.trim()}`,
-        );
+          assetIds: [selectedAsset.id],
+          itemIds: [created.id],
+          image,
+          label: `生成 ${created.name || name.trim()}`,
+        });
       }
     } finally {
       setSaving(false);
@@ -288,14 +275,11 @@ export default function ProjectAssetsPage() {
           onSearchChange={setSearch}
           onTypeFilterChange={setTypeFilter}
           onSelect={selectAsset}
-          onBatchGenerate={() =>
-            enqueueAssetGeneration(
-              projectId,
-              assets.map((asset) => asset.id),
-              undefined,
-              "批量生成全部资产图",
-            )
-          }
+          onBatchGenerate={() => setBatchGeneration({
+            assetIds: assets.map((asset) => asset.id),
+            itemIds: assets.flatMap((asset) => asset.items.map((item) => item.id)),
+            title: "批量生成全部资产图",
+          })}
           onRefresh={() => void loadAssets(true)}
         />
         <section aria-label="资产工作区" className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-[30px] border border-border/50 bg-card/75 shadow-[0_24px_70px_-42px_rgba(15,23,42,.45)]">
@@ -328,14 +312,11 @@ export default function ProjectAssetsPage() {
                   setCreatingItem(true);
                   setSelectedItemId(null);
                 }}
-                onGenerate={() =>
-                  enqueueAssetGeneration(
-                    projectId,
-                    [selectedAsset.id],
-                    selectedAsset.items.map((item) => item.id),
-                    `批量生成 ${selectedAsset.name} 的子资产图`,
-                  )
-                }
+                onGenerate={() => setBatchGeneration({
+                  assetIds: [selectedAsset.id],
+                  itemIds: selectedAsset.items.map((item) => item.id),
+                  title: `批量生成 ${selectedAsset.name} 的子资产图`,
+                })}
               />
               <div>
                 {creatingItem || selectedItem ? (
@@ -360,14 +341,17 @@ export default function ProjectAssetsPage() {
                       setCreatingItem(false);
                       setSelectedItemId(selectedAsset.items[0]?.id ?? null);
                     }}
-                    onGenerate={() => {
-                      if (!selectedItem) return;
-                      enqueueAssetGeneration(
+                    onGenerate={(image) => {
+                      if (!selectedItem) {
+                        return;
+                      }
+                      enqueueAssetImageGeneration({
                         projectId,
-                        [selectedAsset.id],
-                        [selectedItem.id],
-                        `生成 ${selectedItem.name || "子资产"}`,
-                      );
+                        assetIds: [selectedAsset.id],
+                        itemIds: [selectedItem.id],
+                        image,
+                        label: `生成 ${selectedItem.name || "子资产"}`,
+                      });
                     }}
                   />
                 ) : (
@@ -386,6 +370,20 @@ export default function ProjectAssetsPage() {
           )}
         </section>
       </div>
+      {batchGeneration && (
+        <AssetImageGenerationDialog
+          title={batchGeneration.title}
+          description={`将为 ${batchGeneration.itemIds.length} 个子资产各生成一张图片。`}
+          onClose={() => setBatchGeneration(null)}
+          onConfirm={(image) => enqueueAssetImageGeneration({
+            projectId,
+            assetIds: batchGeneration.assetIds,
+            itemIds: batchGeneration.itemIds,
+            image,
+            label: batchGeneration.title,
+          })}
+        />
+      )}
     </div>
   );
 }

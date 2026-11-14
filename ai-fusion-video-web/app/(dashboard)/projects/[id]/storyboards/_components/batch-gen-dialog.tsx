@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { resolveMediaUrl } from "@/lib/api/client";
 import type { AssetItem } from "@/lib/api/asset";
 import { SafeImage } from "@/components/media/managed-image";
+import { ImageModelFields, useImageModelOptions, type ImageModelOptions } from "@/components/dashboard/generation/image-model-fields";
 import { GenerationReviewFields } from "@/components/generation-review/generation-review-fields";
 import { useGenerationReviewChoice } from "@/components/generation-review/use-generation-review-choice";
 import { DialogScrollBody } from "@/components/shared/dialog-scroll-body";
@@ -31,7 +32,7 @@ interface BatchGenDialogProps {
   onClose: () => void;
   /** 子资产列表（带主资产信息） */
   assetItems: AssetItemWithInfo[];
-  onConfirm: (selected: SelectedAssetItem[], reviewModelId?: number) => void;
+  onConfirm: (selected: SelectedAssetItem[], image: ImageModelOptions, reviewModelId?: number) => void;
 }
 
 const typeLabels: Record<string, string> = {
@@ -64,6 +65,7 @@ export function BatchGenDialog({
   const selected = selectedOverride
     ? new Set([...selectedOverride].filter((id) => defaultSelected.has(id))) : defaultSelected;
   const review = useGenerationReviewChoice("image");
+  const image = useImageModelOptions(open, true);
 
   if (!open) {
     return null;
@@ -90,13 +92,13 @@ export function BatchGenDialog({
   };
 
   const handleConfirm = () => {
-    if (!selected.size || !review.ready) {
+    if (!selected.size || !image.options || !review.ready) {
       return;
     }
     const result: SelectedAssetItem[] = assetItems
       .filter((a) => selected.has(a.item.id))
       .map((a) => ({ assetId: a.assetId, itemId: a.item.id }));
-    onConfirm(result, review.modelId);
+    onConfirm(result, image.options, review.modelId);
     onClose();
   };
 
@@ -140,6 +142,7 @@ export function BatchGenDialog({
 
         {/* 子资产列表（按主资产分组） */}
         <DialogScrollBody className="flex flex-col gap-3 p-4">
+          <ImageModelFields choice={image} />
           <GenerationReviewFields choice={review} />
           {assetItems.length === 0 ? (
             <div className="text-center py-8">
@@ -252,7 +255,7 @@ export function BatchGenDialog({
           </Button>
           <Button type="button" variant="image"
             onClick={handleConfirm}
-            disabled={selected.size === 0 || !review.ready}
+            disabled={selected.size === 0 || !image.options || !review.ready}
           >
             <Sparkles />
             开始生成 ({selected.size})

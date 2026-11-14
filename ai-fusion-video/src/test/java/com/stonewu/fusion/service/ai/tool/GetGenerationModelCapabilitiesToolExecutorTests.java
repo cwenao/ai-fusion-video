@@ -11,7 +11,7 @@ import com.stonewu.fusion.service.ai.ToolExecutionContext;
 import com.stonewu.fusion.service.canvas.agent.node.CanvasAgentNodeGeneration;
 import com.stonewu.fusion.service.ai.model.AiModelMetadataResolver;
 import com.stonewu.fusion.service.generation.GenerationModelCapabilityService;
-import com.stonewu.fusion.service.generation.StoryboardFrameImageOptions;
+import com.stonewu.fusion.service.generation.ProjectImageOptions;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -68,7 +68,7 @@ class GetGenerationModelCapabilitiesToolExecutorTests {
 
         GetGenerationModelCapabilitiesToolExecutor executor =
                 new GetGenerationModelCapabilitiesToolExecutor(aiModelService, capabilityService, mock(CanvasAgentNodeGeneration.class),
-                        mock(StoryboardFrameImageOptions.class));
+                        mock(ProjectImageOptions.class));
 
         String result = executor.execute("{}", ToolExecutionContext.builder().userId(1L).build());
         JSONObject json = JSONUtil.parseObj(result);
@@ -92,7 +92,7 @@ class GetGenerationModelCapabilitiesToolExecutorTests {
 
         GetGenerationModelCapabilitiesToolExecutor executor =
                 new GetGenerationModelCapabilitiesToolExecutor(aiModelService, capabilityService, mock(CanvasAgentNodeGeneration.class),
-                        mock(StoryboardFrameImageOptions.class));
+                        mock(ProjectImageOptions.class));
 
         String result = executor.execute("{\"modelType\":\"image\"}", ToolExecutionContext.builder().userId(1L).build());
         JSONObject json = JSONUtil.parseObj(result);

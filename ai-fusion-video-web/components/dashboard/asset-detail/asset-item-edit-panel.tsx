@@ -17,7 +17,8 @@ import { getApiErrorMessage } from "@/lib/api/api-error";
 import { assetApi, type AssetItem } from "@/lib/api/asset";
 import { resolveMediaUrl } from "@/lib/api/client";
 import { uploadFile } from "@/lib/api/storage";
-import { usePipelineStore } from "@/lib/store/pipeline-store";
+import { AssetImageGenerationDialog } from "@/components/assets/asset-image-generation-dialog";
+import { enqueueAssetImageGeneration } from "@/lib/asset-image-generation";
 import {
   Check,
   Images,
@@ -66,6 +67,7 @@ export function AssetItemEditPanel({
   const [uploading, setUploading] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [showLightbox, setShowLightbox] = useState(false);
+  const [generationOpen, setGenerationOpen] = useState(false);
   const [urlMode, setUrlMode] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
@@ -211,6 +213,21 @@ export function AssetItemEditPanel({
         </Button>
       </div>
 
+      {generationOpen && projectId !== null && (
+        <AssetImageGenerationDialog
+          title="生成图片"
+          description={`为“${item.name || "子资产"}”生成一张图片。`}
+          onClose={() => setGenerationOpen(false)}
+          onConfirm={(image) => enqueueAssetImageGeneration({
+            projectId,
+            assetIds: [assetId],
+            itemIds: [item.id],
+            image,
+            label: `生成 ${item.name || "子资产"}`,
+            onComplete: onUpdated,
+          })}
+        />
+      )}
       {/* 编辑内容 */}
       <div className="flex-1 min-h-0 overflow-y-auto px-4 py-5 space-y-5">
         {/* 图片预览 */}
@@ -271,28 +288,7 @@ export function AssetItemEditPanel({
               <Button
                 variant="image"
                 size="sm"
-                onClick={() => {
-                  if (projectId === null) return;
-                  const { addPipeline, setNotificationOpen } =
-                    usePipelineStore.getState();
-                  addPipeline({
-                    label: `生成图片: ${item.name || "子资产"}`,
-                    projectId,
-                    request: {
-                      agentType: "asset_image_gen",
-                      toolExecutionMode: "FULL_ACCESS",
-                      projectId,
-                      context: {
-                        selectedAssetIds: [assetId],
-                        selectedAssetItemIds: [item.id],
-                      },
-                    },
-                    onComplete: () => {
-                      onUpdated();
-                    },
-                  });
-                  setNotificationOpen(true);
-                }}
+                onClick={() => setGenerationOpen(true)}
                 disabled={projectId === null || dirty || saving || uploading}
                 title={
                   projectId === null

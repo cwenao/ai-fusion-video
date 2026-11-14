@@ -4,6 +4,8 @@ import type { AssetItem } from "@/lib/api/asset";
 import { assetApi } from "@/lib/api/asset";
 import type { Storyboard } from "@/lib/api/storyboard";
 import { toastApiError } from "@/lib/api/toast-api-error";
+import type { ImageModelOptions } from "@/components/dashboard/generation/image-model-fields";
+import { enqueueAssetImageGeneration } from "@/lib/asset-image-generation";
 import { usePipelineStore } from "@/lib/store/pipeline-store";
 import { cn } from "@/lib/utils";
 import { Camera, Loader2, Package, Sparkles, Video } from "lucide-react";
@@ -161,33 +163,17 @@ function SceneAssetPanel({
     assetId: ai.assetId,
   }));
 
-  const handleBatchGenConfirm = (selectedItems: SelectedAssetItem[], reviewModelId?: number) => {
-    // 提取去重的主资产ID和选中的子资产ID
-    const selectedAssetIds = [...new Set(selectedItems.map((s) => s.assetId))];
-    const selectedAssetItemIds = selectedItems.map((s) => s.itemId);
-
-    // 触发 Agent Pipeline
-    addPipeline({
+  const handleBatchGenConfirm = (selectedItems: SelectedAssetItem[], image: ImageModelOptions, reviewModelId?: number) => {
+    enqueueAssetImageGeneration({
       label: `批量生图 (${selectedItems.length} 个子资产)`,
       projectId,
-      request: {
-        agentType: "asset_image_gen",
-        toolExecutionMode: "FULL_ACCESS",
-        projectId,
-        generationReviewModelId: reviewModelId,
-        context: {
-          selectedAssetIds,
-          selectedAssetItemIds,
-          ...(reviewModelId === undefined ? {} : { storyboardSceneId: sceneGroup.scene.id }),
-        },
-      },
-      onComplete: () => {
-        loadAssets();
-      },
+      image,
+      assetIds: [...new Set(selectedItems.map((item) => item.assetId))],
+      itemIds: selectedItems.map((item) => item.itemId),
+      reviewModelId,
+      storyboardSceneId: reviewModelId === undefined ? undefined : sceneGroup.scene.id,
+      onComplete: () => void loadAssets(),
     });
-
-    // 打开通知面板让用户看到进度
-    setNotificationOpen(true);
   };
 
   /** 批量生视频确认 */

@@ -11,6 +11,8 @@ import {
 } from "lucide-react";
 import type { AssetItem, AssetWithItems } from "@/lib/api/asset";
 import { assetReferences } from "@/lib/asset-references";
+import { AssetImageGenerationDialog } from "@/components/assets/asset-image-generation-dialog";
+import type { ImageModelOptions } from "@/components/dashboard/generation/image-model-fields";
 import { AssetGenerationActions } from "@/components/assets/asset-generation-actions";
 import { uploadFile } from "@/lib/api/storage";
 import { getApiErrorMessage } from "@/lib/api/api-error";
@@ -35,7 +37,7 @@ interface AssetItemWorkspaceProps {
     name: string,
     appearance: string,
     imageUrl: string,
-    generateAfterCreate: boolean,
+    image?: ImageModelOptions,
   ) => Promise<void>;
   onSave: (
     item: AssetItem,
@@ -45,7 +47,7 @@ interface AssetItemWorkspaceProps {
   ) => Promise<AssetItem>;
   onDelete: (item: AssetItem) => void;
   onCancelCreate: () => void;
-  onGenerate: () => void;
+  onGenerate: (image: ImageModelOptions) => void;
 }
 
 export function AssetItemWorkspace({
@@ -75,6 +77,7 @@ export function AssetItemWorkspace({
   const [error, setError] = useState("");
   const appearanceField = useId();
   const [appearanceOpen, setAppearanceOpen] = useState(false);
+  const [generationOpen, setGenerationOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const appearanceHints = useMemo(
     () => getAppearanceHints(assetType),
@@ -140,22 +143,24 @@ export function AssetItemWorkspace({
     setImageUrl(updated.imageUrl || "");
   };
 
-  const create = async (generateAfterCreate: boolean) => {
+  const create = async (image?: ImageModelOptions) => {
     if (disabled) {
       return;
     }
-    await onCreate(creationVersion, name, appearance, imageUrl, generateAfterCreate);
+    await onCreate(creationVersion, name, appearance, imageUrl, image);
   };
 
-  const generate = async () => {
+  const generationLabel = mode === "create" ? "创建并生图" : dirty ? "保存并生图" : "生成图片";
+
+  const generate = async (image: ImageModelOptions) => {
     if (mode === "create") {
-      await create(true);
+      await create(image);
       return;
     }
     if (base && dirty) {
       await save();
     }
-    onGenerate();
+    onGenerate(image);
   };
 
   return (
@@ -169,11 +174,11 @@ export function AssetItemWorkspace({
         saving={saving}
         uploading={uploading}
         generationDisabled={disabled}
-        generationLabel={mode === "create" ? "创建并生图" : dirty ? "保存并生图" : "生成图片"}
+        generationLabel={generationLabel}
         error={error}
         onImageChange={setImageUrl}
         onUpload={upload}
-        onGenerate={() => void generate().catch((failure) => setError(getApiErrorMessage(failure)))}
+        onGenerate={() => setGenerationOpen(true)}
       />
 
       <div className="flex min-w-0 flex-col border-t border-border/40 bg-background/35 p-5 xl:border-l xl:border-t-0">
@@ -290,7 +295,7 @@ export function AssetItemWorkspace({
             <Button
               size="sm"
               disabled={disabled || (mode === "edit" && !dirty)}
-              onClick={() => void (mode === "create" ? create(false) : save()).catch(failure => setError(getApiErrorMessage(failure)))}
+              onClick={() => void (mode === "create" ? create() : save()).catch(failure => setError(getApiErrorMessage(failure)))}
             >
               {saving ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -304,6 +309,14 @@ export function AssetItemWorkspace({
           </div>
         </div>
       </div>
+      {generationOpen && (
+        <AssetImageGenerationDialog
+          title={generationLabel}
+          description={`为“${name.trim()}”生成一张图片。`}
+          onClose={() => setGenerationOpen(false)}
+          onConfirm={generate}
+        />
+      )}
       {appearanceOpen && (
         <AssetAppearanceDialog
           projectId={projectId}

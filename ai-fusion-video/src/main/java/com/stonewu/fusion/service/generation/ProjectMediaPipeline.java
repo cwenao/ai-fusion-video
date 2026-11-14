@@ -41,6 +41,10 @@ public enum ProjectMediaPipeline {
         return pipeline != null && pipeline.executor.equals(executor);
     }
 
+    public String root() {
+        return root;
+    }
+
     public GenerationKind kind() {
         return kind;
     }
