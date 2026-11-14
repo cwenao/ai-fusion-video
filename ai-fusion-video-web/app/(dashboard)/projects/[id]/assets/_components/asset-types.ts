@@ -33,6 +33,16 @@ export function getAppearanceHints(assetType: string) {
   return APPEARANCE_HINTS[assetType] || APPEARANCE_HINTS.prop;
 }
 
-export function parseProperties(properties: Record<string, unknown> | null) {
-  return properties || {};
+export function assetItemProperties(
+  current: AssetItem["properties"],
+  appearance: string,
+  imagePrompt: string,
+) {
+  const properties: Record<string, unknown> = { ...current, appearanceDescription: appearance.trim() };
+  if (imagePrompt.trim()) {
+    properties.imagePrompt = imagePrompt;
+  } else {
+    delete properties.imagePrompt;
+  }
+  return properties;
 }

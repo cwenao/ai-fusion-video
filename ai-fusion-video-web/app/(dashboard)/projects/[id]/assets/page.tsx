@@ -9,7 +9,7 @@ import { useCommandRequestKey } from "@/hooks/use-command-request-key";
 import { assetApi, type Asset, type AssetItem, type AssetWithItems } from "@/lib/api/asset";
 import { AssetImageGenerationDialog } from "@/components/assets/asset-image-generation-dialog";
 import type { ImageModelOptions } from "@/components/dashboard/generation/image-model-fields";
-import { enqueueAssetImageGeneration } from "@/lib/asset-image-generation";
+import { enqueueAssetImageGeneration, getAssetImagePrompt } from "@/lib/asset-image-generation";
 import { Button } from "@/components/ui/button";
 import { OverlayScrollArea } from "@/components/dashboard/overlay-scroll-area";
 import { AssetSidebar } from "./_components/asset-sidebar";
@@ -17,12 +17,13 @@ import { MasterAssetForm, MasterAssetHeader } from "./_components/asset-master-p
 import { AssetItemTabs } from "./_components/asset-item-tabs";
 import { AssetItemWorkspace } from "./_components/asset-item-workspace";
 import { getApiErrorMessage } from "@/lib/api/api-error";
-import { parseProperties } from "./_components/asset-types";
+import { assetItemProperties } from "./_components/asset-types";
 
 interface BatchGeneration {
   assetIds: number[];
   itemIds: number[];
   title: string;
+  missingPrompts: number;
 }
 
 export default function ProjectAssetsPage() {
@@ -145,7 +146,7 @@ export default function ProjectAssetsPage() {
     }
   };
 
-  const saveItem = async (item: AssetItem, name: string, appearance: string, imageUrl: string) => {
+  const saveItem = async (item: AssetItem, name: string, appearance: string, imageUrl: string, imagePrompt: string) => {
     if (!name.trim()) throw new Error("名称不能为空");
     setSaving(true);
     try {
@@ -155,10 +156,7 @@ export default function ProjectAssetsPage() {
         assetVersion: item.assetVersion,
         name: name.trim(),
         imageUrl: imageUrl.trim(),
-        properties: {
-          ...parseProperties(item.properties),
-          appearanceDescription: appearance.trim(),
-        },
+        properties: assetItemProperties(item.properties, appearance, imagePrompt),
       };
       const updated = await assetApi.updateItem(data, requests.forPayload({ operation: "updateItem", ...data }));
       requests.clear();
@@ -191,6 +189,7 @@ export default function ProjectAssetsPage() {
     name: string,
     appearance: string,
     imageUrl: string,
+    imagePrompt: string,
     image?: ImageModelOptions,
   ) => {
     if (!selectedAsset || !name.trim()) return;
@@ -201,7 +200,7 @@ export default function ProjectAssetsPage() {
         parentVersion: expectedParentVersion,
         name: name.trim(),
         imageUrl: imageUrl.trim() || undefined,
-        properties: { appearanceDescription: appearance.trim() },
+        properties: assetItemProperties(null, appearance, imagePrompt),
         sortOrder: selectedAsset.items.length,
       };
       const created = await assetApi.createItem(data, requests.forPayload({ operation: "createItem", ...data }));
@@ -279,6 +278,7 @@ export default function ProjectAssetsPage() {
             assetIds: assets.map((asset) => asset.id),
             itemIds: assets.flatMap((asset) => asset.items.map((item) => item.id)),
             title: "批量生成全部资产图",
+            missingPrompts: assets.flatMap((asset) => asset.items).filter((item) => !getAssetImagePrompt(item).trim()).length,
           })}
           onRefresh={() => void loadAssets(true)}
         />
@@ -316,6 +316,7 @@ export default function ProjectAssetsPage() {
                   assetIds: [selectedAsset.id],
                   itemIds: selectedAsset.items.map((item) => item.id),
                   title: `批量生成 ${selectedAsset.name} 的子资产图`,
+                  missingPrompts: selectedAsset.items.filter((item) => !getAssetImagePrompt(item).trim()).length,
                 })}
               />
               <div>
@@ -374,6 +375,9 @@ export default function ProjectAssetsPage() {
         <AssetImageGenerationDialog
           title={batchGeneration.title}
           description={`将为 ${batchGeneration.itemIds.length} 个子资产各生成一张图片。`}
+          blockedReason={batchGeneration.missingPrompts > 0
+            ? `还有 ${batchGeneration.missingPrompts} 个子资产缺少已保存的生图提示词。`
+            : undefined}
           onClose={() => setBatchGeneration(null)}
           onConfirm={(image) => enqueueAssetImageGeneration({
             projectId,

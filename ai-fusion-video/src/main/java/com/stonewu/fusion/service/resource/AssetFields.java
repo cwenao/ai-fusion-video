@@ -19,6 +19,8 @@ import java.util.*;
 @Component
 @RequiredArgsConstructor
 public class AssetFields {
+    public static final String IMAGE_PROMPT = "imagePrompt";
+    private static final int MAX_IMAGE_PROMPT_LENGTH = 5_000;
     private final CanvasJson json;
     private static final Set<String> ASSET = Set.of("type", "name", "description", "coverUrl", "properties", "tags",
             "sourceType", "aiPrompt", "status");
@@ -51,6 +53,13 @@ public class AssetFields {
                 if (!node.isObject() || node.size() > 200 || json.write(node)
                         .getBytes(StandardCharsets.UTF_8).length > 262_144) {
                     throw invalid("properties 必须是大小受限的 JSON 对象");
+                }
+                if (type == CanvasValueType.ASSET_ITEM && node.has(IMAGE_PROMPT)) {
+                    JsonNode prompt = node.get(IMAGE_PROMPT);
+                    if (!prompt.isTextual() || prompt.textValue().isBlank()
+                            || prompt.textValue().length() > MAX_IMAGE_PROMPT_LENGTH) {
+                        throw invalid("生图提示词必须为非空文本，最多 5000 字符");
+                    }
                 }
                 for (String media : Set.of("sourceMediaUrl", "videoUrl", "audioUrl", "thumbnailUrl")) {
                     if (node.hasNonNull(media)) {

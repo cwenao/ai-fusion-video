@@ -10,6 +10,7 @@ import com.stonewu.fusion.service.ai.ToolExecutionContext;
 import com.stonewu.fusion.service.ai.ToolExecutor;
 import com.stonewu.fusion.service.canvas.CanvasJson;
 import com.stonewu.fusion.service.canvas.agent.node.CanvasAgentNodeGeneration;
+import com.stonewu.fusion.service.canvas.model.CanvasValueType;
 import com.stonewu.fusion.service.generation.GenerationKind;
 import com.stonewu.fusion.service.generation.ProjectMediaCompletion;
 import com.stonewu.fusion.service.generation.GenerationModelCapabilityService;
@@ -17,6 +18,7 @@ import com.stonewu.fusion.service.generation.ProjectImageOptions;
 import com.stonewu.fusion.service.generation.job.GenerationSubmissionService;
 import com.stonewu.fusion.service.generation.review.GenerationReviewAdmission;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.stonewu.fusion.service.resource.AssetFields;
 import com.stonewu.fusion.service.resource.ResourceToolRequests;
 import io.agentscope.core.tool.ToolSuspendException;
 import lombok.RequiredArgsConstructor;
@@ -74,6 +76,7 @@ public class GenerateImageToolExecutor implements ToolExecutor {
                 - 可以使用中文提示词，系统会自动处理
                 - 如果你打算传 imageUrls，或不确定当前默认模型是否支持参考图，请先调用 get_generation_model_capabilities
                 
+                项目资产保存的 properties.imagePrompt 由系统直接用作生图正文。
                 项目首尾帧、项目资产和画布专业节点使用用户选择的模型。项目首尾帧和项目资产的输出参数由系统应用，实际限制请查询能力工具。
                 """;
     }
@@ -138,6 +141,17 @@ public class GenerateImageToolExecutor implements ToolExecutor {
                 prompt += "\n请避免：" + params.getStr("negativePrompt");
             }
 
+            var mutation = context.requireMutationContext();
+            var input = json.read(toolInput, ObjectNode.class);
+            var target = projectMedia.requireTarget(mutation, input, GenerationKind.IMAGE);
+            if (target != null && target.header().resourceType() == CanvasValueType.ASSET_ITEM) {
+                String saved = target.data().path("properties").path(AssetFields.IMAGE_PROMPT).textValue();
+                if (StrUtil.isBlank(saved)) {
+                    return errorResult("请先为当前子资产生成或填写生图提示词并保存");
+                }
+                prompt = saved;
+            }
+
             var selection = projectImageOptions.selected(context);
             int width = selection == null ? params.getInt("width", 0) : 0;
             int height = selection == null ? params.getInt("height", 0) : 0;
@@ -178,13 +192,10 @@ public class GenerateImageToolExecutor implements ToolExecutor {
             log.info("[generate_image] 提交生图任务: prompt={}, size={}x{}, modelId={}, modelCode={}, 参考图: {}",
                     prompt, width, height, model.getId(), model.getCode(), refImageUrls != null ? "有" : "无");
 
-            var mutation = context.requireMutationContext();
-            var input = json.read(toolInput, ObjectNode.class);
-            boolean writeback = projectMedia.requireTarget(mutation, input, GenerationKind.IMAGE);
             var review = reviews.agent(mutation, GenerationKind.IMAGE, input.get("reviewTargetId"));
             var accepted = submissions.image(task, ResourceToolRequests.requestId(json, mutation), mutation, null,
                     review);
-            if (writeback) {
+            if (target != null && context.getCanvasScope() == null) {
                 throw new ToolSuspendException("图片已受理，生成完成后自动回填。");
             }
             return JSONUtil.createObj()

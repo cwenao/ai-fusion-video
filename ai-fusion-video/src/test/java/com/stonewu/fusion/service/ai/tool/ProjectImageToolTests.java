@@ -15,6 +15,7 @@ import com.stonewu.fusion.service.ai.tool.generation.GetGenerationModelCapabilit
 import com.stonewu.fusion.service.canvas.CanvasJson;
 import com.stonewu.fusion.service.canvas.agent.node.CanvasAgentNodeGeneration;
 import com.stonewu.fusion.service.canvas.model.CanvasActor;
+import com.stonewu.fusion.service.canvas.model.CanvasValueType;
 import com.stonewu.fusion.service.generation.GenerationKind;
 import com.stonewu.fusion.service.generation.GenerationModelCapabilityService;
 import com.stonewu.fusion.service.generation.ProjectMediaCompletion;
@@ -22,6 +23,8 @@ import com.stonewu.fusion.service.generation.ProjectImageOptions;
 import com.stonewu.fusion.service.generation.job.GenerationSubmissionService;
 import com.stonewu.fusion.service.generation.review.GenerationReviewAdmission;
 import com.stonewu.fusion.service.resource.model.ResourceCommandContext;
+import com.stonewu.fusion.service.resource.model.ResourceHeader;
+import com.stonewu.fusion.service.resource.model.ResourceSnapshot;
 import io.agentscope.core.tool.ToolSuspendException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -70,12 +73,19 @@ class ProjectImageToolTests {
         assertEquals("此模型与本次选择的生图模型不一致",
                 JSONUtil.parseObj(query.execute("{\"modelId\":99}", context)).getStr("message"));
 
-        when(completion.requireTarget(eq(mutation), any(), eq(GenerationKind.IMAGE))).thenReturn(true);
+        var type = agent.equals("asset_image") ? CanvasValueType.ASSET_ITEM : CanvasValueType.SHOT;
+        var resource = mapper.createObjectNode();
+        if (type == CanvasValueType.ASSET_ITEM) {
+            resource.putObject("properties").put("imagePrompt", "雨夜站台");
+        }
+        var target = new ResourceSnapshot(new ResourceHeader(type, 75L, 5L, 4, false), resource);
+        when(completion.requireTarget(eq(mutation), any(), eq(GenerationKind.IMAGE))).thenReturn(target);
         assertThrows(ToolSuspendException.class, () -> generate().execute("""
                 {"prompt":"雨夜站台","width":1024,"height":1024,"reviewTargetId":75,"frameType":"first","assetId":23,"expectedVersion":4,"expectedParentVersion":2}
                 """, context));
         var task = ArgumentCaptor.forClass(ImageTask.class);
         verify(submissions).image(task.capture(), any(), eq(mutation), isNull(), isNull());
+        assertEquals("雨夜站台", task.getValue().getPrompt());
         assertEquals(42L, task.getValue().getModelId());
         assertEquals("9:16", task.getValue().getAspectRatio());
         assertEquals("720x1280", task.getValue().getResolution());
@@ -89,6 +99,51 @@ class ProjectImageToolTests {
         selection(agent, prefix, 0);
         var failure = JSONUtil.parseObj(generate().execute("{\"prompt\":\"雨夜站台\"}", context));
         assertEquals("error", failure.getStr("status"));
+        verifyNoInteractions(submissions);
+    }
+
+    @Test
+    void savedMarkdownIsSubmittedUnchangedWithTheSelectedModelAndReferenceImages() {
+        selection("asset_image", "assetImage", 1);
+        String saved = """
+                ## 主体与结构
+
+                - 墨绿色珐琅保温壶
+                - **银色**旋盖
+                """;
+        var resource = mapper.createObjectNode();
+        resource.putObject("properties").put("imagePrompt", saved).put("appearanceDescription", "旧外观");
+        resource.put("aiPrompt", "上一次生成的提示词");
+        var target = new ResourceSnapshot(new ResourceHeader(CanvasValueType.ASSET_ITEM, 75L, 5L, 4, false),
+                resource);
+        when(completion.requireTarget(eq(mutation), any(), eq(GenerationKind.IMAGE))).thenReturn(target);
+        assertThrows(ToolSuspendException.class, () -> generate().execute("""
+                {"prompt":"智能体临时生成的正文","negativePrompt":"额外限制","reviewTargetId":75,
+                 "assetId":23,"expectedVersion":4,"expectedParentVersion":2,
+                 "imageUrls":["https://example.com/reference.png"]}
+                """, context));
+        var task = ArgumentCaptor.forClass(ImageTask.class);
+        verify(submissions).image(task.capture(), any(), eq(mutation), isNull(), isNull());
+        assertEquals(saved, task.getValue().getPrompt());
+        assertEquals(42L, task.getValue().getModelId());
+        assertEquals(List.of("https://example.com/reference.png"),
+                JSONUtil.parseArray(task.getValue().getRefImageUrls()).toList(String.class));
+    }
+
+    @Test
+    void missingSavedPromptDoesNotSubmitEvenWithAppearanceAndHistoricalPrompt() {
+        var resource = mapper.createObjectNode();
+        resource.putObject("properties").put("appearanceDescription", "青绿陶瓷提灯");
+        resource.put("aiPrompt", "上一次生成的提示词");
+        var target = new ResourceSnapshot(new ResourceHeader(CanvasValueType.ASSET_ITEM, 75L, 5L, 4, false),
+                resource);
+        when(completion.requireTarget(eq(mutation), any(), eq(GenerationKind.IMAGE))).thenReturn(target);
+        var response = JSONUtil.parseObj(generate().execute("""
+                {"prompt":"青绿陶瓷提灯","reviewTargetId":75,"assetId":23,
+                 "expectedVersion":4,"expectedParentVersion":2}
+                """, context));
+        assertEquals("error", response.getStr("status"));
+        assertEquals("请先为当前子资产生成或填写生图提示词并保存", response.getStr("message"));
         verifyNoInteractions(submissions);
     }
 

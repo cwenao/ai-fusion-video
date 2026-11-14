@@ -48,17 +48,17 @@ public class ProjectMediaCompletion {
     private final ProjectMapper projects;
     private final ProjectMediaVersions versions;
 
-    public boolean requireTarget(ResourceCommandContext context, ObjectNode input, GenerationKind kind) {
+    public ResourceSnapshot requireTarget(ResourceCommandContext context, ObjectNode input, GenerationKind kind) {
         var run = runs.selectByRunId(context.agentRunId());
         var pipeline = run == null ? null : ProjectMediaPipeline.forExecutor(run.getAgentType());
         if (pipeline == null || run.getProjectId() == null || pipeline.kind() != kind
-                || run.getCanvasScopeJson() != null) {
-            return false;
+                || (run.getCanvasScopeJson() != null && pipeline != ProjectMediaPipeline.ASSET)) {
+            return null;
         }
         var binding = binding(run, pipeline, input);
         var resource = requireResource(run, binding, context.actor());
         versions.check(run, binding, resource);
-        return true;
+        return resource;
     }
 
     @Transactional(isolation = Isolation.READ_COMMITTED)

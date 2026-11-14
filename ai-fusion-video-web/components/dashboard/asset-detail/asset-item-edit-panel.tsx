@@ -18,7 +18,7 @@ import { assetApi, type AssetItem } from "@/lib/api/asset";
 import { resolveMediaUrl } from "@/lib/api/client";
 import { uploadFile } from "@/lib/api/storage";
 import { AssetImageGenerationDialog } from "@/components/assets/asset-image-generation-dialog";
-import { enqueueAssetImageGeneration } from "@/lib/asset-image-generation";
+import { enqueueAssetImageGeneration, getAssetImagePrompt } from "@/lib/asset-image-generation";
 import {
   Check,
   Images,
@@ -53,6 +53,7 @@ export function AssetItemEditPanel({
   onUpdated: () => void;
   onDeleted: () => void;
 }) {
+  const hasImagePrompt = Boolean(getAssetImagePrompt(item).trim());
   const requests = useCommandRequestKey();
   const deletions = useCommandRequestKey();
   const [version, setVersion] = useState(item.version);
@@ -289,13 +290,13 @@ export function AssetItemEditPanel({
                 variant="image"
                 size="sm"
                 onClick={() => setGenerationOpen(true)}
-                disabled={projectId === null || dirty || saving || uploading}
+                disabled={projectId === null || !hasImagePrompt || dirty || saving || uploading}
                 title={
                   projectId === null
                     ? "关联项目后使用资产生图"
-                    : dirty
-                      ? "请先保存修改"
-                      : "AI 生图"
+                    : !hasImagePrompt
+                      ? "请先在项目资产管理中保存生图提示词"
+                      : dirty ? "请先保存修改" : "AI 生图"
                 }
               >
                 <Sparkles className="h-4 w-4" />

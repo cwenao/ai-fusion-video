@@ -230,7 +230,7 @@ public class GenerateVideoToolExecutor implements ToolExecutor {
 
             var mutation = context.requireMutationContext();
             var input = json.read(toolInput, ObjectNode.class);
-            boolean storyboard = projectMedia.requireTarget(mutation, input, GenerationKind.VIDEO);
+            boolean storyboard = projectMedia.requireTarget(mutation, input, GenerationKind.VIDEO) != null;
             var review = reviews.agent(mutation, GenerationKind.VIDEO, input.get("reviewTargetId"));
             var accepted = submissions.video(task, ResourceToolRequests.requestId(json, mutation), mutation, null,
                     review);

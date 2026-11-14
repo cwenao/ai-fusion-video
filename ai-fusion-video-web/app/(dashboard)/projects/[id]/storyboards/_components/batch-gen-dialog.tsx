@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { Sparkles, ImageIcon, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { getAssetImagePrompt } from "@/lib/asset-image-generation";
 import { resolveMediaUrl } from "@/lib/api/client";
 import type { AssetItem } from "@/lib/api/asset";
 import { SafeImage } from "@/components/media/managed-image";
@@ -64,6 +65,8 @@ export function BatchGenDialog({
   const [selectedOverride, setSelectedOverride] = useState<Set<number> | null>(null);
   const selected = selectedOverride
     ? new Set([...selectedOverride].filter((id) => defaultSelected.has(id))) : defaultSelected;
+  const missingPromptCount = assetItems.filter(({ item }) =>
+    selected.has(item.id) && !getAssetImagePrompt(item).trim()).length;
   const review = useGenerationReviewChoice("image");
   const image = useImageModelOptions(open, true);
 
@@ -92,7 +95,7 @@ export function BatchGenDialog({
   };
 
   const handleConfirm = () => {
-    if (!selected.size || !image.options || !review.ready) {
+    if (!selected.size || missingPromptCount > 0 || !image.options || !review.ready) {
       return;
     }
     const result: SelectedAssetItem[] = assetItems
@@ -142,6 +145,11 @@ export function BatchGenDialog({
 
         {/* 子资产列表（按主资产分组） */}
         <DialogScrollBody className="flex flex-col gap-3 p-4">
+          {missingPromptCount > 0 && (
+            <p role="status" className="text-sm text-muted-foreground">
+              已选子资产中有 {missingPromptCount} 个缺少生图提示词，请到资产管理保存提示词或取消选中。
+            </p>
+          )}
           <ImageModelFields choice={image} />
           <GenerationReviewFields choice={review} />
           {assetItems.length === 0 ? (
@@ -232,6 +240,9 @@ export function BatchGenDialog({
                                       : ai.item.itemType}
                               </span>
                             )}
+                            {!getAssetImagePrompt(ai.item).trim() && (
+                              <span className="text-xs text-muted-foreground">缺少生图提示词</span>
+                            )}
                             {ai.item.imageUrl && (
                               <span className="text-[10px] text-green-400/70">
                                 已有图片
@@ -255,7 +266,7 @@ export function BatchGenDialog({
           </Button>
           <Button type="button" variant="image"
             onClick={handleConfirm}
-            disabled={selected.size === 0 || !image.options || !review.ready}
+            disabled={selected.size === 0 || missingPromptCount > 0 || !image.options || !review.ready}
           >
             <Sparkles />
             开始生成 ({selected.size})

@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useRef, useState } from "react";
+import { useId, useRef, useState, type ReactNode } from "react";
 import { Loader2, Send, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -9,18 +9,20 @@ import { userFacingError } from "@/lib/user-facing-error";
 
 interface ProjectTextAiEditorProps {
   projectId: number;
-  kind: "storyboardPrompt" | "assetAppearance";
+  kind: "storyboardPrompt" | "assetAppearance" | "assetImagePrompt";
   title: string;
   context: Record<string, unknown>;
   draft: string;
   quickInstruction: string;
+  quickLabel?: string;
+  renderSettings?: (disabled: boolean) => ReactNode;
   placeholder: string;
   disabled?: boolean;
   onApply: (value: string) => void;
 }
 
 export function ProjectTextAiEditor({
-  projectId, kind, title, context, draft, quickInstruction, placeholder, disabled, onApply,
+  projectId, kind, title, context, draft, quickInstruction, quickLabel, renderSettings, placeholder, disabled, onApply,
 }: ProjectTextAiEditorProps) {
   const field = useId();
   const resultHeading = useId();
@@ -73,11 +75,12 @@ export function ProjectTextAiEditor({
 
   return (
     <section className="flex min-w-0 flex-col gap-3">
+      {renderSettings?.(Boolean(unavailable))}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-sm font-medium">AI 草稿</h3>
         <Button variant="ai" onClick={() => send(quickInstruction)} disabled={unavailable}>
           <Sparkles />
-          {candidate || draft.trim() ? "润色草稿" : "生成草稿"}
+          {quickLabel ?? (candidate || draft.trim() ? "润色草稿" : "生成草稿")}
         </Button>
       </div>
       {turn && (

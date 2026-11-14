@@ -10,6 +10,7 @@ import {
   X,
 } from "lucide-react";
 import type { AssetItem, AssetWithItems } from "@/lib/api/asset";
+import { getAssetImagePrompt } from "@/lib/asset-image-generation";
 import { assetReferences } from "@/lib/asset-references";
 import { AssetImageGenerationDialog } from "@/components/assets/asset-image-generation-dialog";
 import type { ImageModelOptions } from "@/components/dashboard/generation/image-model-fields";
@@ -20,6 +21,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { AssetAppearanceDialog } from "./asset-appearance-dialog";
+import { AssetImagePromptField, MAX_ASSET_IMAGE_PROMPT_LENGTH } from "./asset-image-prompt-field";
 import { AssetItemMedia } from "./asset-item-media";
 import { getAppearance, getAppearanceHints } from "./asset-types";
 
@@ -37,6 +39,7 @@ interface AssetItemWorkspaceProps {
     name: string,
     appearance: string,
     imageUrl: string,
+    imagePrompt: string,
     image?: ImageModelOptions,
   ) => Promise<void>;
   onSave: (
@@ -44,6 +47,7 @@ interface AssetItemWorkspaceProps {
     name: string,
     appearance: string,
     imageUrl: string,
+    imagePrompt: string,
   ) => Promise<AssetItem>;
   onDelete: (item: AssetItem) => void;
   onCancelCreate: () => void;
@@ -70,9 +74,11 @@ export function AssetItemWorkspace({
   const initialName = base?.name || "";
   const initialAppearance = getAppearance(base);
   const initialImageUrl = base?.imageUrl || "";
+  const initialImagePrompt = getAssetImagePrompt(base);
   const [name, setName] = useState(initialName);
   const [appearance, setAppearance] = useState(initialAppearance);
   const [imageUrl, setImageUrl] = useState(initialImageUrl);
+  const [imagePrompt, setImagePrompt] = useState(initialImagePrompt);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
   const appearanceField = useId();
@@ -86,8 +92,9 @@ export function AssetItemWorkspace({
   const dirty =
     name !== initialName ||
     appearance !== initialAppearance ||
-    imageUrl !== initialImageUrl;
-  const disabled = saving || uploading || !name.trim();
+    imageUrl !== initialImageUrl ||
+    imagePrompt !== initialImagePrompt;
+  const disabled = saving || uploading || !name.trim() || imagePrompt.length > MAX_ASSET_IMAGE_PROMPT_LENGTH;
 
   useEffect(() => {
     if (!item || !base || dirty || saving || uploading ||
@@ -98,6 +105,7 @@ export function AssetItemWorkspace({
     setName(item.name || "");
     setAppearance(getAppearance(item));
     setImageUrl(item.imageUrl || "");
+    setImagePrompt(getAssetImagePrompt(item));
   }, [item, base, dirty, saving, uploading]);
 
   const upload = async (file: File) => {
@@ -136,20 +144,22 @@ export function AssetItemWorkspace({
       return;
     }
     setError("");
-    const updated = await onSave(base, name, appearance, imageUrl);
+    const updated = await onSave(base, name, appearance, imageUrl, imagePrompt);
     setBase(updated);
     setName(updated.name || "");
     setAppearance(getAppearance(updated));
     setImageUrl(updated.imageUrl || "");
+    setImagePrompt(getAssetImagePrompt(updated));
   };
 
   const create = async (image?: ImageModelOptions) => {
     if (disabled) {
       return;
     }
-    await onCreate(creationVersion, name, appearance, imageUrl, image);
+    await onCreate(creationVersion, name, appearance, imageUrl, imagePrompt, image);
   };
 
+  const generationBlockedReason = imagePrompt.trim() ? undefined : "请先生成或填写生图提示词。";
   const generationLabel = mode === "create" ? "创建并生图" : dirty ? "保存并生图" : "生成图片";
 
   const generate = async (image: ImageModelOptions) => {
@@ -173,7 +183,8 @@ export function AssetItemWorkspace({
         imageUrl={imageUrl}
         saving={saving}
         uploading={uploading}
-        generationDisabled={disabled}
+        generationDisabled={disabled || !!generationBlockedReason}
+        generationBlockedReason={generationBlockedReason}
         generationLabel={generationLabel}
         error={error}
         onImageChange={setImageUrl}
@@ -280,6 +291,19 @@ export function AssetItemWorkspace({
               ))}
             </div>
           </div>
+        </div>
+
+        <div className="py-4">
+          <AssetImagePromptField
+            projectId={projectId}
+            asset={asset}
+            itemName={name.trim()}
+            itemType={base?.itemType ?? "variant"}
+            appearance={appearance}
+            value={imagePrompt}
+            disabled={saving || uploading}
+            onChange={setImagePrompt}
+          />
         </div>
 
         <div className="mt-auto flex items-center justify-between gap-3 border-t border-border/40 pt-4">

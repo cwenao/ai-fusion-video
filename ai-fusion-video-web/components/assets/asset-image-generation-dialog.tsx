@@ -15,6 +15,7 @@ import { getApiErrorMessage } from "@/lib/api/api-error";
 interface AssetImageGenerationDialogProps {
   title: string;
   description: string;
+  blockedReason?: string;
   onClose: () => void;
   onConfirm: (options: ImageModelOptions) => void | Promise<void>;
 }
@@ -22,16 +23,17 @@ interface AssetImageGenerationDialogProps {
 export function AssetImageGenerationDialog({
   title,
   description,
+  blockedReason,
   onClose,
   onConfirm,
 }: AssetImageGenerationDialogProps) {
-  const image = useImageModelOptions(true, true);
+  const image = useImageModelOptions(!blockedReason, true);
   const submittingRef = useRef(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
   const submit = async () => {
-    if (!image.options || submittingRef.current) {
+    if (!image.options || blockedReason || submittingRef.current) {
       return;
     }
     submittingRef.current = true;
@@ -61,12 +63,16 @@ export function AssetImageGenerationDialog({
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
         <DialogScrollBody className="flex flex-col gap-3 p-5">
-          <ImageModelFields choice={image} disabled={submitting} />
+          {blockedReason ? (
+            <p role="status" className="text-sm text-muted-foreground">{blockedReason}</p>
+          ) : (
+            <ImageModelFields choice={image} disabled={submitting} />
+          )}
           {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
         </DialogScrollBody>
         <div className="flex shrink-0 items-center justify-end gap-2 border-t border-border/20 px-5 py-3">
           <Button variant="ghost" disabled={submitting} onClick={onClose}>取消</Button>
-          <Button variant="image" disabled={!image.options || submitting} onClick={() => void submit()}>
+          <Button variant="image" disabled={!image.options || !!blockedReason || submitting} onClick={() => void submit()}>
             {submitting ? <Loader2 className="animate-spin motion-reduce:animate-none" /> : <Sparkles />}
             提交生成
           </Button>

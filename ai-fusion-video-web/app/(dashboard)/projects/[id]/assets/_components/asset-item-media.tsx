@@ -19,6 +19,7 @@ interface AssetItemMediaProps {
   saving: boolean;
   uploading: boolean;
   generationDisabled: boolean;
+  generationBlockedReason?: string;
   generationLabel: string;
   error: string;
   onImageChange: (value: string) => void;
@@ -28,7 +29,7 @@ interface AssetItemMediaProps {
 
 export function AssetItemMedia({
   item, references, assetType, name, imageUrl, saving, uploading,
-  generationDisabled, generationLabel, error, onImageChange, onUpload, onGenerate,
+  generationDisabled, generationBlockedReason, generationLabel, error, onImageChange, onUpload, onGenerate,
 }: AssetItemMediaProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
@@ -153,6 +154,7 @@ export function AssetItemMedia({
           {generationLabel}
         </Button>
       </div>
+      {generationBlockedReason && <p className="text-center text-xs text-muted-foreground">{generationBlockedReason}</p>}
       <input
         ref={inputRef}
         hidden
