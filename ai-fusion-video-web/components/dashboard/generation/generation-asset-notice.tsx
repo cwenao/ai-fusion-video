@@ -1,10 +1,14 @@
 "use client";
 
 import { FolderOpen, Loader2 } from "lucide-react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import type { useGenerationAssetReferences } from "./use-generation-asset-references";
 
-export function GenerationAssetNotice({ assets }: { assets: ReturnType<typeof useGenerationAssetReferences> }) {
+export function GenerationAssetNotice({ assets, writebackBusy }: {
+  assets: ReturnType<typeof useGenerationAssetReferences>;
+  writebackBusy: boolean;
+}) {
   return (
     <div className="flex min-w-0 flex-col gap-2" aria-live="polite">
       {assets.busy && <p className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" />正在载入参考素材…</p>}
@@ -15,7 +19,13 @@ export function GenerationAssetNotice({ assets }: { assets: ReturnType<typeof us
             {assets.context.id === null ? assets.context.name : `项目：${assets.context.name}`}
             {assets.isStoryboard && " · 来自分镜"}
           </span>
-          <Button type="button" variant="ghost" onClick={assets.clear} disabled={assets.busy} title="清空参考素材并退出当前项目">清空参考</Button>
+          {assets.isStoryboard && (
+            <Button variant="ghost" nativeButton={false} role="link"
+              render={<Link href={`/projects/${assets.context.id}/storyboards`} />}>
+              返回分镜
+            </Button>
+          )}
+          <Button type="button" variant="ghost" onClick={assets.clear} disabled={assets.busy || writebackBusy} title="清空参考素材并退出当前项目">清空参考</Button>
         </div>
       )}
       {assets.referenceIssue && (

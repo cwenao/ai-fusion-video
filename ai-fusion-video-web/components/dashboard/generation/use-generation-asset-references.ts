@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import type { AiModel, ModelPreset } from "@/lib/api/ai-model";
 import { getApiErrorMessage } from "@/lib/api/api-error";
 import { projectApi } from "@/lib/api/project";
+import type { StoryboardItem } from "@/lib/api/storyboard";
 import { loadAssetReference, validateAssetReferences } from "@/lib/asset-reference-client";
 import { ASSET_REFERENCE_QUERY_KEYS, parseAssetReferenceIdentity, type AssetReference, type AssetReferenceMediaType } from "@/lib/asset-references";
 import { loadStoryboardVideo, validateStoryboardImages } from "@/lib/storyboard-video-client";
@@ -37,7 +38,7 @@ interface Options {
 interface ProjectContext {
   id: number | null;
   name: string;
-  shotId?: number;
+  shot?: StoryboardItem;
   shotImages?: string[];
 }
 
@@ -54,7 +55,9 @@ export function useGenerationAssetReferences(options: Options) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const query = searchParams.toString();
-  const storyboardImport = options.mode === "video" && (searchParams.has("shotId") || searchParams.has("shotVersion"));
+  const storyboardQuery = options.mode === "video" && (searchParams.has("shotId") || searchParams.has("shotVersion"));
+  const importedStoryboard = useRef<string | null>(null);
+  const storyboardImport = storyboardQuery && importedStoryboard.current !== query;
   const latest = useRef(options);
   latest.current = options;
   const [pickerTarget, setPickerTarget] = useState<GenerationAssetReferenceField | "mixed" | null>(null);
@@ -113,12 +116,16 @@ export function useGenerationAssetReferences(options: Options) {
     if (options.loadingModels || !options.imageAvailability.runtimeConfigLoaded) {
       return;
     }
+    if (storyboardQuery && importedStoryboard.current === query) {
+      setBusy(false);
+      return;
+    }
     let cancelled = false;
     let identity;
     let shot;
     try {
       const params = new URLSearchParams(query);
-      shot = storyboardImport ? parseStoryboardVideoIdentity(params) : null;
+      shot = storyboardQuery ? parseStoryboardVideoIdentity(params) : null;
       identity = shot ? null : parseAssetReferenceIdentity(params);
     } catch (cause) {
       setError(getApiErrorMessage(cause));
@@ -142,7 +149,7 @@ export function useGenerationAssetReferences(options: Options) {
         ...snapshot.models.filter((model) => model.id !== snapshot.modelId),
       ];
       if (shot) {
-        const [draft, nextContext] = await Promise.all([loadStoryboardVideo(shot), projectContext(shot.projectId)]);
+        const [{ shot: loadedShot, draft }, nextContext] = await Promise.all([loadStoryboardVideo(shot), projectContext(shot.projectId)]);
         const shotImages = storyboardImageReferences(draft);
         const [validated] = await Promise.all([validateAssetReferences(draft.sources), validateStoryboardImages(shotImages)]);
         if (cancelled) {
@@ -163,8 +170,8 @@ export function useGenerationAssetReferences(options: Options) {
         snapshot.setModelId(selected?.model.id);
         snapshot.setForm(selected?.form ?? storyboardVideoForm(snapshot.form, draft));
         setSources(validated);
-        setContext({ ...nextContext, shotId: shot.shotId, shotImages });
-        removeImportKeys(STORYBOARD_VIDEO_QUERY_KEYS);
+        importedStoryboard.current = query;
+        setContext({ ...nextContext, shot: loadedShot, shotImages });
         toast.success("已带入镜头提示词和参考素材");
         return;
       }
@@ -219,7 +226,7 @@ export function useGenerationAssetReferences(options: Options) {
     };
   // The URL/retry is the import command. Form/model edits must not reapply it.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, retry, storyboardImport, options.loadingModels, options.imageAvailability.runtimeConfigLoaded, pathname, router]);
+  }, [query, retry, storyboardQuery, options.loadingModels, options.imageAvailability.runtimeConfigLoaded, pathname, router]);
 
   const mediaTypes: AssetReferenceMediaType[] = [];
   if (fieldConfig) {
@@ -241,6 +248,18 @@ export function useGenerationAssetReferences(options: Options) {
     options.setForm((current) => ({ ...current, referenceImages: [], firstFrame: [], lastFrame: [], referenceVideos: [], referenceAudios: [] }));
     setSources([]);
     setContext(null);
+    if (storyboardQuery) {
+      importedStoryboard.current = null;
+      removeImportKeys(STORYBOARD_VIDEO_QUERY_KEYS);
+    }
+  };
+
+  const updateShot = (shot: StoryboardItem) => {
+    setContext((current) => current?.shot?.id === shot.id ? { ...current, shot } : current);
+    const params = new URLSearchParams(query);
+    params.set("shotVersion", String(shot.version));
+    importedStoryboard.current = params.toString();
+    router.replace(`${pathname}?${params}`, { scroll: false });
   };
 
   const validateForSubmit = async () => {
@@ -253,8 +272,8 @@ export function useGenerationAssetReferences(options: Options) {
     }
   };
 
-  const isStoryboard = context?.shotId !== undefined;
-  const referenceIssue = isStoryboard
+  const isStoryboard = context?.shot !== undefined;
+  const referenceIssue = isStoryboard && activeUrls.size > 0
     ? options.capabilities
       ? storyboardReferenceIssue(options.form, options.capabilities, options.imageAvailability)
       : "请选择支持当前参考素材的模型"
@@ -273,11 +292,12 @@ export function useGenerationAssetReferences(options: Options) {
     retryImport: () => setRetry((value) => value + 1),
     dismissError: () => {
       setError("");
-      if (storyboardImport) {
+      if (storyboardQuery) {
         removeImportKeys(STORYBOARD_VIDEO_QUERY_KEYS);
       }
     },
     isStoryboard, referenceIssue, storyboardImport,
+    updateShot,
     projectId: context?.id ?? null,
     projectLocked: context !== null,
   };

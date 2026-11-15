@@ -10,13 +10,16 @@ const require = createRequire(import.meta.url);
 const root = path.resolve(import.meta.dirname, "..");
 const cache = new Map();
 
-function load(relative) {
+function load(relative, overrides = new Map(), modules = cache) {
   const file = path.resolve(root, relative);
-  if (cache.has(file)) {
-    return cache.get(file).exports;
+  if (overrides.has(file)) {
+    return overrides.get(file);
+  }
+  if (modules.has(file)) {
+    return modules.get(file).exports;
   }
   const loadedModule = { exports: {} };
-  cache.set(file, loadedModule);
+  modules.set(file, loadedModule);
   const compiled = ts.transpileModule(fs.readFileSync(file, "utf8"), {
     compilerOptions: {
       target: ts.ScriptTarget.ES2022,
@@ -26,9 +29,9 @@ function load(relative) {
   }).outputText;
   const localRequire = (name) =>
     name.startsWith("@/")
-      ? load(`${name.slice(2)}.ts`)
+      ? load(`${name.slice(2)}.ts`, overrides, modules)
       : name.startsWith(".")
-        ? load(`${path.resolve(path.dirname(file), name)}.ts`)
+        ? load(`${path.resolve(path.dirname(file), name)}.ts`, overrides, modules)
         : require(name);
   vm.runInThisContext(`(function(require,module,exports){${compiled}\n})`, {
     filename: file,
@@ -51,6 +54,38 @@ const { parseStoryboardVideoIdentity, storyboardShotSources, storyboardVideoHref
 const { storyboardReferenceIssue, storyboardVideoForm } = load(
   "components/dashboard/generation/generation-storyboard-inputs.ts",
 );
+
+test("成片和封面通过同一版本化命令回填；外项目或未完成的成片不能写入", async () => {
+  const video = "12345678-1234-4321-8000-000000000001";
+  const poster = "12345678-1234-4321-8000-000000000002";
+  const item = { id: 35, status: 1, videoUrl: `media://${video}`, coverUrl: `media://${poster}` };
+  const target = { projectId: 17, shotId: 32, shotVersion: 4 };
+  const saved = { id: 32, version: 5, generatedVideoUrl: item.videoUrl };
+  let mediaProject = 21;
+  const writes = [];
+  const client = {
+    http: {
+      async get(url) {
+        return { projectId: mediaProject, state: "READY", content: { kind: url.endsWith(video) ? "VIDEO" : "IMAGE" } };
+      },
+      async post(url, body) {
+        writes.push([url, body]);
+        return { result: saved };
+      },
+    },
+  };
+  const { writeStoryboardVideo } = load("lib/storyboard-video-client.ts",
+    new Map([[path.resolve(root, "lib/api/client.ts"), client]]), new Map());
+  await assert.rejects(writeStoryboardVideo(target, item, "test"), /不属于当前项目/);
+  mediaProject = 17;
+  await assert.rejects(writeStoryboardVideo(target, { ...item, status: 2 }, "test"), /已生成并入库/);
+  assert.equal(writes.length, 0);
+  assert.equal(await writeStoryboardVideo(target, item, "test"), saved);
+  assert.deepEqual(writes, [["/api/media-bindings", {
+    resourceType: "shot", resourceId: 32, expectedVersion: 4, requestId: "test",
+    bindings: { generatedVideoUrl: video, "customData.videoPosterUrl": poster },
+  }]]);
+});
 
 test("分镜跳转只传版本和身份，生成请求保留原始提示词与正确的图片、音频和视频槽位", () => {
   const identity = { projectId: 17, shotId: 32, shotVersion: 4 };

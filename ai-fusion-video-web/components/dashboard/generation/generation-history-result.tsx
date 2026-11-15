@@ -7,6 +7,7 @@ import { ManagedVideo } from "@/components/media/managed-video";
 import type { SyntheticEvent } from "react";
 import {
   ArrowDownToLine,
+  Check,
   Expand,
   ImagePlus,
   CircleAlert,
@@ -14,6 +15,7 @@ import {
   PackagePlus,
   Play,
   Square,
+  Video,
 } from "lucide-react";
 import { resolveMediaUrl } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
@@ -33,6 +35,7 @@ import {
 } from "./generation-utils";
 import type { GenerationMediaPreview } from "./generation-media-preview-dialog";
 import { GenerationReviewBadge } from "@/components/generation-review/generation-review-badge";
+import type { StoryboardVideoWriteback } from "./use-storyboard-video-writeback";
 
 interface GenerationHistoryResultProps {
   mode: WorkbenchMode;
@@ -45,6 +48,7 @@ interface GenerationHistoryResultProps {
   reviewRequested: boolean;
   onUseReference: (item: GenerationResultItem) => void;
   onAddAsset: (item: GenerationResultItem, prompt: string) => void;
+  storyboardWriteback?: StoryboardVideoWriteback;
   onPreview: (preview: GenerationMediaPreview) => void;
 }
 
@@ -72,12 +76,14 @@ export function GenerationHistoryResult({
   reviewRequested,
   onUseReference,
   onAddAsset,
+  storyboardWriteback,
   onPreview,
 }: GenerationHistoryResultProps) {
   const mediaUrl = resolveMediaUrl(getResultMediaUrl(item));
   const previewUrl = resolveMediaUrl(getResultPreviewUrl(item));
   const resultReady = Boolean(mediaUrl || previewUrl);
   const displayUrl = mediaUrl || previewUrl;
+  const selectedVideo = "videoUrl" in item && item.status === 1 && item.videoUrl?.startsWith("media://") ? item : null;
 
   if (!resultReady) {
     const stopped = taskStatus.tone === "cancelled";
@@ -303,6 +309,25 @@ export function GenerationHistoryResult({
           </ManagedMediaLink>
         )}
       </div>
+      {storyboardWriteback && selectedVideo && (
+        <div className="border-t border-border/20 p-2">
+          <Button
+            type="button"
+            variant={storyboardWriteback.currentVideo === selectedVideo.videoUrl ? "secondary" : "default"}
+            className="w-full"
+            disabled={storyboardWriteback.currentVideo === selectedVideo.videoUrl || storyboardWriteback.pendingItemId !== null}
+            onClick={() => void storyboardWriteback.select(selectedVideo)}
+          >
+            {storyboardWriteback.currentVideo === selectedVideo.videoUrl ? (
+              <><Check />已回填到镜头 {storyboardWriteback.label}</>
+            ) : storyboardWriteback.pendingItemId === selectedVideo.id ? (
+              <><Loader2 className="animate-spin motion-reduce:animate-none" />正在回填</>
+            ) : (
+              <><Video />回填到镜头 {storyboardWriteback.label}</>
+            )}
+          </Button>
+        </div>
+      )}
       {reviewRequested && mediaUrl && (
         <div className="border-t border-border/20 p-2">
           <GenerationReviewBadge source={getResultMediaUrl(item)} expected />

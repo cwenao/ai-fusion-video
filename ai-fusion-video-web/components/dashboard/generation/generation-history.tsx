@@ -36,6 +36,7 @@ import {
   isGenerationTaskActive,
 } from "./generation-utils";
 import { GenerationHistoryResult } from "./generation-history-result";
+import type { StoryboardVideoWriteback } from "./use-storyboard-video-writeback";
 import { GenerationHistoryReferences } from "./generation-history-references";
 import { GenerationExecutionDialog } from "./generation-execution-dialog";
 import {
@@ -55,6 +56,7 @@ interface GenerationHistoryProps {
   onReusePrompt: (prompt: string) => void;
   onUseReference: (item: GenerationResultItem) => void;
   onAddAsset: (item: GenerationResultItem, prompt: string) => void;
+  storyboardWriteback?: StoryboardVideoWriteback;
   onCancel: (taskId: string) => void;
   cancellingTaskIds: Set<string>;
   onDelete: (id: number) => Promise<void>;
@@ -72,6 +74,7 @@ export function GenerationHistory({
   onReusePrompt,
   onUseReference,
   onAddAsset,
+  storyboardWriteback,
   onCancel,
   cancellingTaskIds,
   onDelete,
@@ -323,6 +326,7 @@ export function GenerationHistory({
                     reviewRequested={task.execution?.reviewRequested === true}
                     onUseReference={onUseReference}
                     onAddAsset={onAddAsset}
+                    storyboardWriteback={task.projectId === storyboardWriteback?.projectId ? storyboardWriteback : undefined}
                     onPreview={setMediaPreview}
                   />
                 ))}

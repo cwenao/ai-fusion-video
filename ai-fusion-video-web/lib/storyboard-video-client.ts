@@ -1,6 +1,7 @@
 import { assetApi } from "./api/asset";
-import { getMediaResource, mediaId } from "./api/media";
+import { getMediaResource, mediaId, bindShotVideo } from "./api/media";
 import { storyboardApi } from "./api/storyboard";
+import type { VideoGenerationItem } from "./api/generation";
 import { storyboardShotSources, type StoryboardVideoIdentity } from "./storyboard-video-source";
 
 export async function loadStoryboardVideo(identity: StoryboardVideoIdentity) {
@@ -16,7 +17,28 @@ export async function loadStoryboardVideo(identity: StoryboardVideoIdentity) {
   }
   const hasAssets = shot.characterIds?.length || shot.sceneAssetItemId !== null || shot.propIds?.length;
   const assets = hasAssets ? await assetApi.listWithItems(identity.projectId) : [];
-  return storyboardShotSources(identity.projectId, shot, assets);
+  return { shot, draft: storyboardShotSources(identity.projectId, shot, assets) };
+}
+
+export async function writeStoryboardVideo(
+  target: StoryboardVideoIdentity,
+  item: VideoGenerationItem,
+  requestId: string,
+) {
+  const videoId = mediaId(item.videoUrl);
+  if (item.status !== 1 || !videoId) {
+    throw new Error("请选择已生成并入库的成片");
+  }
+  const posterId = mediaId(item.coverUrl);
+  const assertMedia = async (id: string, kind: "VIDEO" | "IMAGE") => {
+    const media = await getMediaResource(`media://${id}`);
+    if (media.projectId !== target.projectId || media.state !== "READY" || media.content.kind !== kind) {
+      throw new Error("成片或封面不属于当前项目，或媒体尚未就绪");
+    }
+  };
+  await Promise.all([assertMedia(videoId, "VIDEO"), ...(posterId ? [assertMedia(posterId, "IMAGE")] : [])]);
+  const receipt = await bindShotVideo(target.shotId, target.shotVersion, videoId, posterId, requestId);
+  return receipt.result;
 }
 
 export async function validateStoryboardImages(references: string[]) {

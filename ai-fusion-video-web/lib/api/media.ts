@@ -1,4 +1,5 @@
 import { http, resolveMediaUrl } from "./client";
+import type { StoryboardItem } from "./storyboard";
 
 export interface ManagedMedia {
   id: string;
@@ -89,6 +90,16 @@ export function getMediaResource(reference: string): Promise<ManagedMedia> {
   const id = mediaId(reference);
   if (!id) throw new Error("不是已登记的媒体引用");
   return http.get(`/api/media-resources/${id}`);
+}
+
+export function bindShotVideo(shotId: number, version: number, videoId: string, posterId: string | null, requestId: string) {
+  return http.post<never, { result: StoryboardItem }>("/api/media-bindings", {
+    resourceType: "shot",
+    resourceId: shotId,
+    expectedVersion: version,
+    requestId,
+    bindings: { generatedVideoUrl: videoId, "customData.videoPosterUrl": posterId },
+  });
 }
 
 export function listManagedMedia(

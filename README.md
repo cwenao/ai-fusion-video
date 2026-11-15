@@ -159,7 +159,7 @@ https://github.com/user-attachments/assets/acd181a0-541c-4163-a000-fa9ed72a5106
 
 场次、镜头先用 `fusion_script_list` 或 `fusion_storyboard_list` 查 ID，再用对应 `get` 工具读完整详情。镜头内容、提示词、自定义字段及资产引用可一并保存；排序、删除及媒体绑定有独立工具。资产设定使用主资产的 `description` 和 `properties`，资产项的外观描述与生图提示词分别使用 `properties.appearanceDescription` 和 `properties.imagePrompt`。
 
-在分镜表格、卡片或镜头详情点击「打开视频工具」，可把已保存的视频提示词、首尾帧和关联资产的图片、音频、视频带入生成表单。根据模型要求调整素材后，再提交生成。操作和工具参数见[分镜与资产 MCP 说明](dev-docs/3-completed/20261115-分镜资产MCP与视频工具/development-plan.md)。
+在分镜表格、卡片或镜头详情点击「打开视频工具」，可把已保存的视频提示词、首尾帧和关联资产的图片、音频、视频带入生成表单。生成完成后，在同项目的成片上点击「回填到镜头」，即可将选中的视频与封面写回原镜头。操作和工具参数见[分镜与资产 MCP 说明](dev-docs/3-completed/20261115-分镜资产MCP与视频工具/development-plan.md)。
 
 ### ComfyUI 工作流
 

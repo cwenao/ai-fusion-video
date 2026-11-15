@@ -44,6 +44,7 @@ import { generationSubmitRequest } from "./generation/generation-submit-request"
 import { resolutionChoices } from "@/lib/image-output-sizes";
 import { useReferenceImageUploadAvailability } from "./generation/use-reference-image-upload-availability";
 import { useGenerationAssetReferences } from "./generation/use-generation-asset-references";
+import { useStoryboardVideoWriteback } from "./generation/use-storyboard-video-writeback";
 import { storyboardVideoForm } from "./generation/generation-storyboard-inputs";
 import { GenerationAssetNotice } from "./generation/generation-asset-notice";
 import { AssetReferencePickerDialog } from "@/components/assets/asset-reference-picker-dialog";
@@ -169,6 +170,7 @@ function GenerationWorkbenchContent({ mode }: GenerationWorkbenchProps) {
     mode, form, setForm, models, presets, modelId, setModelId, loadingModels, capabilities,
     imageAvailability: referenceImageUploadAvailability,
   });
+  const storyboardWriteback = useStoryboardVideoWriteback(assets);
 
   const changeModel = async (id: number) => {
     if (id === modelId) {
@@ -729,7 +731,7 @@ function GenerationWorkbenchContent({ mode }: GenerationWorkbenchProps) {
             void loadHistory(historyLimit);
           }}
         />
-        <GenerationAssetNotice assets={assets} />
+        <GenerationAssetNotice assets={assets} writebackBusy={storyboardWriteback?.pendingItemId != null} />
         {capabilities?.unavailable && (
           <p role="alert" className="text-sm text-destructive">{capabilities.unavailable}</p>
         )}
@@ -795,6 +797,7 @@ function GenerationWorkbenchContent({ mode }: GenerationWorkbenchProps) {
           cancellingTaskIds={cancellingTaskIds}
           onDelete={deleteTask}
           onAddAsset={(item, prompt) => setAssetTarget({ mode, item, prompt })}
+          storyboardWriteback={storyboardWriteback}
         />
       </GenerationWorkspaceLayout>
 
