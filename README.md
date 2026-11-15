@@ -157,6 +157,10 @@ https://github.com/user-attachments/assets/acd181a0-541c-4163-a000-fa9ed72a5106
 
 新建或更新分集时，用 `rawContent` 写入纯文本或 Markdown 原文，用 `synopsis` 写入剧情概述。更新时给 `rawContent` 传 `null` 可清空原文，省略该字段则只更新指定的其他字段。网页和内部 AI 工具使用相同的字段含义。
 
+场次、镜头先用 `fusion_script_list` 或 `fusion_storyboard_list` 查 ID，再用对应 `get` 工具读完整详情。镜头内容、提示词、自定义字段及资产引用可一并保存；排序、删除及媒体绑定有独立工具。资产设定使用主资产的 `description` 和 `properties`，资产项的外观描述与生图提示词分别使用 `properties.appearanceDescription` 和 `properties.imagePrompt`。
+
+在分镜表格、卡片或镜头详情点击「打开视频工具」，可把已保存的视频提示词、首尾帧和关联资产的图片、音频、视频带入生成表单。根据模型要求调整素材后，再提交生成。操作和工具参数见[分镜与资产 MCP 说明](dev-docs/3-completed/20261115-分镜资产MCP与视频工具/development-plan.md)。
+
 ### ComfyUI 工作流
 
 在「系统设置 → AI 配置」连接 ComfyUI 服务，导入从 ComfyUI 导出的 API 格式 JSON，指定提示词、参考素材和输出结果对应的工作流节点。完成校验和试运行后，发布工作流并将它关联到图片或视频模型。

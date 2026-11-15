@@ -47,6 +47,49 @@ const { resolveGenerationCapabilities, workflowInputIssue } = load(
 );
 const videoRules = load("lib/video-model-rules.ts");
 const { resolutionChoices } = load("lib/image-output-sizes.ts");
+const { parseStoryboardVideoIdentity, storyboardShotSources, storyboardVideoHref } = load("lib/storyboard-video-source.ts");
+const { storyboardReferenceIssue, storyboardVideoForm } = load(
+  "components/dashboard/generation/generation-storyboard-inputs.ts",
+);
+
+test("分镜跳转只传版本和身份，生成请求保留原始提示词与正确的图片、音频和视频槽位", () => {
+  const identity = { projectId: 17, shotId: 32, shotVersion: 4 };
+  const url = new URL(storyboardVideoHref(identity), "https://example.test");
+  assert.deepEqual(parseStoryboardVideoIdentity(url.searchParams), identity);
+  assert.throws(() => parseStoryboardVideoIdentity(new URLSearchParams("shotId=32&projectId=17")), /镜头参数无效/);
+  const shot = {
+    videoPrompt: "海边特写\n保持现场声音", firstFrameImageUrl: "/first.png", lastFrameImageUrl: "/last.png",
+    referenceImageUrl: "/shot.png", imageUrl: "/shot.png", generatedVideoUrl: "/old-result.mp4",
+    characterIds: [8], sceneAssetItemId: null, propIds: [9, 8],
+  };
+  const assets = [{
+    id: 4, version: 1, name: "素材组", projectId: 17, coverUrl: "/unused-cover.png",
+    items: [
+      { id: 8, version: 2, assetId: 4, name: "角色", imageUrl: "/character.png", properties: { audioUrl: "/voice.wav" } },
+      { id: 9, version: 1, assetId: 4, name: "视频", imageUrl: "/poster.png", itemType: "generated_video",
+        properties: { sourceGenerationMode: "video", sourceMediaUrl: "/video.mp4", videoUrl: "/video.mp4" } },
+      { id: 10, version: 1, assetId: 4, name: "无关变体", imageUrl: "/ignore.png" },
+    ],
+  }];
+  const draft = storyboardShotSources(17, shot, assets);
+  assert.throws(() => storyboardShotSources(18, shot, assets), /关联资产/);
+  const form = storyboardVideoForm(forms.EMPTY_GENERATION_FORM, draft);
+  const request = requests.generationSubmitRequest("video", form, 6, null, 17);
+  assert.equal(request.projectId, 17);
+  assert.equal(request.prompt, shot.videoPrompt);
+  assert.equal(request.firstFrameImageUrl, "/first.png");
+  assert.equal(request.lastFrameImageUrl, "/last.png");
+  assert.deepEqual(JSON.parse(request.referenceImageUrls), ["/shot.png", "/character.png"]);
+  assert.deepEqual(JSON.parse(request.referenceVideoUrls), ["/video.mp4"]);
+  assert.deepEqual(JSON.parse(request.referenceAudioUrls), ["/voice.wav"]);
+
+  const unsupported = { supportsFirstFrame: true, supportsLastFrame: true, supportsReferenceImages: true, maxReferenceImages: 2,
+    supportsReferenceVideos: true, supportedAspectRatios: [], maxReferenceVideos: 1, supportsReferenceAudios: false };
+  const switched = storyboardVideoForm(forms.EMPTY_GENERATION_FORM, form, unsupported);
+  assert.match(storyboardReferenceIssue(switched, unsupported, { supported: true }), /不支持参考音频/);
+  assert.deepEqual(switched.referenceAudios, ["/voice.wav"]);
+  assert.equal(storyboardReferenceIssue(switched, { ...unsupported, supportsReferenceAudios: true, maxReferenceAudios: 1 }, { supported: true }), null);
+});
 
 test("GPT 图片模型的每个固定比例都能选择三个档位，提交时保留档位和比例", () => {
   const presets = ["openai/image.json", "openai/image-25.json"].flatMap((file) =>

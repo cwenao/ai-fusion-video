@@ -44,6 +44,7 @@ import { generationSubmitRequest } from "./generation/generation-submit-request"
 import { resolutionChoices } from "@/lib/image-output-sizes";
 import { useReferenceImageUploadAvailability } from "./generation/use-reference-image-upload-availability";
 import { useGenerationAssetReferences } from "./generation/use-generation-asset-references";
+import { storyboardVideoForm } from "./generation/generation-storyboard-inputs";
 import { GenerationAssetNotice } from "./generation/generation-asset-notice";
 import { AssetReferencePickerDialog } from "@/components/assets/asset-reference-picker-dialog";
 import { getApiErrorMessage } from "@/lib/api/api-error";
@@ -178,7 +179,7 @@ function GenerationWorkbenchContent({ mode }: GenerationWorkbenchProps) {
       toast.error("所选模型已不可用，请刷新模型列表");
       return;
     }
-    if (generationReferenceUrls(form).length > 0) {
+    if (!assets.isStoryboard && generationReferenceUrls(form).length > 0) {
       const accepted = await confirm({
         title: "切换生成模型",
         description: "切换模型会清空当前参考素材，提示词会保留。",
@@ -189,12 +190,11 @@ function GenerationWorkbenchContent({ mode }: GenerationWorkbenchProps) {
       }
     }
     setModelId(id);
-    setForm((current) =>
-      generationFormForModel(
-        current,
-        resolveGenerationCapabilities(model, presets),
-      ),
-    );
+    setForm((current) => {
+      const nextCapabilities = resolveGenerationCapabilities(model, presets);
+      const base = generationFormForModel(current, nextCapabilities);
+      return assets.isStoryboard ? storyboardVideoForm(base, current, nextCapabilities) : base;
+    });
   };
 
   useEffect(() => {
@@ -536,15 +536,10 @@ function GenerationWorkbenchContent({ mode }: GenerationWorkbenchProps) {
     });
   };
 
-  const removeSimpleAttachment = (url: string) => {
-    setForm((current) => ({
-      ...current,
-      firstFrame: current.firstFrame.filter((value) => value !== url),
-      lastFrame: current.lastFrame.filter((value) => value !== url),
-      referenceImages: current.referenceImages.filter((value) => value !== url),
-      referenceVideos: current.referenceVideos.filter((value) => value !== url),
-      referenceAudios: current.referenceAudios.filter((value) => value !== url),
-    }));
+  const attachmentFields = { firstFrame: "firstFrame", lastFrame: "lastFrame", referenceImage: "referenceImages", referenceVideo: "referenceVideos", referenceAudio: "referenceAudios" } as const;
+  const removeSimpleAttachment = (attachment: SimpleAttachment) => {
+    const field = attachmentFields[attachment.kind];
+    setForm((current) => ({ ...current, [field]: current[field].filter((value) => value !== attachment.url) }));
   };
 
   const reorderSimpleAttachment = (index: number, direction: -1 | 1) => {
@@ -553,8 +548,7 @@ function GenerationWorkbenchContent({ mode }: GenerationWorkbenchProps) {
     if (!neighbor || neighbor.kind !== attachment.kind) {
       return;
     }
-    const fields = { firstFrame: "firstFrame", lastFrame: "lastFrame", referenceImage: "referenceImages", referenceVideo: "referenceVideos", referenceAudio: "referenceAudios" } as const;
-    const field = fields[attachment.kind];
+    const field = attachmentFields[attachment.kind];
     setForm((current) => {
       const values = [...current[field]];
       const from = values.indexOf(attachment.url);
@@ -608,10 +602,10 @@ function GenerationWorkbenchContent({ mode }: GenerationWorkbenchProps) {
   };
 
   const submit = async () => {
-    if (submitGuard.current || assets.busy || !review.ready || reviewNeedsPrompt) {
+    if (submitGuard.current || assets.busy || assets.storyboardImport || !review.ready || reviewNeedsPrompt) {
       return;
     }
-    const error = validate();
+    const error = assets.referenceIssue || validate();
     if (error) {
       toast.error(error);
       return;
@@ -755,7 +749,7 @@ function GenerationWorkbenchContent({ mode }: GenerationWorkbenchProps) {
             capabilities={capabilities}
             form={form}
             submitting={submitting}
-            submitDisabled={!submission.canSubmit || Boolean(capabilities?.unavailable) || !review.ready || reviewNeedsPrompt}
+            submitDisabled={!submission.canSubmit || assets.storyboardImport || Boolean(assets.referenceIssue || capabilities?.unavailable) || !review.ready || reviewNeedsPrompt}
             reviewControl={reviewControl}
             onModelChange={changeModel}
             onFormChange={updateForm}
@@ -851,7 +845,7 @@ function GenerationWorkbenchContent({ mode }: GenerationWorkbenchProps) {
                     mode === "video" ? capabilities?.minImageInputs || 0 : 0
                   }
                   submitting={submitting}
-                  submitDisabled={!submission.canSubmit || Boolean(capabilities?.unavailable) || !review.ready || reviewNeedsPrompt}
+                  submitDisabled={!submission.canSubmit || assets.storyboardImport || Boolean(assets.referenceIssue || capabilities?.unavailable) || !review.ready || reviewNeedsPrompt}
                   reviewControl={reviewControl}
                   onModelChange={changeModel}
                   onFormChange={updateForm}

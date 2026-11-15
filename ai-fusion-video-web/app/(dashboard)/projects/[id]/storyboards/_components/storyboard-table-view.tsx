@@ -1,4 +1,5 @@
 "use client";
+import { StoryboardVideoToolLink } from "./storyboard-video-tool-link";
 import { ManagedVideo } from "@/components/media/managed-video";
 import { Button } from "@/components/ui/button";
 
@@ -83,7 +84,7 @@ const COLUMNS: ColumnDef[] = [
 
 /** 固定列宽 */
 const DRAG_COL_W = 28;
-const ACTION_COL_W = 56;
+const ACTION_COL_W = 104;
 
 /** localStorage key for persisting column widths */
 const COL_WIDTHS_STORAGE_KEY = "fusion-storyboard-col-widths";
@@ -114,6 +115,7 @@ function saveColWidths(widths: number[]) {
 }
 
 export function StoryboardTableView({
+  projectId,
   items,
   selectedItemId,
   onSelectItem,
@@ -126,6 +128,7 @@ export function StoryboardTableView({
   assetLookup = {},
   onEditAssets,
 }: {
+  projectId: number;
   items: StoryboardItem[];
   selectedItemId: number | null;
   onSelectItem: (id: number | null) => void;
@@ -737,7 +740,8 @@ export function StoryboardTableView({
                 })}
 
                 {/* 操作按钮 */}
-                <div className="px-1 py-2 flex items-center justify-center gap-0.5">
+                <div className="p-1 flex items-center justify-center gap-2">
+                  <StoryboardVideoToolLink projectId={projectId} item={item} compact />
                   {/* 生成视频 */}
                   {onVideoGen && (
                     <Tooltip>
@@ -761,15 +765,14 @@ export function StoryboardTableView({
                   <Tooltip>
                     <TooltipTrigger
                       render={
-                        <button
+                        <Button type="button" size="icon-xs" variant="destructive-ghost" aria-label="删除镜头"
                           onClick={(e) => {
                             e.stopPropagation();
                             onDeleteItem(item.id);
                           }}
-                          className="p-1 rounded opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all"
                         >
                           <Trash2 className="h-3 w-3" />
-                        </button>
+                        </Button>
                       }
                     />
                     <TooltipContent className={TOOLTIP_CONTENT_CLASS}>

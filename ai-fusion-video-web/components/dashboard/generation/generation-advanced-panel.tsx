@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { videoInputState, videoPromptReady } from "@/lib/video-model-rules";
+import { generationReferenceUrls } from "./generation-asset-inputs";
 
 import {
   ArrowLeft,
@@ -104,6 +105,7 @@ export function GenerationAdvancedPanel({
           (capabilities.supportsReferenceVideos ||
             capabilities.supportsReferenceAudios))),
   );
+  const existingReferences = generationReferenceUrls(form).length > 0;
 
   const appendPromptSection = (section: string) => {
     const token = `${section}：`;
@@ -240,7 +242,7 @@ export function GenerationAdvancedPanel({
             </div>
           </section>
 
-          {hasReferenceFields && capabilities && (
+          {(hasReferenceFields || existingReferences) && (
             <section className="rounded-[18px] border border-border/45 bg-background/38 p-3.5">
               <div className="flex items-center justify-between gap-3">
                 <h4 className="text-xs font-semibold">参考素材</h4>
@@ -249,12 +251,12 @@ export function GenerationAdvancedPanel({
                 </span>
               </div>
               <div className="mt-3 flex flex-col gap-3">
-                {capabilities.supportsFirstFrame && (
+                {(capabilities?.supportsFirstFrame || form.firstFrame.length > 0) && (
                   <GenerationReferenceField
                     field="firstFrame"
                     hint="视频开场画面"
                     values={form.firstFrame}
-                    maxCount={1}
+                    maxCount={capabilities?.supportsFirstFrame ? 1 : 0}
                     onChooseAssets={onChooseAssets}
                     assetPickerDisabled={assetPickerDisabled}
                     uploadDisabledReason={
@@ -263,18 +265,18 @@ export function GenerationAdvancedPanel({
                         : undefined
                     }
                     manualInputAllowed={
-                      capabilities.supportsReferenceImageUrlInput ||
-                      capabilities.supportsReferenceImageBase64Input
+                      capabilities?.supportsReferenceImageUrlInput ||
+                      capabilities?.supportsReferenceImageBase64Input
                     }
                     onChange={(firstFrame) => onFormChange({ firstFrame })}
                   />
                 )}
-                {capabilities.supportsLastFrame && (
+                {(capabilities?.supportsLastFrame || form.lastFrame.length > 0) && (
                   <GenerationReferenceField
                     field="lastFrame"
                     hint="视频结束画面"
                     values={form.lastFrame}
-                    maxCount={1}
+                    maxCount={capabilities?.supportsLastFrame ? 1 : 0}
                     onChooseAssets={onChooseAssets}
                     assetPickerDisabled={assetPickerDisabled}
                     uploadDisabledReason={
@@ -283,18 +285,18 @@ export function GenerationAdvancedPanel({
                         : undefined
                     }
                     manualInputAllowed={
-                      capabilities.supportsReferenceImageUrlInput ||
-                      capabilities.supportsReferenceImageBase64Input
+                      capabilities?.supportsReferenceImageUrlInput ||
+                      capabilities?.supportsReferenceImageBase64Input
                     }
                     onChange={(lastFrame) => onFormChange({ lastFrame })}
                   />
                 )}
-                {capabilities.supportsReferenceImages && (
+                {(capabilities?.supportsReferenceImages || form.referenceImages.length > 0) && (
                   <GenerationReferenceField
                     field="referenceImages"
                     hint="主体、构图、风格或场景参考"
                     values={form.referenceImages}
-                    maxCount={parseLimit(capabilities.maxReferenceImages, 12)}
+                    maxCount={capabilities?.supportsReferenceImages ? parseLimit(capabilities.maxReferenceImages, 12) : 0}
                     onChooseAssets={onChooseAssets}
                     assetPickerDisabled={assetPickerDisabled}
                     uploadDisabledReason={
@@ -303,20 +305,20 @@ export function GenerationAdvancedPanel({
                         : undefined
                     }
                     manualInputAllowed={
-                      capabilities.supportsReferenceImageUrlInput ||
-                      capabilities.supportsReferenceImageBase64Input
+                      capabilities?.supportsReferenceImageUrlInput ||
+                      capabilities?.supportsReferenceImageBase64Input
                     }
                     onChange={(referenceImages) =>
                       onFormChange({ referenceImages })
                     }
                   />
                 )}
-                {mode === "video" && capabilities.supportsReferenceVideos && (
+                {mode === "video" && (capabilities?.supportsReferenceVideos || form.referenceVideos.length > 0) && (
                   <GenerationReferenceField
                     field="referenceVideos"
                     hint="动作、运镜或特效参考"
                     values={form.referenceVideos}
-                    maxCount={parseLimit(capabilities.maxReferenceVideos, 3)}
+                    maxCount={capabilities?.supportsReferenceVideos ? parseLimit(capabilities.maxReferenceVideos, 3) : 0}
                     onChooseAssets={onChooseAssets}
                     assetPickerDisabled={assetPickerDisabled}
                     onChange={(referenceVideos) =>
@@ -324,12 +326,12 @@ export function GenerationAdvancedPanel({
                     }
                   />
                 )}
-                {mode === "video" && capabilities.supportsReferenceAudios && (
+                {mode === "video" && (capabilities?.supportsReferenceAudios || form.referenceAudios.length > 0) && (
                   <GenerationReferenceField
                     field="referenceAudios"
                     hint="节奏、音乐、声音或对白参考"
                     values={form.referenceAudios}
-                    maxCount={parseLimit(capabilities.maxReferenceAudios, 3)}
+                    maxCount={capabilities?.supportsReferenceAudios ? parseLimit(capabilities.maxReferenceAudios, 3) : 0}
                     onChooseAssets={onChooseAssets}
                     assetPickerDisabled={assetPickerDisabled}
                     onChange={(referenceAudios) =>

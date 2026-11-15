@@ -11,7 +11,7 @@ public record ResourceBindMediaCommand(
         @Positive long resourceId,
         @NotNull @PositiveOrZero Integer expectedVersion,
         @PositiveOrZero Integer expectedParentVersion,
-        @NotNull @Size(min = 1, max = 12) Map<@NotBlank String, @NotBlank String> bindings) implements ResourceCommand {
+        @NotNull @Size(min = 1, max = 12) Map<@NotBlank String, @Pattern(regexp = "[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}") String> bindings) implements ResourceCommand {
     @Override
     public ResourceOperation operation() {
         return ResourceOperation.BIND_MEDIA;

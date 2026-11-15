@@ -12,6 +12,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -28,13 +29,18 @@ class McpProjectToolSchemas {
     private static final Map<String, Object> VERSION = integer(0, Integer.MAX_VALUE);
     private static final Map<String, Object> TEXT = Map.of("type", "string");
     private static final Map<String, Object> BOOLEAN = Map.of("type", "boolean");
+    private static final Map<String, Object> ORDER = integer(0, 1_000_000);
+    private static final Map<String, Object> STATUS = integer(0, 1);
+    private static final Map<String, Object> IMAGE_PROMPT_TEXT = Map.of("type", "string", "maxLength", 5_000, "pattern", "\\S");
+    private static final Map<String, Object> SHOT_CUSTOM_DATA = Map.of("type", "object", "maxProperties", 200,
+            "propertyNames", Map.of("not", choice("videoPosterUrl")));
     private static final Map<String, Object> ASSET_TYPE = choice("character", "scene", "prop", "vehicle",
             "building", "costume", "effect", "material", "image");
     private static final Map<String, Object> TARGET = choice("shot", "asset", "assetItem");
     private static final Map<String, Object> PROMPT = choice("firstFramePrompt", "lastFramePrompt", "videoPrompt",
-            "aiPrompt");
+            "aiPrompt", "imagePrompt");
     private static final Map<String, Object> SLOTS = choice("cover", "image", "thumbnail", "video", "audio",
-            "referenceImage", "firstFrame", "lastFrame");
+            "referenceImage", "firstFrame", "lastFrame", "generatedImage", "generatedVideo", "videoPoster");
 
     private final Map<McpProjectTool, Contract> tools = new EnumMap<>(McpProjectTool.class);
     private final Map<CanvasValueType, Contract> create = new EnumMap<>(CanvasValueType.class);
@@ -100,29 +106,66 @@ class McpProjectToolSchemas {
         var scene = sceneFields();
         scene.putAll(properties("sceneDescription", nullable(TEXT), "characters", nullable(array(TEXT, 0, 10_000)),
                 "dialogues", nullable(array(dialogue, 0, 10_000)), "characterAssetIds", nullable(array(ID, 0, 10_000)),
-                "sceneAssetId", nullable(ID), "propAssetIds", nullable(array(ID, 0, 10_000))));
-        addFields(SCRIPT_SCENE, scene, true, "sceneHeading");
+                "sceneAssetId", nullable(ID), "propAssetIds", nullable(array(ID, 0, 10_000)), "status", STATUS));
+        addOrderedChild(SCRIPT_SCENE, scene, "sceneHeading");
 
-        addFields(STORYBOARD, textFields("description"), false);
+        var board = textFields("description");
+        board.putAll(properties("customColumns", nullable(array(Map.of("type", "object"), 0, 200)), "status", STATUS));
+        addFields(STORYBOARD, board, false);
         var boardEpisode = textFields("title", "synopsis");
-        boardEpisode.putAll(properties("episodeNumber", integer(1, 1_000_000), "scriptEpisodeId", nullable(ID)));
-        addFields(STORYBOARD_EPISODE, boardEpisode, true, "episodeNumber");
-        addFields(STORYBOARD_SCENE, sceneFields(), true, "sceneHeading");
+        boardEpisode.putAll(properties("episodeNumber", integer(1, 1_000_000), "scriptEpisodeId", nullable(ID),
+                "status", STATUS));
+        addOrderedChild(STORYBOARD_EPISODE, boardEpisode, "episodeNumber");
+        var boardScene = sceneFields();
+        boardScene.put("status", STATUS);
+        addOrderedChild(STORYBOARD_SCENE, boardScene, "sceneHeading");
         var shot = textFields("content", "shotType", "shotNumber", "sceneExpectation", "dialogue", "sound",
                 "soundEffect", "music", "cameraMovement", "cameraAngle", "cameraEquipment", "focalLength",
-                "transition", "remark");
+                "transition", "remark", "firstFramePrompt", "lastFramePrompt", "videoPrompt");
         shot.putAll(properties("duration", nullable(Map.of("type", "number", "minimum", 0, "maximum", 86400)),
-                "characterIds", array(ID, 0, 500), "sceneAssetItemId", nullable(ID), "propIds", array(ID, 0, 500)));
-        addFields(SHOT, shot, true, "content");
+                "characterIds", array(ID, 0, 500), "sceneAssetItemId", nullable(ID), "propIds", array(ID, 0, 500),
+                "aiGenerated", BOOLEAN, "status", STATUS));
+        addOrderedChild(SHOT, shot, "content");
 
-        var asset = properties("name", nonBlank(), "description", nullable(TEXT),
+        var asset = properties("name", nonBlank(), "description", described(nullable(TEXT), "主资产设定"),
                 "tags", nullable(array(Map.of("type", "string", "maxLength", 128), 0, 100)));
-        patch.put(ASSET, compile(patchObject(asset)));
-        asset.put("type", ASSET_TYPE);
-        create.put(ASSET, compile(object(asset, "type", "name")));
-        readFields.put(ASSET, Set.copyOf(asset.keySet()));
-        addFields(ASSET_ITEM, properties("name", nullable(TEXT), "itemType", pattern("^[a-z][a-z0-9_]{0,31}$")),
-                true);
+        addAssetFields(ASSET, asset, "type", "name");
+        addAssetFields(ASSET_ITEM, properties("name", nullable(TEXT), "itemType", pattern("^[a-z][a-z0-9_]{0,31}$")));
+    }
+
+    private void addAssetFields(CanvasValueType type, Map<String, Object> asset, String... required) {
+        var updates = new LinkedHashMap<>(asset);
+        updates.put("propertyChanges", described(assetProperties(true), "仅修改提交的设定字段，null 删除单项；原件通过媒体工具绑定"));
+        patch.put(type, compile(patchObject(updates)));
+        asset.put("properties", described(assetProperties(false), "资产设定扩展字段；资产项使用 appearanceDescription 和 imagePrompt"));
+        if (type == ASSET) {
+            asset.put("type", ASSET_TYPE);
+        }
+        create.put(type, compile(object(asset, required)));
+        var readable = new LinkedHashSet<>(asset.keySet());
+        readable.remove("properties");
+        readFields.put(type, Set.copyOf(readable));
+    }
+
+    private void addOrderedChild(CanvasValueType type, Map<String, Object> fields, String required) {
+        var input = new LinkedHashMap<>(fields);
+        if (type == SHOT) {
+            fields.put("customDataChanges", described(SHOT_CUSTOM_DATA, "只更新提交的自定义字段，null 删除单项；封面独立绑定"));
+            input.put("customData", nullable(SHOT_CUSTOM_DATA));
+        }
+        addFields(type, fields, false);
+        input.put("sortOrder", ORDER);
+        if (!required.equals("episodeNumber")) {
+            input.put(required, nonBlank());
+        }
+        create.put(type, compile(object(input, required)));
+    }
+
+    private static Map<String, Object> assetProperties(boolean patch) {
+        return Map.of("type", "object", "maxProperties", 200, "propertyNames", Map.of("not", choice(
+                        "sourceMediaUrl", "sourceGenerationMode", "videoUrl", "audioUrl", "thumbnailUrl")),
+                "properties", properties("appearanceDescription", nullable(TEXT),
+                        "imagePrompt", patch ? nullable(IMAGE_PROMPT_TEXT) : IMAGE_PROMPT_TEXT));
     }
 
     private Map<String, Object> sceneFields() {
@@ -168,6 +211,8 @@ class McpProjectToolSchemas {
                     forms(create, SCRIPT_EPISODE, SCRIPT_SCENE));
             case SCRIPT_UPDATE -> update(params, required, choice("script", "episode", "scene"),
                     forms(patch, SCRIPT, SCRIPT_EPISODE, SCRIPT_SCENE));
+            case SCRIPT_DELETE -> delete(params, required, choice("scene"));
+            case SCRIPT_REORDER_SCENES -> reorder(params, required);
             case STORYBOARD_LIST -> {
                 list(params, required, choice("episode", "scene", "shot"));
                 required(params, required, "parentKind", choice("storyboard", "episode", "scene"));
@@ -178,6 +223,11 @@ class McpProjectToolSchemas {
                     forms(create, STORYBOARD_EPISODE, STORYBOARD_SCENE, SHOT));
             case STORYBOARD_UPDATE -> update(params, required, choice("storyboard", "episode", "scene", "shot"),
                     forms(patch, STORYBOARD, STORYBOARD_EPISODE, STORYBOARD_SCENE, SHOT));
+            case STORYBOARD_REORDER -> {
+                required(params, required, "parentKind", choice("storyboard", "episode", "scene"));
+                reorder(params, required);
+            }
+            case STORYBOARD_DELETE -> delete(params, required, choice("scene", "shot"));
             case STORYBOARD_APPEND_SHOTS -> {
                 required(params, required, "sceneId", ID);
                 required(params, required, "expectedParentVersion", VERSION);
@@ -205,9 +255,10 @@ class McpProjectToolSchemas {
             case MEDIA_GET -> required(params, required, "mediaResourceId", MEDIA_ID);
             case MEDIA_BIND -> {
                 target(params, required);
-                var binding = object(properties("slot", SLOTS, "mediaResourceId", MEDIA_ID), "slot",
+                var binding = object(properties("slot", SLOTS, "mediaResourceId",
+                        described(nullable(MEDIA_ID), "托管媒体 ID；传 null 清空槽位")), "slot",
                         "mediaResourceId");
-                required(params, required, "bindings", array(binding, 1, 5));
+                required(params, required, "bindings", array(binding, 1, 8));
             }
         }
         if (tool == McpProjectTool.PROMPT_SET || tool == McpProjectTool.MEDIA_BIND) {
@@ -248,6 +299,17 @@ class McpProjectToolSchemas {
         get(params, required, kind);
         required(params, required, "expectedVersion", VERSION);
         required(params, required, "patch", fields);
+    }
+
+    private static void delete(Map<String, Object> params, List<String> required, Map<String, Object> kind) {
+        get(params, required, kind);
+        required(params, required, "expectedVersion", VERSION);
+    }
+
+    private static void reorder(Map<String, Object> params, List<String> required) {
+        required(params, required, "parentId", ID);
+        required(params, required, "expectedParentVersion", VERSION);
+        required(params, required, "childIds", array(ID, 0, 5_000));
     }
 
     private static void target(Map<String, Object> params, List<String> required) {

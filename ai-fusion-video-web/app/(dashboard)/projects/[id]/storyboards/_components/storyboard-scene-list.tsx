@@ -9,6 +9,7 @@ import type { useStoryboardWorkspace } from "../_hooks/use-storyboard-workspace"
 
 export function StoryboardSceneList({ workspace }: { workspace: ReturnType<typeof useStoryboardWorkspace> }) {
   const {
+    projectId,
     assetLookup,
     setEditAssetsOpen,
     setEditingItem,
@@ -94,6 +95,7 @@ export function StoryboardSceneList({ workspace }: { workspace: ReturnType<typeo
                 {/* 场次内的镜头列表 */}
                 {viewMode === "table" ? (
                   <StoryboardTableView
+                    projectId={projectId}
                     items={items}
                     selectedItemId={selectedItemId}
                     onSelectItem={handleSelectItem}
@@ -115,6 +117,7 @@ export function StoryboardSceneList({ workspace }: { workspace: ReturnType<typeo
                   />
                 ) : (
                   <StoryboardCardView
+                    projectId={projectId}
                     items={items}
                     selectedItemId={selectedItemId}
                     onSelectItem={handleSelectItem}

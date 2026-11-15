@@ -8,6 +8,8 @@ import { getApiErrorMessage } from "@/lib/api/api-error";
 import { projectApi } from "@/lib/api/project";
 import { loadAssetReference, validateAssetReferences } from "@/lib/asset-reference-client";
 import { ASSET_REFERENCE_QUERY_KEYS, parseAssetReferenceIdentity, type AssetReference, type AssetReferenceMediaType } from "@/lib/asset-references";
+import { loadStoryboardVideo, validateStoryboardImages } from "@/lib/storyboard-video-client";
+import { STORYBOARD_VIDEO_QUERY_KEYS, parseStoryboardVideoIdentity, storyboardImageReferences } from "@/lib/storyboard-video-source";
 import { resolveGenerationCapabilities, resolveReferenceImageUploadAvailability, type GenerationCapabilities, type ReferenceImageUploadAvailability } from "@/lib/generation-capabilities";
 import {
   appendAssetReferences,
@@ -16,6 +18,7 @@ import {
   type GenerationAssetReferenceField,
 } from "./generation-asset-inputs";
 import { generationFormForModel } from "./generation-utils";
+import { storyboardReferenceIssue, storyboardVideoForm } from "./generation-storyboard-inputs";
 import type { GenerationFormState, WorkbenchMode } from "./generation-types";
 
 interface Options {
@@ -34,6 +37,8 @@ interface Options {
 interface ProjectContext {
   id: number | null;
   name: string;
+  shotId?: number;
+  shotImages?: string[];
 }
 
 async function projectContext(projectId: number | null): Promise<ProjectContext> {
@@ -49,6 +54,7 @@ export function useGenerationAssetReferences(options: Options) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const query = searchParams.toString();
+  const storyboardImport = options.mode === "video" && (searchParams.has("shotId") || searchParams.has("shotVersion"));
   const latest = useRef(options);
   latest.current = options;
   const [pickerTarget, setPickerTarget] = useState<GenerationAssetReferenceField | "mixed" | null>(null);
@@ -89,11 +95,19 @@ export function useGenerationAssetReferences(options: Options) {
     }
     snapshot.setForm(appendAssetReferences(snapshot.form, snapshot.capabilities, snapshot.mode, validated, snapshot.imageAvailability, field));
     setSources([...activeSources, ...validated]);
-    setContext(nextContext);
+    setContext(context ?? nextContext);
     setPickerTarget(null);
     setError("");
     toast.success(`已加入 ${validated.length} 项资产参考`);
   };
+
+  function removeImportKeys(keys: readonly string[]) {
+    const params = new URLSearchParams(query);
+    for (const key of keys) {
+      params.delete(key);
+    }
+    router.replace(`${pathname}${params.size ? `?${params}` : ""}`, { scroll: false });
+  }
 
   useEffect(() => {
     if (options.loadingModels || !options.imageAvailability.runtimeConfigLoaded) {
@@ -101,13 +115,16 @@ export function useGenerationAssetReferences(options: Options) {
     }
     let cancelled = false;
     let identity;
+    let shot;
     try {
-      identity = parseAssetReferenceIdentity(new URLSearchParams(query));
+      const params = new URLSearchParams(query);
+      shot = storyboardImport ? parseStoryboardVideoIdentity(params) : null;
+      identity = shot ? null : parseAssetReferenceIdentity(params);
     } catch (cause) {
       setError(getApiErrorMessage(cause));
       return;
     }
-    if (!identity) {
+    if (!identity && !shot) {
       setBusy(false);
       return;
     }
@@ -115,18 +132,54 @@ export function useGenerationAssetReferences(options: Options) {
     setError("");
     const snapshot = latest.current;
     void (async () => {
+      const assertUnchanged = () => {
+        if (latest.current.form !== snapshot.form || latest.current.modelId !== snapshot.modelId) {
+          throw new Error("模型或表单已变化，请重新带入");
+        }
+      };
+      const candidates = [
+        ...snapshot.models.filter((model) => model.id === snapshot.modelId),
+        ...snapshot.models.filter((model) => model.id !== snapshot.modelId),
+      ];
+      if (shot) {
+        const [draft, nextContext] = await Promise.all([loadStoryboardVideo(shot), projectContext(shot.projectId)]);
+        const shotImages = storyboardImageReferences(draft);
+        const [validated] = await Promise.all([validateAssetReferences(draft.sources), validateStoryboardImages(shotImages)]);
+        if (cancelled) {
+          return;
+        }
+        assertUnchanged();
+        if (snapshot.form.prompt.trim() || generationReferenceUrls(snapshot.form).length) {
+          throw new Error("请清空视频工具中的提示词和参考素材后重试带入");
+        }
+        const mapped = candidates.map((model) => {
+          const capabilities = resolveGenerationCapabilities(model, snapshot.presets);
+          const availability = resolveReferenceImageUploadAvailability(capabilities, snapshot.imageAvailability.publicMediaAccessConfigured, snapshot.imageAvailability.runtimeConfigLoaded);
+          const form = storyboardVideoForm(generationFormForModel(snapshot.form, capabilities), draft, capabilities);
+          return { model, form, issue: storyboardReferenceIssue(form, capabilities, availability) };
+        });
+        const compatible = mapped.find((model) => !model.issue);
+        const selected = compatible ?? mapped.find((model) => model.model.id === snapshot.modelId);
+        snapshot.setModelId(selected?.model.id);
+        snapshot.setForm(selected?.form ?? storyboardVideoForm(snapshot.form, draft));
+        setSources(validated);
+        setContext({ ...nextContext, shotId: shot.shotId, shotImages });
+        removeImportKeys(STORYBOARD_VIDEO_QUERY_KEYS);
+        toast.success("已带入镜头提示词和参考素材");
+        return;
+      }
+      if (!identity) {
+        return;
+      }
       const source = await loadAssetReference(identity);
       const [validated, nextContext] = await Promise.all([validateAssetReferences([source]), projectContext(source.projectId)]);
       if (cancelled) {
         return;
       }
-      if (latest.current.form !== snapshot.form || latest.current.modelId !== snapshot.modelId) {
-        throw new Error("模型或参考栏已变化，请重试导入资产");
-      }
+      assertUnchanged();
       if (context && source.projectId !== context.id) {
         throw new Error("请先清空项目参考，再导入其他项目资产");
       }
-      const candidates = [snapshot.models.find((model) => model.id === snapshot.modelId), ...snapshot.models.filter((model) => model.id !== snapshot.modelId)].filter((model): model is AiModel => Boolean(model));
       let chosen: { model: AiModel; form: GenerationFormState } | null = null;
       let lastIssue = "没有支持此素材类型的可用模型，请先配置模型";
       for (const model of candidates) {
@@ -150,11 +203,7 @@ export function useGenerationAssetReferences(options: Options) {
       snapshot.setForm(chosen.form);
       setSources((current) => [...current.filter((entry) => generationReferenceUrls(snapshot.form).includes(entry.reference)), ...validated]);
       setContext(nextContext);
-      const params = new URLSearchParams(query);
-      for (const key of ASSET_REFERENCE_QUERY_KEYS) {
-        params.delete(key);
-      }
-      router.replace(`${pathname}${params.size ? `?${params}` : ""}`, { scroll: false });
+      removeImportKeys(ASSET_REFERENCE_QUERY_KEYS);
       toast.success(chosen.model.id === snapshot.modelId ? "资产已加入参考栏" : `资产已加入参考栏，已选择 ${chosen.model.name}`);
     })().catch((cause) => {
       if (!cancelled) {
@@ -170,7 +219,7 @@ export function useGenerationAssetReferences(options: Options) {
     };
   // The URL/retry is the import command. Form/model edits must not reapply it.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, retry, options.loadingModels, options.imageAvailability.runtimeConfigLoaded, pathname, router]);
+  }, [query, retry, storyboardImport, options.loadingModels, options.imageAvailability.runtimeConfigLoaded, pathname, router]);
 
   const mediaTypes: AssetReferenceMediaType[] = [];
   if (fieldConfig) {
@@ -195,11 +244,21 @@ export function useGenerationAssetReferences(options: Options) {
   };
 
   const validateForSubmit = async () => {
-    await validateAssetReferences(activeSources);
+    await Promise.all([
+      validateAssetReferences(activeSources),
+      validateStoryboardImages(context?.shotImages?.filter((url) => activeUrls.has(url)) ?? []),
+    ]);
     if (context?.id !== null && context?.id !== undefined) {
       await projectApi.get(context.id);
     }
   };
+
+  const isStoryboard = context?.shotId !== undefined;
+  const referenceIssue = isStoryboard
+    ? options.capabilities
+      ? storyboardReferenceIssue(options.form, options.capabilities, options.imageAvailability)
+      : "请选择支持当前参考素材的模型"
+    : null;
 
   return {
     open: pickerTarget !== null,
@@ -212,7 +271,13 @@ export function useGenerationAssetReferences(options: Options) {
     targetLabel: fieldConfig?.label,
     context, busy, error, selectionIssue, confirm, mediaTypes, clear, validateForSubmit,
     retryImport: () => setRetry((value) => value + 1),
-    dismissError: () => setError(""),
+    dismissError: () => {
+      setError("");
+      if (storyboardImport) {
+        removeImportKeys(STORYBOARD_VIDEO_QUERY_KEYS);
+      }
+    },
+    isStoryboard, referenceIssue, storyboardImport,
     projectId: context?.id ?? null,
     projectLocked: context !== null,
   };

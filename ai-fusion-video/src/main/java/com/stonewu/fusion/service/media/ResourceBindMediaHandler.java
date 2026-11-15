@@ -74,7 +74,8 @@ public class ResourceBindMediaHandler implements ResourceCommandHandler {
             if (!MediaSourceFields.fields(command.resourceType()).containsKey(field)) {
                 throw MediaException.invalid("没有登记此媒体绑定字段：" + field);
             }
-            String reference = MediaReference.of(binding.getValue());
+            String mediaId = binding.getValue();
+            String reference = mediaId == null ? null : MediaReference.of(mediaId);
             int separator = field.indexOf('.');
             if (separator < 0) {
                 patch.put(field, reference);
@@ -91,7 +92,12 @@ public class ResourceBindMediaHandler implements ResourceCommandHandler {
                     nested = old instanceof ObjectNode object ? object.deepCopy() : before.objectNode();
                     patch.set(root, nested);
                 }
-                nested.put(field.substring(separator + 1), reference);
+                String key = field.substring(separator + 1);
+                if (reference == null) {
+                    nested.remove(key);
+                } else {
+                    nested.put(key, reference);
+                }
             }
         }
         // 通过既有处理器维护父版本、封面和分镜汇总，随后统一观察器验证权限、类型并登记引用。

@@ -57,7 +57,7 @@ interface GenerationSimpleComposerProps {
   onModelChange: (modelId: number) => void;
   onFormChange: (patch: Partial<GenerationFormState>) => void;
   onAddAttachments: (urls: string[], kind?: SimpleAttachmentKind) => void;
-  onRemoveAttachment: (url: string) => void;
+  onRemoveAttachment: (attachment: SimpleAttachment) => void;
   onReorderAttachment: (index: number, direction: -1 | 1) => void;
   onChooseAssets: () => void;
   assetPickerDisabled: boolean;
@@ -240,7 +240,7 @@ export function GenerationSimpleComposer({
           <div className="px-4 pr-32 pt-4">
             <GenerationReferenceStrip
               items={attachments.map((attachment) => ({ ...attachment, group: attachment.kind }))}
-              onRemove={(index) => onRemoveAttachment(attachments[index].url)}
+              onRemove={(index) => onRemoveAttachment(attachments[index])}
               onMove={onReorderAttachment}
             />
           </div>

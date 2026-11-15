@@ -10,6 +10,7 @@ import com.stonewu.fusion.service.mcp.McpProjectCredentials.ProjectGrant;
 import com.stonewu.fusion.service.mcp.McpProjectResources.PageRequest;
 import com.stonewu.fusion.service.media.model.MediaException;
 import com.stonewu.fusion.service.resource.ResourceCommandService;
+import com.stonewu.fusion.service.resource.StoryboardFields;
 import com.stonewu.fusion.service.resource.model.*;
 import io.modelcontextprotocol.spec.McpSchema.CallToolResult;
 import lombok.RequiredArgsConstructor;
@@ -25,6 +26,7 @@ import java.util.Set;
 
 import static com.stonewu.fusion.service.canvas.model.CanvasValueType.*;
 import static com.stonewu.fusion.service.mcp.McpProjectValues.id;
+import static com.stonewu.fusion.service.resource.AssetFields.IMAGE_PROMPT;
 
 @Slf4j
 @Component
@@ -93,12 +95,16 @@ class McpProjectTools {
             case SCRIPT_GET -> scriptDetail(grant, McpProjectValues.script(kind), args);
             case SCRIPT_CREATE -> create(grant, McpProjectValues.script(kind), args, key);
             case SCRIPT_UPDATE -> update(grant, McpProjectValues.script(kind), args, key);
+            case SCRIPT_DELETE -> delete(grant, McpProjectValues.script(kind), args, key);
+            case SCRIPT_REORDER_SCENES -> reorder(grant, SCRIPT_EPISODE, args, key);
             case STORYBOARD_LIST -> list(grant, McpProjectValues.storyboard(kind), args,
                     McpProjectValues.storyboard(args.path("parentKind").asText()));
             case STORYBOARD_GET -> Outcome.read(resources.detail(grant, McpProjectValues.storyboard(kind),
                     id(args, "id"), false));
             case STORYBOARD_CREATE -> create(grant, McpProjectValues.storyboard(kind), args, key);
             case STORYBOARD_UPDATE -> update(grant, McpProjectValues.storyboard(kind), args, key);
+            case STORYBOARD_DELETE -> delete(grant, McpProjectValues.storyboard(kind), args, key);
+            case STORYBOARD_REORDER -> reorder(grant, McpProjectValues.storyboard(args.path("parentKind").asText()), args, key);
             case STORYBOARD_APPEND_SHOTS -> appendShots(grant, args, key);
             case PROMPT_GET -> prompt(grant, args, null);
             case PROMPT_SET -> prompt(grant, args, key);
@@ -189,6 +195,37 @@ class McpProjectTools {
         return new Outcome(written(grant, type, receipt), receipt);
     }
 
+    private Outcome delete(ProjectGrant grant, CanvasValueType type, ObjectNode args, String key) {
+        long target = id(args, "id");
+        resources.requireHeader(grant, type, target, true);
+        var receipt = submit(grant, new ResourceDeleteCommand(key, type, target,
+                args.path("expectedVersion").intValue()));
+        return new Outcome(json.object(Map.of("id", Long.toString(target), "kind", McpProjectValues.kind(type),
+                "deleted", true)), receipt);
+    }
+
+    private Outcome reorder(ProjectGrant grant, CanvasValueType parent, ObjectNode args, String key) {
+        var child = parent == SCRIPT_EPISODE ? SCRIPT_SCENE : StoryboardFields.child(parent);
+        long parentId = id(args, "parentId");
+        resources.requireHeader(grant, parent, parentId);
+        var ids = new ArrayList<Long>();
+        args.path("childIds").forEach(node -> ids.add(McpProjectValues.parseId(node, "childIds")));
+        int version = args.path("expectedParentVersion").intValue();
+        var command = parent == SCRIPT_EPISODE
+                ? new ScriptScenesCommand(key, parentId, version, ScriptScenesCommand.Mode.REORDER, List.of(), ids)
+                : new StoryboardChildrenCommand(key, parent, parentId, version, StoryboardChildrenCommand.Mode.REORDER,
+                List.of(), ids);
+        var receipt = submit(grant, command);
+        boolean script = parent == SCRIPT_EPISODE;
+        var result = json.object(Map.of("parent", resources.written(grant, parent,
+                (ObjectNode) receipt.result().path(script ? "episode" : "parent"), receipt.changes())));
+        var children = result.putArray("children");
+        receipt.result().path(script ? "scenes" : "children").forEach(node -> children.addObject()
+                .put("id", node.path("id").asText()).put("kind", McpProjectValues.kind(child))
+                .put("version", node.path("version").intValue()).put("sortOrder", node.path("sortOrder").intValue()));
+        return new Outcome(result, receipt);
+    }
+
     private Outcome appendShots(ProjectGrant grant, ObjectNode args, String key) {
         long sceneId = id(args, "sceneId");
         resources.requireHeader(grant, STORYBOARD_SCENE, sceneId);
@@ -212,14 +249,20 @@ class McpProjectTools {
         var type = CanvasValueType.fromCode(args.path("targetKind").asText());
         long target = id(args, "targetId");
         String slot = args.path("slot").asText();
-        if (type == SHOT ? !SHOT_PROMPTS.contains(slot) : !"aiPrompt".equals(slot)) {
+        boolean imagePrompt = IMAGE_PROMPT.equals(slot);
+        if (type == SHOT ? !SHOT_PROMPTS.contains(slot)
+                : !("aiPrompt".equals(slot) || (type == ASSET_ITEM && imagePrompt))) {
             throw McpProjectFailure.invalid("slot", "提示词槽位与对象类型不匹配");
         }
         if (key == null) {
             return Outcome.read(resources.prompt(grant, type, target, slot));
         }
         var fields = json.object(Map.of());
-        fields.set(slot, args.get("text"));
+        if (imagePrompt) {
+            fields.putObject("propertyChanges").set(slot, args.get("text"));
+        } else {
+            fields.set(slot, args.get("text"));
+        }
         var receipt = patch(grant, type, target, args, key, fields);
         return new Outcome(resources.promptView(type, receipt.result(), slot), receipt);
     }
@@ -304,6 +347,7 @@ class McpProjectTools {
         String field = args.has("expectedParentVersion")
                 && (tool == McpProjectTool.SCRIPT_CREATE || tool == McpProjectTool.STORYBOARD_CREATE
                     || tool == McpProjectTool.ASSET_CREATE || tool == McpProjectTool.STORYBOARD_APPEND_SHOTS
+                    || tool == McpProjectTool.STORYBOARD_REORDER || tool == McpProjectTool.SCRIPT_REORDER_SCENES
                     || "asset".equals(resourceKind)) ? "expectedParentVersion" : "expectedVersion";
         if (args.has(field)) {
             details.put("expectedVersion", args.path(field).intValue());

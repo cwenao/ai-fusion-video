@@ -9,6 +9,7 @@ import com.stonewu.fusion.repository.resource.StoryboardReadRepository;
 import com.stonewu.fusion.service.canvas.CanvasJson;
 import com.stonewu.fusion.service.canvas.model.CanvasValueType;
 import com.stonewu.fusion.service.mcp.McpProjectCredentials.ProjectGrant;
+import com.stonewu.fusion.service.media.MediaSourceFields;
 import com.stonewu.fusion.service.resource.ResourceQueryService;
 import com.stonewu.fusion.service.resource.model.ResourceChange;
 import com.stonewu.fusion.service.resource.model.ResourceHeader;
@@ -23,6 +24,7 @@ import java.util.Map;
 import java.util.Objects;
 
 import static com.stonewu.fusion.service.canvas.model.CanvasValueType.*;
+import static com.stonewu.fusion.service.resource.AssetFields.IMAGE_PROMPT;
 
 @Component
 @RequiredArgsConstructor
@@ -46,7 +48,11 @@ class McpProjectResources {
     }
 
     ResourceHeader requireHeader(ProjectGrant grant, CanvasValueType type, long id) {
-        return resources.find(type, id, false, false)
+        return requireHeader(grant, type, id, false);
+    }
+
+    ResourceHeader requireHeader(ProjectGrant grant, CanvasValueType type, long id, boolean includeDeleted) {
+        return resources.find(type, id, false, includeDeleted)
                 .filter(header -> Objects.equals(header.projectId(), grant.projectId()))
                 .orElseThrow(McpProjectFailure::missing);
     }
@@ -121,8 +127,8 @@ class McpProjectResources {
     ObjectNode promptView(CanvasValueType type, ObjectNode data, String slot) {
         var result = json.object(Map.of("targetKind", type.code(), "targetId", data.path("id").asText(),
                 "slot", slot, "version", data.path("version").intValue()));
-        var text = data.get(slot);
-        if (text == null) {
+        var text = IMAGE_PROMPT.equals(slot) ? data.path("properties").path(slot) : data.path(slot);
+        if (text.isMissingNode()) {
             result.putNull("text");
         } else {
             result.set("text", text);
@@ -172,6 +178,20 @@ class McpProjectResources {
         if (!summary) {
             copy(source, fields, schemas.readFields(type));
             copy(source, fields, List.of("aiPrompt", "firstFramePrompt", "lastFramePrompt", "videoPrompt"));
+            if (type == ASSET || type == ASSET_ITEM) {
+                copyWithoutMedia(type, source, fields, "properties");
+            } else if (type == SHOT) {
+                copyWithoutMedia(type, source, fields, "customData");
+                copy(source, fields, List.of("autoShotNumber", "storyboardVersion", "episodeVersion", "sceneVersion"));
+            } else if (type == STORYBOARD_EPISODE) {
+                copy(source, fields, List.of("storyboardVersion", "composeStatus", "composeJobId",
+                        "composeErrorMsg", "composedAt", "bgmTaskId", "bgmErrorMsg"));
+            } else if (type == STORYBOARD_SCENE) {
+                copy(source, fields, List.of("storyboardVersion", "episodeVersion"));
+            } else if (type == STORYBOARD) {
+                copy(source, fields, List.of("totalDuration"));
+            }
+            copy(source, fields, List.of("createTime", "updateTime"));
         }
         if (type == SCRIPT_EPISODE) {
             fields.set("synopsis", source.get("synopsis"));
@@ -182,6 +202,21 @@ class McpProjectResources {
             fields.remove("rawContent");
         }
         return result;
+    }
+
+    private void copyWithoutMedia(CanvasValueType type, ObjectNode source, ObjectNode target, String field) {
+        if (source.get(field) instanceof ObjectNode properties) {
+            var data = properties.deepCopy();
+            String prefix = field + ".";
+            for (String path : MediaSourceFields.fields(type).keySet()) {
+                if (path.startsWith(prefix)) {
+                    data.remove(path.substring(prefix.length()));
+                }
+            }
+            target.set(field, data);
+        } else {
+            target.putNull(field);
+        }
     }
 
     private void copy(ObjectNode source, ObjectNode target, Iterable<String> names) {

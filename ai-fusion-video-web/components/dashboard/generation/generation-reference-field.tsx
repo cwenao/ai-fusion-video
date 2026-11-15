@@ -125,7 +125,7 @@ export function GenerationReferenceField({
           )}
         </div>
         <span className="text-[10px] tabular-nums text-muted-foreground">
-          {Number.isFinite(maxCount) ? `${values.length}/${maxCount}` : `已添加 ${values.length} 项`}
+          {maxCount > 0 && Number.isFinite(maxCount) ? `${values.length}/${maxCount}` : `已添加 ${values.length} 项`}
         </span>
       </div>
 

@@ -20,6 +20,7 @@ import {
 import { SceneAssetPanel } from "./storyboard-reference/scene-asset-panel";
 import { StoryboardPromptCards } from "./storyboard-prompt-cards";
 import { StoryboardOverview } from "./storyboard-reference/storyboard-overview";
+import { StoryboardVideoToolLink } from "./storyboard-video-tool-link";
 
 // ========== 主面板 ==========
 
@@ -68,6 +69,9 @@ export function StoryboardRefPanel({
     <div className="w-full lg:w-72 border-l border-border/20 flex flex-col shrink-0 bg-card/20 overflow-y-auto h-full relative">
       {showShot ? (
         <>
+          <div className="p-4">
+            <StoryboardVideoToolLink projectId={projectId} item={selectedItem} className="w-full" />
+          </div>
           {onSavePrompt && <StoryboardPromptCards key={selectedItem.id} item={selectedItem} projectId={projectId}
             project={project} scene={activeSceneGroup?.scene} onSave={onSavePrompt} />}
           <ItemDetail

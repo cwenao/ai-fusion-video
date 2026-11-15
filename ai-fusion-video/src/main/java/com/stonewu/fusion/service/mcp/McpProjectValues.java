@@ -20,6 +20,8 @@ final class McpProjectValues {
             "propAssetIds", CanvasValueType.ASSET, "scriptEpisodeId", CanvasValueType.SCRIPT_EPISODE,
             "sceneAssetItemId", CanvasValueType.ASSET_ITEM, "characterIds", CanvasValueType.ASSET_ITEM,
             "propIds", CanvasValueType.ASSET_ITEM);
+    private static final Set<String> OPAQUE_FIELDS = Set.of("properties", "propertyChanges", "customData",
+            "customDataChanges", "customColumns");
 
     record Reference(CanvasValueType type, long id) {
     }
@@ -102,6 +104,9 @@ final class McpProjectValues {
     private static void collect(JsonNode value, Set<Reference> result) {
         if (value.isObject()) {
             value.fields().forEachRemaining(entry -> {
+                if (OPAQUE_FIELDS.contains(entry.getKey())) {
+                    return;
+                }
                 var type = REFERENCES.get(entry.getKey());
                 var field = entry.getValue();
                 if (type == null) {
@@ -133,7 +138,7 @@ final class McpProjectValues {
     }
 
     private static JsonNode convertField(String field, JsonNode value, boolean internal) {
-        if (value.isNull()) {
+        if (value.isNull() || OPAQUE_FIELDS.contains(field)) {
             return value;
         }
         if (REFERENCES.containsKey(field)) {
@@ -147,7 +152,7 @@ final class McpProjectValues {
         return convert(value, internal);
     }
 
-    private static long parseId(JsonNode value, String field) {
+    static long parseId(JsonNode value, String field) {
         try {
             long id = Long.parseLong(value.asText());
             if (id > 0) {

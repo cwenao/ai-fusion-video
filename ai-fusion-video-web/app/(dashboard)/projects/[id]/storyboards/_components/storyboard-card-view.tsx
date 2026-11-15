@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { resolveMediaUrl } from "@/lib/api/client";
 import type { StoryboardFrameType, StoryboardItem } from "@/lib/api/storyboard";
 import { SafeImage } from "@/components/media/managed-image";
+import { StoryboardVideoToolLink } from "./storyboard-video-tool-link";
 import {
   DndContext,
   closestCenter,
@@ -41,6 +42,7 @@ const CardItemUI = memo(
   React.forwardRef<
     HTMLDivElement,
     {
+      projectId?: number;
       item: StoryboardItem;
       idx: number;
       isSelected: boolean;
@@ -58,6 +60,7 @@ const CardItemUI = memo(
   >(
     (
       {
+        projectId,
         item,
         idx,
         isSelected,
@@ -297,6 +300,9 @@ const CardItemUI = memo(
                   {item.cameraMovement}
                 </span>
               )}
+              {projectId !== undefined && (
+                <StoryboardVideoToolLink projectId={projectId} item={item} compact className="ml-auto" />
+              )}
             </div>
 
             {/* 画面内容 */}
@@ -333,6 +339,7 @@ const CardItemUI = memo(
 CardItemUI.displayName = "CardItemUI";
 
 function SortableCardItem({
+  projectId,
   item,
   idx,
   isSelected,
@@ -342,6 +349,7 @@ function SortableCardItem({
   onOpenFrameDialog,
   onPreviewVideo,
 }: {
+  projectId: number;
   item: StoryboardItem;
   idx: number;
   isSelected: boolean;
@@ -367,6 +375,7 @@ function SortableCardItem({
 
   return (
     <CardItemUI
+      projectId={projectId}
       ref={setNodeRef}
       style={style}
       item={item}
@@ -385,6 +394,7 @@ function SortableCardItem({
 }
 
 export function StoryboardCardView({
+  projectId,
   items,
   selectedItemId,
   onSelectItem,
@@ -394,6 +404,7 @@ export function StoryboardCardView({
   onVideoGen,
   onOpenFrameDialog,
 }: {
+  projectId: number;
   items: StoryboardItem[];
   selectedItemId: number | null;
   onSelectItem: (id: number) => void;
@@ -477,6 +488,7 @@ export function StoryboardCardView({
           <div className="grid gap-4 md:gap-5" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 300px), 1fr))" }}>
             {items.map((item, idx) => (
               <SortableCardItem
+                projectId={projectId}
                 key={item.id}
                 item={item}
                 idx={idx}

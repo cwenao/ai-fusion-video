@@ -7,6 +7,8 @@ import com.stonewu.fusion.service.canvas.model.CanvasValueType;
 import com.stonewu.fusion.service.canvas.run.mcp.CanvasMcpSchemas;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 class McpProjectToolSchemasTests {
@@ -78,6 +80,39 @@ class McpProjectToolSchemasTests {
                 () -> schemas.validateFields(episode, true, removedField.deepCopy().put("episodeNumber", 1)));
         assertThrows(McpProjectFailure.class,
                 () -> schemas.validateFields(episode, false, removedField));
+    }
+
+    @Test
+    void storyboardAcceptsPromptsAndCustomFieldsWithoutGivingMediaUrlsAWritePath() {
+        var shot = CanvasValueType.SHOT;
+        var fields = input("""
+                {"content":"推镜","videoPrompt":"雨中前行","sortOrder":0,"status":1,
+                 "customData":{"assetId":"内部工作标签"}}
+                """);
+        schemas.validateFields(shot, true, fields);
+        assertEquals(fields.get("customData"), McpProjectValues.internalFields(fields).get("customData"));
+        assertTrue(McpProjectValues.references(List.of(McpProjectValues.internalFields(fields))).isEmpty());
+        schemas.validateFields(shot, false, input("""
+                {"customDataChanges":{"灯光":"侧逆光","空字段":null},"videoPrompt":null}
+                """));
+        assertThrows(McpProjectFailure.class, () -> schemas.validateFields(shot, false,
+                input("{\"customDataChanges\":{\"videoPosterUrl\":null}}")));
+        assertThrows(McpProjectFailure.class, () -> schemas.validateFields(shot, false, input("{\"sortOrder\":1}")));
+    }
+
+    @Test
+    void assetItemEditsCanonicalAppearanceAndPromptWithoutOverwritingMediaProperties() {
+        var type = CanvasValueType.ASSET_ITEM;
+        schemas.validateFields(type, true, input("""
+                {"itemType":"variant","properties":{"appearanceDescription":"深蓝雨衣","imagePrompt":"写实质感"}}
+                """));
+        schemas.validateFields(type, false, input("""
+                {"propertyChanges":{"appearanceDescription":"灰色雨衣","imagePrompt":null}}
+                """));
+        assertThrows(McpProjectFailure.class, () -> schemas.validateFields(type, false,
+                input("{\"propertyChanges\":{\"audioUrl\":null}}")));
+        assertThrows(McpProjectFailure.class, () -> schemas.validateFields(type, false,
+                input("{\"propertyChanges\":{\"imagePrompt\":\"  \"}}")));
     }
 
     private ObjectNode input(String value) {

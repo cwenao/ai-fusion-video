@@ -15,7 +15,9 @@ import com.stonewu.fusion.service.canvas.run.mcp.CanvasMcpSchemas;
 import com.stonewu.fusion.service.mcp.McpProjectCredentials.Grant;
 import com.stonewu.fusion.service.resource.ResourceCommandService;
 import com.stonewu.fusion.service.resource.ResourceQueryService;
+import com.stonewu.fusion.service.resource.model.ResourceCommandReceipt;
 import com.stonewu.fusion.service.resource.model.ResourceHeader;
+import com.stonewu.fusion.service.resource.model.ResourcePatchCommand;
 import com.stonewu.fusion.service.resource.model.ResourceSnapshot;
 import org.junit.jupiter.api.Test;
 
@@ -26,9 +28,14 @@ import java.util.Optional;
 
 import static com.stonewu.fusion.service.canvas.model.CanvasValueType.SCRIPT;
 import static com.stonewu.fusion.service.canvas.model.CanvasValueType.SCRIPT_EPISODE;
+import static com.stonewu.fusion.service.canvas.model.CanvasValueType.ASSET;
+import static com.stonewu.fusion.service.canvas.model.CanvasValueType.ASSET_ITEM;
+import static com.stonewu.fusion.service.mcp.McpProjectTool.ASSET_GET;
+import static com.stonewu.fusion.service.mcp.McpProjectTool.PROMPT_SET;
 import static com.stonewu.fusion.service.mcp.McpProjectTool.SCRIPT_GET;
 import static com.stonewu.fusion.service.mcp.McpProjectTool.SCRIPT_LIST;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -47,8 +54,8 @@ class McpProjectScriptSyncTests {
             mock(AssetReadRepository.class), queries, schemas, media, json);
     private final McpProjectCredentials credentials = new McpProjectCredentials(mock(McpProjectCredentialMapper.class),
             mock(CanvasAccessPolicy.class));
-    private final McpProjectTools tools = new McpProjectTools(credentials, schemas, resources, media,
-            mock(ResourceCommandService.class), json);
+    private final ResourceCommandService commands = mock(ResourceCommandService.class);
+    private final McpProjectTools tools = new McpProjectTools(credentials, schemas, resources, media, commands, json);
 
     @Test
     void syncsEachEpisodesSourceWithItsPageAndCanOmitItForDirectoryReads() {
@@ -104,6 +111,38 @@ class McpProjectScriptSyncTests {
         assertThat(foreign.at("/error/code").textValue()).isEqualTo("RESOURCE_NOT_FOUND");
         var scene = call(SCRIPT_LIST, Map.of("kind", "scene", "parentId", "31", "includeRawContent", true));
         assertThat(scene.at("/error/code").textValue()).isEqualTo("INVALID_ARGUMENT");
+    }
+
+    @Test
+    void assetDetailAndPromptSlotUseTheWebEditorFieldsWithoutExposingEmbeddedMediaLinks() {
+        var asset = json.object(Map.of("id", 41L, "version", 4));
+        var item = json.object(Map.of("id", 42L, "assetId", 41L, "assetVersion", 4, "version", 4));
+        item.putObject("properties").put("appearanceDescription", "深蓝雨衣")
+                .put("imagePrompt", "雨天的柔光").put("videoUrl", "https://example.test/private.mp4");
+        resource(ASSET, 41L, asset);
+        resource(ASSET_ITEM, 42L, item);
+
+        var result = call(ASSET_GET, Map.of("kind", "assetItem", "id", "42"));
+        assertThat(result.at("/data/fields/properties").toString())
+                .isEqualTo("{\"appearanceDescription\":\"深蓝雨衣\",\"imagePrompt\":\"雨天的柔光\"}");
+        assertThat(result.at("/data/parentVersion").intValue()).isEqualTo(4);
+
+        when(commands.execute(any(), any())).thenAnswer(invocation -> {
+            ResourcePatchCommand command = invocation.getArgument(0);
+            assertThat(command.expectedParentVersion()).isEqualTo(4);
+            assertThat(command.patch().at("/propertyChanges/imagePrompt").textValue()).isEqualTo("逆光");
+            assertThat(command.patch().has("aiPrompt")).isFalse();
+            var updated = item.deepCopy().put("version", 5).put("assetVersion", 5);
+            ((ObjectNode) updated.path("properties")).put("imagePrompt", "逆光");
+            return new ResourceCommandReceipt("command-1", command.requestId(), updated, List.of());
+        });
+        var writeGrant = new Grant("写凭证", 11L, actor, McpProjectCredentials.READ_WRITE);
+        var patch = Map.<String, Object>of("projectId", "11", "requestId", "image-edit",
+                "targetKind", "assetItem", "targetId", "42", "slot", "imagePrompt", "text", "逆光",
+                "expectedVersion", 4, "expectedParentVersion", 4);
+        var updated = json.object(tools.call(PROMPT_SET, writeGrant, patch).structuredContent());
+        assertThat(updated.at("/data/text").textValue()).isEqualTo("逆光");
+        assertThat(updated.at("/data/parentVersion").intValue()).isEqualTo(5);
     }
 
     private ObjectNode call(McpProjectTool tool, Map<String, Object> arguments) {

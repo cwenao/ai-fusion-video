@@ -44,7 +44,9 @@ public class McpProjectMedia {
             CanvasValueType.ASSET_ITEM, Map.of("image", "imageUrl", "thumbnail", "thumbnailUrl",
                     "video", "properties.videoUrl", "audio", "properties.audioUrl"),
             CanvasValueType.SHOT, Map.of("image", "imageUrl", "referenceImage", "referenceImageUrl",
-                    "firstFrame", "firstFrameImageUrl", "lastFrame", "lastFrameImageUrl", "video", "videoUrl"));
+                    "firstFrame", "firstFrameImageUrl", "lastFrame", "lastFrameImageUrl", "video", "videoUrl",
+                    "generatedImage", "generatedImageUrl", "generatedVideo", "generatedVideoUrl",
+                    "videoPoster", "customData.videoPosterUrl"));
 
     private final MediaResourceRepository media;
     private final MediaAccessPolicy access;
@@ -107,15 +109,17 @@ public class McpProjectMedia {
             if (field == null || output.containsKey(field)) {
                 throw McpProjectFailure.invalid("bindings.slot", "媒体槽位无效或重复");
             }
-            String id = binding.path("mediaResourceId").asText();
-            scoped(grant, id, true);
+            String id = binding.path("mediaResourceId").textValue();
+            if (id != null) {
+                scoped(grant, id, true);
+            }
             output.put(field, id);
         }
         return output;
     }
 
     void readBindings(ProjectGrant grant, CanvasValueType type, ObjectNode source, ArrayNode bindings) {
-        var slots = SLOTS.get(type);
+        var slots = SLOTS.getOrDefault(type, Map.of());
         for (String field : MediaSourceFields.fields(type).keySet().stream().sorted().toList()) {
             var value = source.at("/" + field.replace('.', '/'));
             if (!value.isTextual() || value.textValue().isBlank()) {
@@ -152,7 +156,7 @@ public class McpProjectMedia {
     }
 
     boolean hasBindingFields(CanvasValueType type) {
-        return SLOTS.containsKey(type);
+        return SLOTS.containsKey(type) || type == CanvasValueType.STORYBOARD_EPISODE;
     }
 
     private Row scoped(ProjectGrant grant, String id, boolean ready) {
