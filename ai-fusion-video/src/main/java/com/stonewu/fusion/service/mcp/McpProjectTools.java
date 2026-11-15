@@ -179,8 +179,10 @@ class McpProjectTools {
         var receipt = submit(grant, new ResourceCreateCommand(key, type, projectId, fields));
         var output = written(grant, type, receipt);
         if (type == ASSET) {
-            var initial = (ObjectNode) receipt.result().path("items").get(0);
-            output.set("initialItem", resources.written(grant, ASSET_ITEM, initial, receipt.changes()));
+            var children = output.putArray("items");
+            receipt.result().path("items").forEach(item ->
+                    children.add(resources.written(grant, ASSET_ITEM, (ObjectNode) item, receipt.changes())));
+            output.set("initialItem", children.get(0));
         }
         return new Outcome(output, receipt);
     }

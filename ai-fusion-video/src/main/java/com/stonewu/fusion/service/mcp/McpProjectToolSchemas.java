@@ -18,6 +18,10 @@ import java.util.Map;
 import java.util.Set;
 
 import static com.stonewu.fusion.service.canvas.model.CanvasValueType.*;
+import static com.stonewu.fusion.service.resource.AssetFields.APPEARANCE_STATE;
+import static com.stonewu.fusion.service.resource.AssetFields.MAX_CREATION_ITEMS;
+import static com.stonewu.fusion.service.resource.AssetFields.MAX_VARIANT_LABEL_LENGTH;
+import static com.stonewu.fusion.service.resource.AssetFields.TIMELINE;
 
 @Component
 @ConditionalOnProperty(name = "app.project-mcp.enabled", havingValue = "true")
@@ -32,6 +36,8 @@ class McpProjectToolSchemas {
     private static final Map<String, Object> ORDER = integer(0, 1_000_000);
     private static final Map<String, Object> STATUS = integer(0, 1);
     private static final Map<String, Object> IMAGE_PROMPT_TEXT = Map.of("type", "string", "maxLength", 5_000, "pattern", "\\S");
+    private static final Map<String, Object> VARIANT_LABEL = Map.of("type", "string", "maxLength", MAX_VARIANT_LABEL_LENGTH,
+            "pattern", "\\S");
     private static final Map<String, Object> SHOT_CUSTOM_DATA = Map.of("type", "object", "maxProperties", 200,
             "propertyNames", Map.of("not", choice("videoPosterUrl")));
     private static final Map<String, Object> ASSET_TYPE = choice("character", "scene", "prop", "vehicle",
@@ -127,24 +133,28 @@ class McpProjectToolSchemas {
                 "aiGenerated", BOOLEAN, "status", STATUS));
         addOrderedChild(SHOT, shot, "content");
 
+        addAssetFields(ASSET_ITEM, properties("name", nullable(TEXT), "itemType", pattern("^[a-z][a-z0-9_]{0,31}$")));
         var asset = properties("name", nonBlank(), "description", described(nullable(TEXT), "主资产设定"),
                 "tags", nullable(array(Map.of("type", "string", "maxLength", 128), 0, 100)));
         addAssetFields(ASSET, asset, "type", "name");
-        addAssetFields(ASSET_ITEM, properties("name", nullable(TEXT), "itemType", pattern("^[a-z][a-z0-9_]{0,31}$")));
     }
 
     private void addAssetFields(CanvasValueType type, Map<String, Object> asset, String... required) {
         var updates = new LinkedHashMap<>(asset);
-        updates.put("propertyChanges", described(assetProperties(true), "仅修改提交的设定字段，null 删除单项；原件通过媒体工具绑定"));
+        updates.put("propertyChanges", described(assetProperties(type, true), "仅修改提交的设定字段，null 删除单项；原件通过媒体工具绑定"));
         patch.put(type, compile(patchObject(updates)));
-        asset.put("properties", described(assetProperties(false), "资产设定扩展字段；资产项使用 appearanceDescription 和 imagePrompt"));
+        asset.put("properties", described(assetProperties(type, false), "资产设定扩展字段"));
         if (type == ASSET) {
             asset.put("type", ASSET_TYPE);
         }
-        create.put(type, compile(object(asset, required)));
         var readable = new LinkedHashSet<>(asset.keySet());
         readable.remove("properties");
         readFields.put(type, Set.copyOf(readable));
+        if (type == ASSET) {
+            var children = array(create.get(ASSET_ITEM).definition(), 1, MAX_CREATION_ITEMS);
+            asset.put("items", described(children, "按数组顺序创建子资产；第一项为基准表现。省略时创建一个默认子资产。"));
+        }
+        create.put(type, compile(object(asset, required)));
     }
 
     private void addOrderedChild(CanvasValueType type, Map<String, Object> fields, String required) {
@@ -161,11 +171,17 @@ class McpProjectToolSchemas {
         create.put(type, compile(object(input, required)));
     }
 
-    private static Map<String, Object> assetProperties(boolean patch) {
+    private static Map<String, Object> assetProperties(CanvasValueType type, boolean patch) {
+        var fields = properties("appearanceDescription", nullable(TEXT),
+                "imagePrompt", patch ? nullable(IMAGE_PROMPT_TEXT) : IMAGE_PROMPT_TEXT);
+        if (type == ASSET_ITEM) {
+            var label = patch ? nullable(VARIANT_LABEL) : VARIANT_LABEL;
+            fields.put(TIMELINE, described(label, "时间线或叙事阶段，例如：十年前、主线第 8 集"));
+            fields.put(APPEARANCE_STATE, described(label, "此时的外观状态，例如：受伤、换装、维修后"));
+        }
         return Map.of("type", "object", "maxProperties", 200, "propertyNames", Map.of("not", choice(
                         "sourceMediaUrl", "sourceGenerationMode", "videoUrl", "audioUrl", "thumbnailUrl")),
-                "properties", properties("appearanceDescription", nullable(TEXT),
-                        "imagePrompt", patch ? nullable(IMAGE_PROMPT_TEXT) : IMAGE_PROMPT_TEXT));
+                "properties", fields);
     }
 
     private Map<String, Object> sceneFields() {

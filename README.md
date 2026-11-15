@@ -159,6 +159,10 @@ https://github.com/user-attachments/assets/acd181a0-541c-4163-a000-fa9ed72a5106
 
 场次、镜头先用 `fusion_script_list` 或 `fusion_storyboard_list` 查 ID，再用对应 `get` 工具读完整详情。镜头内容、提示词、自定义字段及资产引用可一并保存；排序、删除及媒体绑定有独立工具。资产设定使用主资产的 `description` 和 `properties`，资产项的外观描述与生图提示词分别使用 `properties.appearanceDescription` 和 `properties.imagePrompt`。
 
+同一主资产可保存多个子资产，例如角色的「十年前 · 校服」和「主线第 8 集 · 伤愈」。网页可在子资产中编辑「时间线」和「表现状态」。MCP 新建主资产时可在 `fusion_asset_create` 的 `fields.items` 一次传入 1 至 50 个子资产，每项在 `properties` 中填写 `timeline` 和 `appearanceState`。返回的 `data.items` 按输入顺序给出各子资产的 ID 和版本，原有 `data.initialItem` 仍指向第一项。
+
+已有主资产可用 `fusion_asset_list`（`kind: "assetItem"`，`parentId` 为主资产 ID）分页读取全部子资产及其时间线和表现状态。新增子资产用 `fusion_asset_create` 的 `kind: "assetItem"`，更新用 `fusion_asset_update` 的 `patch.propertyChanges`，并传入当前父版本；更新还需要子资产自身版本。字段省略时保留原值，传 `null` 可清空。每个子资产按 ID 单独绑定媒体和引用。
+
 在分镜表格、卡片或镜头详情点击「打开视频工具」，可把已保存的视频提示词、首尾帧和关联资产的图片、音频、视频带入生成表单。生成完成后，在同项目的成片上点击「回填到镜头」，即可将选中的视频与封面写回原镜头。操作和工具参数见[分镜与资产 MCP 说明](dev-docs/3-completed/20261115-分镜资产MCP与视频工具/development-plan.md)。
 
 ### ComfyUI 工作流

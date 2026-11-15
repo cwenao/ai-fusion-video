@@ -58,24 +58,9 @@ public class AssetMutationRepository {
             ownership.put("ownerType", actor.teamId() == null ? 1 : 2);
             ownership.put("ownerId", actor.teamId() == null ? actor.userId() : actor.teamId());
         }
-        ObjectNode draft = input.deepCopy();
-        ObjectNode initial = json.object(Map.of());
-        if (draft.has("initialItem")) {
-            if (!(draft.remove("initialItem") instanceof ObjectNode object)) {
-                throw AssetFields.invalid("initialItem 必须为对象");
-            }
-            initial = object;
-        }
-        Map<String, Object> assetValues = fields.values(ASSET, draft, true);
-        fields.validateProperties((String) assetValues.get("type"), draft.get("properties"));
-        Map<String, Object> itemValues = fields.values(ASSET_ITEM, initial, true);
-        fields.validateProperties((String) assetValues.get("type"), initial.get("properties"));
-        itemValues.putIfAbsent("itemType", "initial");
-        if (!itemValues.containsKey("name")) {
-            itemValues.put("name", assetValues.get("name"));
-        }
-        itemValues.putIfAbsent("sourceType", assetValues.getOrDefault("sourceType", 1));
-        itemValues.put("sortOrder", 0);
+        var creation = fields.creation(input);
+        var assetValues = creation.asset();
+        var itemValues = creation.items().getFirst();
         if (!itemValues.containsKey("imageUrl") && assetValues.containsKey("coverUrl")) {
             itemValues.put("imageUrl", assetValues.get("coverUrl"));
         }
@@ -85,10 +70,11 @@ public class AssetMutationRepository {
         assetValues.putAll(ownership);
         var changes = new ChangeSet(null, null, projectId);
         ObjectNode asset = changes.create(ASSET, assetValues);
-        itemValues.put("assetId", asset.path("id").longValue());
-        ObjectNode item = changes.create(ASSET_ITEM, itemValues);
-        item.put("assetVersion", 0);
-        asset.set("items", json.object(Map.of("items", List.of(item))).get("items"));
+        var createdItems = asset.putArray("items");
+        for (var child : creation.items()) {
+            child.put("assetId", asset.path("id").longValue());
+            createdItems.add(changes.create(ASSET_ITEM, child).put("assetVersion", 0));
+        }
         return changes.result(asset);
     }
 

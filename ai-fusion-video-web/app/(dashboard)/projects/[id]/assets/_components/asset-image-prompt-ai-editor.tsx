@@ -4,7 +4,7 @@ import { ProjectTextAiEditor } from "@/components/project-text/project-text-ai-e
 import { usePromptTemplates } from "@/hooks/use-prompt-templates";
 import type { Asset } from "@/lib/api/asset";
 import { useProject } from "../../project-context";
-import { assetImagePromptContext, ASSET_IMAGE_PROMPT_INSTRUCTION } from "./asset-image-prompt-context";
+import { assetImagePromptContext, ASSET_IMAGE_PROMPT_INSTRUCTION, type AssetImagePromptItem } from "./asset-image-prompt-context";
 import { AssetImagePromptTemplateSelect } from "./asset-image-prompt-template-select";
 import { assetImagePromptTemplates } from "./asset-image-prompt-templates";
 import { AssetPromptTemplateCatalogStatus } from "./asset-prompt-template-catalog-status";
@@ -12,7 +12,7 @@ import { AssetPromptTemplateCatalogStatus } from "./asset-prompt-template-catalo
 export function AssetImagePromptAiEditor({ projectId, asset, item, draft, templateId, onSelect, onApply }: {
   projectId: number;
   asset: Asset;
-  item: { name: string; type: string; appearance: string };
+  item: AssetImagePromptItem;
   draft: string;
   templateId: string;
   onSelect: (id: string) => void;

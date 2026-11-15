@@ -87,19 +87,11 @@ public class AssetBatchCreateHandler implements ResourceCommandHandler {
         List<ResourceChange> changes = new ArrayList<>();
         List<ObjectNode> undo = new ArrayList<>();
         for (ObjectNode entry : command.entries()) {
-            ObjectNode checked = entry.deepCopy();
             if (command.resourceType() == ASSET) {
-                checked.remove("initialItem");
-            }
-            fields.values(command.resourceType(), checked, true);
-            String assetType = command.resourceType() == ASSET ? entry.path("type").textValue() : parentType;
-            fields.validateProperties(assetType, checked.get("properties"));
-            if (command.resourceType() == ASSET && entry.has("initialItem")) {
-                if (!(entry.get("initialItem") instanceof ObjectNode initial)) {
-                    throw AssetFields.invalid("initialItem 必须为对象");
-                }
-                fields.values(ASSET_ITEM, initial, true);
-                fields.validateProperties(assetType, initial.get("properties"));
+                fields.creation(entry);
+            } else {
+                fields.values(ASSET_ITEM, entry, true);
+                fields.validateProperties(parentType, entry.get("properties"));
             }
             if (!entry.path("name").isTextual() || entry.path("name").textValue().isBlank()) {
                 throw AssetFields.invalid("批量条目必须包含名称");

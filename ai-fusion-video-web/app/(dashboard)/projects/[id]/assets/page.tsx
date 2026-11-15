@@ -18,7 +18,7 @@ import { MasterAssetForm, MasterAssetHeader } from "./_components/asset-master-p
 import { AssetItemTabs } from "./_components/asset-item-tabs";
 import { AssetItemWorkspace } from "./_components/asset-item-workspace";
 import { getApiErrorMessage } from "@/lib/api/api-error";
-import { assetItemProperties } from "./_components/asset-types";
+import { assetItemProperties, type AssetItemDraft } from "./_components/asset-types";
 
 interface BatchGeneration {
   assetIds: number[];
@@ -148,17 +148,19 @@ export default function ProjectAssetsPage() {
     }
   };
 
-  const saveItem = async (item: AssetItem, name: string, appearance: string, imageUrl: string, imagePrompt: string) => {
-    if (!name.trim()) throw new Error("名称不能为空");
+  const saveItem = async (item: AssetItem, draft: AssetItemDraft) => {
+    if (!draft.name.trim()) {
+      throw new Error("名称不能为空");
+    }
     setSaving(true);
     try {
       const data = {
         id: item.id,
         version: item.version,
         assetVersion: item.assetVersion,
-        name: name.trim(),
-        imageUrl: imageUrl.trim(),
-        properties: assetItemProperties(item.properties, appearance, imagePrompt),
+        name: draft.name.trim(),
+        imageUrl: draft.imageUrl.trim() === (item.imageUrl ?? "") ? undefined : draft.imageUrl.trim() || null,
+        properties: assetItemProperties(item.properties, draft),
       };
       const updated = await assetApi.updateItem(data, requests.forPayload({ operation: "updateItem", ...data }));
       requests.clear();
@@ -188,22 +190,20 @@ export default function ProjectAssetsPage() {
 
   const createItem = async (
     expectedParentVersion: number,
-    name: string,
-    appearance: string,
-    imageUrl: string,
-    imagePrompt: string,
+    draft: AssetItemDraft,
     image?: ImageModelOptions,
   ) => {
-    if (!selectedAsset || !name.trim()) return;
+    if (!selectedAsset || !draft.name.trim()) {
+      return;
+    }
     setSaving(true);
     try {
       const data = {
         assetId: selectedAsset.id,
         parentVersion: expectedParentVersion,
-        name: name.trim(),
-        imageUrl: imageUrl.trim() || undefined,
-        properties: assetItemProperties(null, appearance, imagePrompt),
-        sortOrder: selectedAsset.items.length,
+        name: draft.name.trim(),
+        imageUrl: draft.imageUrl.trim() || undefined,
+        properties: assetItemProperties(null, draft),
       };
       const created = await assetApi.createItem(data, requests.forPayload({ operation: "createItem", ...data }));
       requests.clear();
@@ -216,7 +216,7 @@ export default function ProjectAssetsPage() {
           assetIds: [selectedAsset.id],
           itemIds: [created.id],
           image,
-          label: `生成 ${created.name || name.trim()}`,
+          label: `生成 ${created.name || draft.name.trim()}`,
         });
       }
     } finally {

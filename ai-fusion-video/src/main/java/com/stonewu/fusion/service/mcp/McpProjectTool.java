@@ -20,10 +20,10 @@ enum McpProjectTool {
     STORYBOARD_APPEND_SHOTS(true, "在同一场景内原子追加一批镜头"),
     PROMPT_GET(false, "读取指定镜头或资产的提示词槽位和版本"),
     PROMPT_SET(true, "按版本首次填写、修改或清空指定提示词槽位"),
-    ASSET_LIST(false, "分页读取项目资产或资产变体"),
-    ASSET_GET(false, "读取项目资产设定，或资产项的外观描述和生图提示词"),
-    ASSET_CREATE(true, "创建项目资产及初始资产项，或追加资产变体"),
-    ASSET_UPDATE(true, "按版本更新资产设定、资产项外观描述和生图提示词"),
+    ASSET_LIST(false, "分页读取项目资产，或按父资产读取子资产及其时间线和表现状态"),
+    ASSET_GET(false, "读取主资产设定，或子资产的时间线、表现状态、外观描述和生图提示词"),
+    ASSET_CREATE(true, "一次创建主资产及其多个子资产，或向已有主资产追加一个子资产"),
+    ASSET_UPDATE(true, "按版本更新资产设定，或更新子资产的时间线、表现状态、外观和生图提示词"),
     MEDIA_GET(false, "读取项目媒体原件元数据和下载路径"),
     MEDIA_BIND(true, "按版本绑定已上传的原件、替换或清空指定槽位");
 

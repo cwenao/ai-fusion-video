@@ -1,5 +1,6 @@
 import { MapPin, Users, Wrench, type LucideIcon } from "lucide-react";
 import type { AssetItem } from "@/lib/api/asset";
+import { withAssetItemVariant, type AssetItemVariant } from "@/lib/asset-item-variant";
 
 export const ASSET_TYPES: Array<{
   value: string;
@@ -35,14 +36,22 @@ export function getAppearanceHints(assetType: string) {
 
 export function assetItemProperties(
   current: AssetItem["properties"],
-  appearance: string,
-  imagePrompt: string,
+  draft: AssetItemDraft,
 ) {
-  const properties: Record<string, unknown> = { ...current, appearanceDescription: appearance.trim() };
-  if (imagePrompt.trim()) {
-    properties.imagePrompt = imagePrompt;
+  const properties = withAssetItemVariant(current, draft.variant);
+  properties.appearanceDescription = draft.appearance.trim();
+  if (draft.imagePrompt.trim()) {
+    properties.imagePrompt = draft.imagePrompt;
   } else {
     delete properties.imagePrompt;
   }
   return properties;
+}
+
+export interface AssetItemDraft {
+  name: string;
+  appearance: string;
+  imageUrl: string;
+  imagePrompt: string;
+  variant: AssetItemVariant;
 }

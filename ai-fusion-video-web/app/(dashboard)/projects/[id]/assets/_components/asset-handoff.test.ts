@@ -6,6 +6,7 @@ import vm from "node:vm";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import type { AssetItem, AssetWithItems } from "@/lib/api/asset";
+import type { AssetItemDraft } from "./asset-types";
 
 const require = createRequire(import.meta.url);
 const ts: typeof import("typescript") = require("typescript");
@@ -46,11 +47,14 @@ function fixture() {
     "@/components/ui/input": { Input: "Input" },
     "@/components/ui/textarea": { Textarea: "Textarea" },
     "./asset-appearance-dialog": { AssetAppearanceDialog: "AssetAppearanceDialog" },
+    "./asset-image-prompt-field": { AssetImagePromptField: "AssetImagePromptField" },
+    "@/components/assets/asset-image-generation-dialog": { AssetImageGenerationDialog: "AssetImageGenerationDialog" },
     "@/components/media/managed-image": { SafeImage: "SafeImage" },
     "@/components/media/managed-video": { ManagedVideo: "ManagedVideo" },
     "@/components/media/managed-audio": { ManagedAudio: "ManagedAudio" },
     "@/lib/api/storage": { uploadFile: async () => "media://uploaded" },
     "@/lib/api/api-error": { getApiErrorMessage: (error: Error) => error.message },
+    "@/lib/store/pipeline-store": {},
     "@/lib/utils": { cn: (...values: unknown[]) => values.filter(Boolean).join(" ") },
   };
   function load(relative: string): Record<string, unknown> {
@@ -215,14 +219,22 @@ function workspaceProps(selected: AssetItem) {
   };
 }
 const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
+const imageOptions = { modelId: 7 };
+
+function confirmGeneration(f: ReturnType<typeof fixture>, tree: UiNode, props: object) {
+  (element(tree, "AssetItemMedia").props.onGenerate as () => void)();
+  const dialog = element(f.render(route + "/asset-item-workspace.tsx", "AssetItemWorkspace", props),
+    "AssetImageGenerationDialog");
+  return (dialog.props.onConfirm as (image: typeof imageOptions) => Promise<void>)(imageOptions);
+}
 
 test("dirty item handoff stays blocked and existing save-then-generate pipeline is preserved", async () => {
   const f = fixture();
   const calls: string[] = [];
-  const selected = item();
-  const props = { ...workspaceProps(selected), onSave: async (_item: AssetItem, name: string) => {
+  const selected = item({ properties: { imagePrompt: "白昼站台" } });
+  const props = { ...workspaceProps(selected), onSave: async (_item: AssetItem, draft: AssetItemDraft) => {
     calls.push("save");
-    return { ...selected, name, version: 4 };
+    return { ...selected, name: draft.name, version: 4 };
   }, onGenerate: () => calls.push("generate") };
   let tree = f.render(route + "/asset-item-workspace.tsx", "AssetItemWorkspace", props);
   (element(tree, "Input").props.onChange as (event: { target: { value: string } }) => void)({ target: { value: "已编辑名称" } });
@@ -232,21 +244,20 @@ test("dirty item handoff stays blocked and existing save-then-generate pipeline 
   const actions = f.render(actionsFile, "AssetGenerationActions", actionProps);
   assert.equal(element(actions, "Button", "用于生图").props.disabled, true);
   assert.equal(element(actions, "Button", "用于生视频").props.disabled, true);
-  (element(tree, "AssetItemMedia").props.onGenerate as () => void)();
-  await flush();
+  await confirmGeneration(f, tree, props);
   assert.deepEqual(calls, ["save", "generate"]);
 });
 
 test("failed saving never launches asset pipeline and keeps the draft error visible", async () => {
   const f = fixture();
   const calls: string[] = [];
-  const props = { ...workspaceProps(item()), onSave: async () => {
+  const props = { ...workspaceProps(item({ properties: { imagePrompt: "写实站牌" } })), onSave: async () => {
     throw new Error("版本冲突");
   }, onGenerate: () => calls.push("generate") };
   let tree = f.render(route + "/asset-item-workspace.tsx", "AssetItemWorkspace", props);
   (element(tree, "Input").props.onChange as (event: { target: { value: string } }) => void)({ target: { value: "未保存名称" } });
   tree = f.render(route + "/asset-item-workspace.tsx", "AssetItemWorkspace", props);
-  (element(tree, "AssetItemMedia").props.onGenerate as () => void)();
+  click(element(tree, "Button", "保存"));
   await flush();
   tree = f.render(route + "/asset-item-workspace.tsx", "AssetItemWorkspace", props);
   assert.deepEqual(calls, []);
@@ -291,7 +302,7 @@ test("uploading blocks handoff until the newly uploaded image is saved", async (
   assert.match(String(actionProps.blockedReason), /先保存/);
 });
 
-test("new item creation still requests the original create-and-generate pipeline", async () => {
+test("新建子资产并生图时提交当前时间线和表现状态", async () => {
   const f = fixture();
   const calls: unknown[][] = [];
   const props = { ...workspaceProps(item()), mode: "create", item: null, asset: asset([]),
@@ -301,10 +312,16 @@ test("new item creation still requests the original create-and-generate pipeline
   let tree = f.render(route + "/asset-item-workspace.tsx", "AssetItemWorkspace", props);
   assert.ok(!nodes(tree).some((node) => typeof node.type === "function" && node.type.name === "AssetGenerationActions"));
   (element(tree, "Input").props.onChange as (event: { target: { value: string } }) => void)({ target: { value: "新增素材" } });
+  (element(tree, "AssetItemVariantFields").props.onChange as (variant: AssetItemDraft["variant"]) => void)({
+    timeline: "十年前", appearanceState: "雨夜",
+  });
+  (element(tree, "AssetImagePromptField").props.onChange as (value: string) => void)("雨中站台");
   tree = f.render(route + "/asset-item-workspace.tsx", "AssetItemWorkspace", props);
-  (element(tree, "AssetItemMedia").props.onGenerate as () => void)();
-  await flush();
-  assert.deepEqual(calls, [[7, "新增素材", "", "", true]]);
+  await confirmGeneration(f, tree, props);
+  assert.deepEqual(calls, [[7, {
+    name: "新增素材", appearance: "", imageUrl: "", imagePrompt: "雨中站台",
+    variant: { timeline: "十年前", appearanceState: "雨夜" },
+  }, imageOptions]]);
 });
 
 
@@ -313,8 +330,8 @@ test("采用 AI 外观描写后由创建表单提交草稿", async () => {
   const selected = item();
   const created: string[] = [];
   const props = { ...workspaceProps(selected), mode: "create", item: null,
-    onCreate: async (_version: number, name: string, appearance: string) => {
-      created.push(name, appearance);
+    onCreate: async (_version: number, draft: AssetItemDraft) => {
+      created.push(draft.name, draft.appearance);
     } };
   let tree = f.render(route + "/asset-item-workspace.tsx", "AssetItemWorkspace", props);
   assert.equal(element(tree, "Button", "AI 写外观").props.disabled, true);

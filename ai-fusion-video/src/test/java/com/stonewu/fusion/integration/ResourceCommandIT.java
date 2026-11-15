@@ -806,6 +806,32 @@ class ResourceCommandIT {
     }
 
     @Test
+    void createsIndependentAssetAppearancesInOrderAndReplaysTheSameChildren() {
+        var draft = mapper.createObjectNode().put("type", "character").put("name", "多阶段角色");
+        var children = draft.putArray("items");
+        children.addObject().put("name", "少年").put("imageUrl", "/media/first.png")
+                .putObject("properties").put("timeline", "十年前").put("appearanceState", "校服");
+        children.addObject().put("name", "归来").put("imageUrl", "/media/second.png")
+                .putObject("properties").put("timeline", "主线第 8 集").put("appearanceState", "伤愈");
+        var request = new ResourceCreateCommand(UUID.randomUUID().toString(), CanvasValueType.ASSET, null, draft);
+        var created = commands.execute(request, USER);
+        assertThat(commands.execute(request, USER)).isEqualTo(created);
+        var asset = created.result();
+        var items = context.getBean(AssetResourceQueryService.class).tree(asset.path("id").longValue(), ACTOR).path("items");
+        assertThat(items).hasSize(2);
+        assertThat(asset.path("coverUrl").asText()).isEqualTo("/media/first.png");
+        assertThat(items.get(0).at("/properties/timeline").asText()).isEqualTo("十年前");
+        assertThat(items.get(1).at("/properties/appearanceState").asText()).isEqualTo("伤愈");
+        assertThat(items.get(1).path("assetVersion").intValue()).isZero();
+
+        var invalid = draft.deepCopy().put("name", "非法的多阶段角色");
+        ((ObjectNode) invalid.at("/items/1/properties")).put("timeline", 8);
+        rejects(() -> commands.execute(new ResourceCreateCommand(UUID.randomUUID().toString(), CanvasValueType.ASSET,
+                null, invalid), USER), CanvasErrorCode.INVALID_COMMAND);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM afv_asset WHERE name = '非法的多阶段角色'", Integer.class)).isZero();
+    }
+
+    @Test
     void assetImageUpdateChecksParentVersionSoLateResultsCannotOverwriteChosenCover() {
         var created = commands.execute(new ResourceCreateCommand(UUID.randomUUID().toString(), CanvasValueType.ASSET, null,
                 mapper.createObjectNode().put("type", "prop").put("name", "图像版本测试")), USER);

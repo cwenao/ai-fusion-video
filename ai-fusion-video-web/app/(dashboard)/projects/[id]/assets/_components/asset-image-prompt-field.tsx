@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import type { Asset } from "@/lib/api/asset";
+import type { AssetItemVariant } from "@/lib/asset-item-variant";
 import { AssetImagePromptAiEditor } from "./asset-image-prompt-ai-editor";
 import { MAX_ASSET_IMAGE_PROMPT_LENGTH } from "./asset-image-prompt-context";
 import { defaultAssetImagePromptTemplate } from "./asset-image-prompt-templates";
@@ -18,13 +19,14 @@ interface AssetImagePromptFieldProps {
   itemName: string;
   itemType: string;
   appearance: string;
+  variant: AssetItemVariant;
   value: string;
   disabled: boolean;
   onChange: (value: string) => void;
 }
 
 export function AssetImagePromptField({
-  projectId, asset, itemName, itemType, appearance, value, disabled, onChange,
+  projectId, asset, itemName, itemType, appearance, variant, value, disabled, onChange,
 }: AssetImagePromptFieldProps) {
   const field = useId();
   const sourceRef = useRef<HTMLTextAreaElement>(null);
@@ -85,7 +87,7 @@ export function AssetImagePromptField({
               <AssetImagePromptAiEditor
                 projectId={projectId}
                 asset={asset}
-                item={{ name: itemName, type: itemType, appearance }}
+                item={{ name: itemName, type: itemType, appearance, variant }}
                 draft={value}
                 templateId={templateId}
                 onSelect={setTemplateId}

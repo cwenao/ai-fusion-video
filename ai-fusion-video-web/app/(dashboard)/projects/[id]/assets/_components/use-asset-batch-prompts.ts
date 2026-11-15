@@ -10,6 +10,7 @@ import { enqueueProjectText, projectTextOutput } from "@/lib/project-text-genera
 import { usePipelineStore } from "@/lib/store/pipeline-store";
 import { userFacingError } from "@/lib/user-facing-error";
 import { assetImagePromptContext, ASSET_IMAGE_PROMPT_INSTRUCTION } from "./asset-image-prompt-context";
+import { getAssetItemVariant } from "@/lib/asset-item-variant";
 import { getAppearance } from "./asset-types";
 import type { AssetImagePromptTemplate } from "./asset-image-prompt-templates";
 
@@ -55,6 +56,7 @@ export function useAssetBatchPrompts(project: Project | null, onSaved: () => voi
         name,
         type: item.itemType ?? "",
         appearance: getAppearance(item),
+        variant: getAssetItemVariant(item.properties),
       }, template),
       draft: next.savedText,
       instruction: ASSET_IMAGE_PROMPT_INSTRUCTION,

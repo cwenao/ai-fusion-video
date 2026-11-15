@@ -5,12 +5,14 @@ import { DialogScrollBody } from "@/components/shared/dialog-scroll-body";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type { Asset } from "@/lib/api/asset";
 import { getAssetType } from "./asset-types";
+import type { AssetItemVariant } from "@/lib/asset-item-variant";
 
-export function AssetAppearanceDialog({ projectId, asset, name, appearance, onClose, onApply }: {
+export function AssetAppearanceDialog({ projectId, asset, name, appearance, variant, onClose, onApply }: {
   projectId: number;
   asset: Asset;
   name: string;
   appearance: string;
+  variant: AssetItemVariant;
   onClose: () => void;
   onApply: (value: string) => void;
 }) {
@@ -30,7 +32,10 @@ export function AssetAppearanceDialog({ projectId, asset, name, appearance, onCl
             projectId={projectId}
             kind="assetAppearance"
             title={`AI 外观描写 · ${name}`}
-            context={{ 类型: asset.type, 主资产: asset.name, 主资产描述: asset.description, 子资产名称: name }}
+            context={{
+              类型: asset.type, 主资产: asset.name, 主资产描述: asset.description, 子资产名称: name,
+              时间线: variant.timeline.trim(), 表现状态: variant.appearanceState.trim(),
+            }}
             draft={appearance}
             quickInstruction="依据资产设定生成一段具体、可直接用于生图的外观描写，保留已给出的外观细节。"
             placeholder="例如：保留灰蓝色外套，补充面料和磨损细节"

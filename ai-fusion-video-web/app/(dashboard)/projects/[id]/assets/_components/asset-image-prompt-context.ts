@@ -1,5 +1,6 @@
 import type { Asset } from "@/lib/api/asset";
 import type { Project } from "@/lib/api/project";
+import type { AssetItemVariant } from "@/lib/asset-item-variant";
 import type { AssetImagePromptTemplate } from "./asset-image-prompt-templates";
 
 export const MAX_ASSET_IMAGE_PROMPT_LENGTH = 5_000;
@@ -7,10 +8,17 @@ export const MAX_ASSET_IMAGE_PROMPT_LENGTH = 5_000;
 export const ASSET_IMAGE_PROMPT_INSTRUCTION =
   "根据项目设置、资产定义和外观描写，按选中的模板生成完整的 Markdown 生图提示词。";
 
+export interface AssetImagePromptItem {
+  name: string;
+  type: string;
+  appearance: string;
+  variant: AssetItemVariant;
+}
+
 export function assetImagePromptContext(
   project: Project | null,
   asset: Asset,
-  item: { name: string; type: string; appearance: string },
+  item: AssetImagePromptItem,
   template: AssetImagePromptTemplate | undefined,
 ) {
   return {
@@ -27,7 +35,13 @@ export function assetImagePromptContext(
       描述: asset.description,
       属性: asset.properties,
     },
-    子资产: { 名称: item.name, 类别: item.type, 外观描写: item.appearance },
+    子资产: {
+      名称: item.name,
+      类别: item.type,
+      时间线: item.variant.timeline.trim(),
+      表现状态: item.variant.appearanceState.trim(),
+      外观描写: item.appearance,
+    },
     提示词模板: template,
   };
 }

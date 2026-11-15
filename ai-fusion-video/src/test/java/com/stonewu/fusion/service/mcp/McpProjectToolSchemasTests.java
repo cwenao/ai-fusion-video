@@ -115,6 +115,36 @@ class McpProjectToolSchemasTests {
                 input("{\"propertyChanges\":{\"imagePrompt\":\"  \"}}")));
     }
 
+    @Test
+    void assetCreateSchemaAdvertisesSeveralItemsWithoutAllowingNestedMediaOrClientIds() {
+        var args = input("""
+                {"projectId":"4","kind":"asset","requestId":"sync-character","fields":{
+                    "type":"character","name":"阿林","items":[
+                        {"name":"少年","properties":{"timeline":"十年前","appearanceState":"校服"}},
+                        {"name":"归来","properties":{"timeline":"主线第 8 集","appearanceState":"伤愈"}}]}}
+                """);
+        var contract = schemas.contract(McpProjectTool.ASSET_CREATE);
+        McpProjectToolSchemas.validate(contract.validator(), args, "arguments");
+        var item = (ObjectNode) args.at("/fields/items/1");
+        item.put("imageUrl", "https://example.test/image.png");
+        assertThrows(McpProjectFailure.class, () -> McpProjectToolSchemas.validate(contract.validator(), args, "arguments"));
+        item.remove("imageUrl");
+        item.put("id", "5");
+        assertThrows(McpProjectFailure.class, () -> McpProjectToolSchemas.validate(contract.validator(), args, "arguments"));
+    }
+
+    @Test
+    void assetItemLabelsCanBeClearedOnlyThroughPropertyChanges() {
+        var type = CanvasValueType.ASSET_ITEM;
+        schemas.validateFields(type, false, input("""
+                {"propertyChanges":{"timeline":null,"appearanceState":"入夜"}}
+                """));
+        for (String invalid : List.of("null", "5", "\"\"", "\"" + "夜".repeat(81) + "\"")) {
+            assertThrows(McpProjectFailure.class, () -> schemas.validateFields(type, true,
+                    input("{\"properties\":{\"timeline\":" + invalid + "}}")));
+        }
+    }
+
     private ObjectNode input(String value) {
         return json.read(value, ObjectNode.class);
     }

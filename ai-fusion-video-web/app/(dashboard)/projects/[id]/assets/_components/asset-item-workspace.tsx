@@ -24,7 +24,9 @@ import { AssetAppearanceDialog } from "./asset-appearance-dialog";
 import { AssetImagePromptField } from "./asset-image-prompt-field";
 import { MAX_ASSET_IMAGE_PROMPT_LENGTH } from "./asset-image-prompt-context";
 import { AssetItemMedia } from "./asset-item-media";
-import { getAppearance, getAppearanceHints } from "./asset-types";
+import { getAppearance, getAppearanceHints, type AssetItemDraft } from "./asset-types";
+import { AssetItemVariantFields } from "./asset-item-variant-fields";
+import { getAssetItemVariant } from "@/lib/asset-item-variant";
 
 interface AssetItemWorkspaceProps {
   projectId: number;
@@ -37,18 +39,12 @@ interface AssetItemWorkspaceProps {
   saving: boolean;
   onCreate: (
     parentVersion: number,
-    name: string,
-    appearance: string,
-    imageUrl: string,
-    imagePrompt: string,
+    draft: AssetItemDraft,
     image?: ImageModelOptions,
   ) => Promise<void>;
   onSave: (
     item: AssetItem,
-    name: string,
-    appearance: string,
-    imageUrl: string,
-    imagePrompt: string,
+    draft: AssetItemDraft,
   ) => Promise<AssetItem>;
   onDelete: (item: AssetItem) => void;
   onCancelCreate: () => void;
@@ -76,13 +72,16 @@ export function AssetItemWorkspace({
   const initialAppearance = getAppearance(base);
   const initialImageUrl = base?.imageUrl || "";
   const initialImagePrompt = getAssetImagePrompt(base);
+  const initialVariant = getAssetItemVariant(base?.properties ?? null);
   const [name, setName] = useState(initialName);
   const [appearance, setAppearance] = useState(initialAppearance);
   const [imageUrl, setImageUrl] = useState(initialImageUrl);
   const [imagePrompt, setImagePrompt] = useState(initialImagePrompt);
+  const [variant, setVariant] = useState(initialVariant);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
   const appearanceField = useId();
+  const nameField = useId();
   const [appearanceOpen, setAppearanceOpen] = useState(false);
   const [generationOpen, setGenerationOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -94,7 +93,10 @@ export function AssetItemWorkspace({
     name !== initialName ||
     appearance !== initialAppearance ||
     imageUrl !== initialImageUrl ||
-    imagePrompt !== initialImagePrompt;
+    imagePrompt !== initialImagePrompt ||
+    variant.timeline !== initialVariant.timeline ||
+    variant.appearanceState !== initialVariant.appearanceState;
+  const draft: AssetItemDraft = { name, appearance, imageUrl, imagePrompt, variant };
   const disabled = saving || uploading || !name.trim() || imagePrompt.length > MAX_ASSET_IMAGE_PROMPT_LENGTH;
 
   useEffect(() => {
@@ -107,6 +109,7 @@ export function AssetItemWorkspace({
     setAppearance(getAppearance(item));
     setImageUrl(item.imageUrl || "");
     setImagePrompt(getAssetImagePrompt(item));
+    setVariant(getAssetItemVariant(item.properties));
   }, [item, base, dirty, saving, uploading]);
 
   const upload = async (file: File) => {
@@ -145,19 +148,20 @@ export function AssetItemWorkspace({
       return;
     }
     setError("");
-    const updated = await onSave(base, name, appearance, imageUrl, imagePrompt);
+    const updated = await onSave(base, draft);
     setBase(updated);
     setName(updated.name || "");
     setAppearance(getAppearance(updated));
     setImageUrl(updated.imageUrl || "");
     setImagePrompt(getAssetImagePrompt(updated));
+    setVariant(getAssetItemVariant(updated.properties));
   };
 
   const create = async (image?: ImageModelOptions) => {
     if (disabled) {
       return;
     }
-    await onCreate(creationVersion, name, appearance, imageUrl, imagePrompt, image);
+    await onCreate(creationVersion, draft, image);
   };
 
   const generationBlockedReason = imagePrompt.trim() ? undefined : "请先生成或填写生图提示词。";
@@ -239,10 +243,11 @@ export function AssetItemWorkspace({
           </div>
         )}
 
-        <div className="mt-4 space-y-3.5">
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium text-muted-foreground">名称</label>
+        <div className="mt-4 flex min-w-0 flex-col gap-4">
+          <div className="flex min-w-0 flex-col gap-2">
+            <label htmlFor={nameField} className="text-xs font-medium text-muted-foreground">名称</label>
             <Input disabled={saving || uploading}
+              id={nameField}
               value={name}
               onChange={(event) => setName(event.target.value)}
               placeholder="子资产名称"
@@ -250,6 +255,8 @@ export function AssetItemWorkspace({
               autoFocus={mode === "create"}
             />
           </div>
+
+          <AssetItemVariantFields value={variant} onChange={setVariant} disabled={saving || uploading} />
 
           <div className="flex min-w-0 flex-col gap-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -301,6 +308,7 @@ export function AssetItemWorkspace({
             itemName={name.trim()}
             itemType={base?.itemType ?? "variant"}
             appearance={appearance}
+            variant={variant}
             value={imagePrompt}
             disabled={saving || uploading}
             onChange={setImagePrompt}
@@ -348,6 +356,7 @@ export function AssetItemWorkspace({
           asset={asset}
           name={name.trim()}
           appearance={appearance}
+          variant={variant}
           onClose={() => setAppearanceOpen(false)}
           onApply={(draft) => {
             setAppearance(draft);

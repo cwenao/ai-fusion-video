@@ -25,6 +25,8 @@ import java.util.Objects;
 
 import static com.stonewu.fusion.service.canvas.model.CanvasValueType.*;
 import static com.stonewu.fusion.service.resource.AssetFields.IMAGE_PROMPT;
+import static com.stonewu.fusion.service.resource.AssetFields.APPEARANCE_STATE;
+import static com.stonewu.fusion.service.resource.AssetFields.TIMELINE;
 
 @Component
 @RequiredArgsConstructor
@@ -175,6 +177,13 @@ class McpProjectResources {
         var fields = result.putObject("fields");
         copy(source, fields, List.of("title", "name", "type", "itemType", "episodeNumber", "sceneNumber",
                 "sceneHeading", "shotNumber", "shotType", "duration", "sortOrder", "totalEpisodes", "totalScenes"));
+        if (summary && type == ASSET_ITEM && source.get("properties") instanceof ObjectNode properties) {
+            var labels = json.object(Map.of());
+            copy(properties, labels, List.of(TIMELINE, APPEARANCE_STATE));
+            if (!labels.isEmpty()) {
+                fields.set("properties", labels);
+            }
+        }
         if (!summary) {
             copy(source, fields, schemas.readFields(type));
             copy(source, fields, List.of("aiPrompt", "firstFramePrompt", "lastFramePrompt", "videoPrompt"));

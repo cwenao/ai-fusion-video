@@ -20,6 +20,10 @@ import java.util.*;
 @RequiredArgsConstructor
 public class AssetFields {
     public static final String IMAGE_PROMPT = "imagePrompt";
+    public static final String TIMELINE = "timeline";
+    public static final String APPEARANCE_STATE = "appearanceState";
+    public static final int MAX_VARIANT_LABEL_LENGTH = 80;
+    public static final int MAX_CREATION_ITEMS = 50;
     private static final int MAX_IMAGE_PROMPT_LENGTH = 5_000;
     private final CanvasJson json;
     private static final Set<String> ASSET = Set.of("type", "name", "description", "coverUrl", "properties", "tags",
@@ -59,6 +63,13 @@ public class AssetFields {
                     if (!prompt.isTextual() || prompt.textValue().isBlank()
                             || prompt.textValue().length() > MAX_IMAGE_PROMPT_LENGTH) {
                         throw invalid("生图提示词必须为非空文本，最多 5000 字符");
+                    }
+                }
+                if (type == CanvasValueType.ASSET_ITEM) {
+                    for (String label : List.of(TIMELINE, APPEARANCE_STATE)) {
+                        if (node.has(label) && text(node.get(label), MAX_VARIANT_LABEL_LENGTH, label).isBlank()) {
+                            throw invalid(label + " 不能为空");
+                        }
                     }
                 }
                 for (String media : Set.of("sourceMediaUrl", "videoUrl", "audioUrl", "thumbnailUrl")) {
@@ -102,6 +113,46 @@ public class AssetFields {
             throw invalid("创建资产必须提供 type 和 name");
         }
         return values;
+    }
+
+    public record Creation(Map<String, Object> asset, List<Map<String, Object>> items) {}
+
+    public Creation creation(ObjectNode input) {
+        var draft = input.deepCopy();
+        var itemArray = draft.remove("items");
+        var initial = draft.remove("initialItem");
+        var asset = values(CanvasValueType.ASSET, draft, true);
+        String type = (String) asset.get("type");
+        validateProperties(type, draft.get("properties"));
+        var itemDrafts = new ArrayList<JsonNode>();
+        if (itemArray != null) {
+            if (initial != null || !itemArray.isArray() || itemArray.isEmpty() || itemArray.size() > MAX_CREATION_ITEMS) {
+                throw invalid("items 必须包含 1 至 " + MAX_CREATION_ITEMS + " 个子资产，且不能与 initialItem 同传");
+            }
+            itemArray.forEach(itemDrafts::add);
+        } else {
+            itemDrafts.add(initial == null ? draft.objectNode() : initial);
+        }
+        var items = new ArrayList<Map<String, Object>>();
+        for (JsonNode itemDraft : itemDrafts) {
+            if (!(itemDraft instanceof ObjectNode item)) {
+                throw invalid("子资产必须为对象");
+            }
+            var itemValues = values(CanvasValueType.ASSET_ITEM, item, true);
+            validateProperties(type, item.get("properties"));
+            boolean first = items.isEmpty();
+            itemValues.putIfAbsent("itemType", first ? "initial" : "variant");
+            if (!first && "initial".equals(itemValues.get("itemType"))) {
+                throw invalid("只有第一项可以使用 initial 类型");
+            }
+            if (first && !itemValues.containsKey("name")) {
+                itemValues.put("name", asset.get("name"));
+            }
+            itemValues.putIfAbsent("sourceType", asset.getOrDefault("sourceType", 1));
+            itemValues.put("sortOrder", items.size());
+            items.add(itemValues);
+        }
+        return new Creation(asset, items);
     }
 
     /**

@@ -7,6 +7,7 @@ import { resolveMediaUrl } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
 import { SafeImage } from "@/components/media/managed-image";
 import { cn } from "@/lib/utils";
+import { assetItemVariantLabel } from "@/lib/asset-item-variant";
 import { getAppearance, getAssetType } from "./asset-types";
 
 interface AssetItemTabsProps {
@@ -67,6 +68,7 @@ export function AssetItemTabs({
         {items.map((item) => {
           const selected = !creating && selectedItemId === item.id;
           const appearance = getAppearance(item);
+          const variant = assetItemVariantLabel(item.properties);
 
           return (
             <button
@@ -75,9 +77,10 @@ export function AssetItemTabs({
                 itemRefs.current[item.id] = node;
               }}
               type="button"
+              aria-pressed={selected}
               onClick={() => select(item.id)}
               className={cn(
-                "flex h-[66px] min-w-[190px] snap-center items-center gap-2.5 rounded-2xl border p-2 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
+                "flex h-[66px] w-52 shrink-0 snap-center items-center gap-2.5 rounded-2xl border p-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
                 selected
                   ? "border-primary/35 bg-primary/[0.075] shadow-sm"
                   : "border-border/35 bg-background/45 hover:border-primary/25 hover:bg-background/80",
@@ -104,6 +107,9 @@ export function AssetItemTabs({
                 <p className="truncate text-xs font-semibold">
                   {item.name || "未命名"}
                 </p>
+                {variant && (
+                  <p title={variant} className="mt-0.5 truncate text-[10px] text-muted-foreground">{variant}</p>
+                )}
                 <div className="mt-1 flex items-center gap-2 text-[10px] text-muted-foreground">
                   <span className="inline-flex items-center gap-1">
                     <span
