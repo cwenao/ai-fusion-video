@@ -41,6 +41,9 @@ import com.stonewu.fusion.service.resource.ResourceQueryService;
 import com.stonewu.fusion.service.resource.ResourceAccessPolicy;
 import com.stonewu.fusion.service.resource.model.ResourceCreateCommand;
 import com.stonewu.fusion.service.resource.model.ResourceDeleteCommand;
+import com.stonewu.fusion.service.resource.model.ResourceBatchDeleteCommand;
+import com.stonewu.fusion.service.resource.model.ResourceBatchDeleteCommand.Target;
+import com.stonewu.fusion.service.resource.ResourceBatchDeleteHandler;
 import com.stonewu.fusion.service.resource.model.InitializeProjectWorkspaceCommand;
 import com.stonewu.fusion.service.resource.ResourceAgentFence;
 import com.stonewu.fusion.service.resource.ResourceCommandService;
@@ -198,6 +201,7 @@ class ResourceCommandIT {
                 ScriptResourcePatchHandler.class, ScriptResourceCreateHandler.class, ScriptResourceDeleteHandler.class,
                 ScriptSourceHandler.class, ScriptScenesHandler.class, AssetFields.class, AssetCommandSupport.class,
                 AssetMutationRepository.class, AssetResourceCreateHandler.class, AssetResourcePatchHandler.class, AssetResourceDeleteHandler.class,
+                ResourceBatchDeleteHandler.class,
                 AssetReadRepository.class, AssetResourceQueryService.class, AssetBatchCreateHandler.class,
                 StoryboardMutationRepository.class, StoryboardReadRepository.class, StoryboardFields.class, StoryboardCommandSupport.class, StoryboardRelations.class, StoryboardCreation.class, StoryboardVersionView.class, StoryboardResourceQueryService.class, StoryboardResourceCreateHandler.class, StoryboardResourcePatchHandler.class, StoryboardResourceDeleteHandler.class, StoryboardChildrenHandler.class, StoryboardBatchPatchHandler.class);
         context.refresh();
@@ -878,6 +882,68 @@ class ResourceCommandIT {
         assertThatThrownBy(() -> commands.execute(request, USER)).hasMessage("资产审计失败");
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM afv_asset WHERE name = '审计失败须回滚资产和初始图'", Integer.class)).isZero();
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM afv_asset_item WHERE name = '审计失败须回滚资产和初始图'", Integer.class)).isZero();
+    }
+
+    @Test
+    void batchDeleteRollsBackEarlierTargetsAndReplaysOnlyTheOriginalSelection() {
+        long project = project();
+        var fields = mapper.createObjectNode().put("type", "prop").put("name", "批量删除测试");
+        var first = commands.execute(new ResourceCreateCommand(UUID.randomUUID().toString(), CanvasValueType.ASSET,
+                project, fields), USER).result();
+        var second = commands.execute(new ResourceCreateCommand(UUID.randomUUID().toString(), CanvasValueType.ASSET,
+                project, fields), USER).result();
+        var foreign = commands.execute(new ResourceCreateCommand(UUID.randomUUID().toString(), CanvasValueType.ASSET,
+                project(), fields), USER).result();
+        long firstId = first.path("id").longValue();
+        long secondId = second.path("id").longValue();
+        long firstItemId = first.at("/items/0/id").longValue();
+        var firstTarget = new Target(firstId, 0);
+        String requestId = UUID.randomUUID().toString();
+        rejects(() -> commands.execute(new ResourceBatchDeleteCommand(requestId, CanvasValueType.ASSET, project,
+                null, null, List.of(firstTarget, new Target(secondId, 1))), USER), CanvasErrorCode.VERSION_CONFLICT);
+        rejects(() -> commands.execute(new ResourceBatchDeleteCommand(requestId, CanvasValueType.ASSET, project,
+                null, null, List.of(firstTarget, new Target(foreign.path("id").longValue(), 0))), USER),
+                CanvasErrorCode.RESOURCE_DELETED);
+        rejects(() -> commands.execute(new ResourceBatchDeleteCommand(requestId, CanvasValueType.ASSET, project,
+                null, null, List.of(firstTarget, firstTarget)), USER), CanvasErrorCode.INVALID_COMMAND);
+        assertThat(queries.get(CanvasValueType.ASSET_ITEM, firstItemId, ACTOR).header().version()).isZero();
+        assertThat(queries.get(CanvasValueType.ASSET, firstId, ACTOR).header().version()).isZero();
+
+        var valid = new ResourceBatchDeleteCommand(requestId, CanvasValueType.ASSET, project,
+                null, null, List.of(firstTarget, new Target(secondId, 0)));
+        var receipt = commands.execute(valid, USER);
+        assertThat(receipt.result().path("deleted")).hasSize(2);
+        assertThat(receipt.changes()).hasSize(4).allMatch(change -> change.deleted());
+        assertThat(commands.execute(valid, USER)).isEqualTo(receipt);
+        rejects(() -> queries.get(CanvasValueType.ASSET_ITEM, firstItemId, ACTOR), CanvasErrorCode.RESOURCE_DELETED);
+    }
+
+    @Test
+    void batchDeleteSiblingsUsesOneOriginalParentVersionAndPublishesItsFinalVersion() {
+        long project = project();
+        var fields = mapper.createObjectNode().put("type", "character").put("name", "删除部分表现");
+        var items = fields.putArray("items");
+        items.addObject().put("name", "一").put("imageUrl", "/media/cover.png");
+        items.addObject().put("name", "二");
+        items.addObject().put("name", "三");
+        var asset = commands.execute(new ResourceCreateCommand(UUID.randomUUID().toString(), CanvasValueType.ASSET,
+                project, fields), USER).result();
+        long parent = asset.path("id").longValue();
+        long first = asset.at("/items/0/id").longValue();
+        long second = asset.at("/items/1/id").longValue();
+        long third = asset.at("/items/2/id").longValue();
+        var command = new ResourceBatchDeleteCommand(UUID.randomUUID().toString(), CanvasValueType.ASSET_ITEM, project,
+                parent, 0, List.of(new Target(first, 0), new Target(second, 0)));
+        var receipt = commands.execute(command, USER);
+        assertThat(commands.execute(command, USER)).isEqualTo(receipt);
+        assertThat(receipt.changes()).filteredOn(change -> change.resourceType() == CanvasValueType.ASSET)
+                .singleElement().satisfies(change -> {
+                    assertThat(change.version()).isEqualTo(2);
+                    assertThat(change.changedFields()).contains("coverUrl", "items");
+                });
+        var preserved = queries.get(CanvasValueType.ASSET_ITEM, third, ACTOR).data();
+        assertThat(preserved.path("assetVersion").intValue()).isEqualTo(2);
+        assertThat(preserved.path("version").intValue()).isZero();
     }
 
     @Test

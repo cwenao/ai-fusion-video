@@ -22,6 +22,7 @@ import static com.stonewu.fusion.service.resource.AssetFields.APPEARANCE_STATE;
 import static com.stonewu.fusion.service.resource.AssetFields.MAX_CREATION_ITEMS;
 import static com.stonewu.fusion.service.resource.AssetFields.MAX_VARIANT_LABEL_LENGTH;
 import static com.stonewu.fusion.service.resource.AssetFields.TIMELINE;
+import static com.stonewu.fusion.service.resource.model.ResourceBatchDeleteCommand.MAX_TARGETS;
 
 @Component
 @ConditionalOnProperty(name = "app.project-mcp.enabled", havingValue = "true")
@@ -228,6 +229,7 @@ class McpProjectToolSchemas {
             case SCRIPT_UPDATE -> update(params, required, choice("script", "episode", "scene"),
                     forms(patch, SCRIPT, SCRIPT_EPISODE, SCRIPT_SCENE));
             case SCRIPT_DELETE -> delete(params, required, choice("scene"));
+            case SCRIPT_BATCH_DELETE -> batchDelete(params, required, choice("scene"));
             case SCRIPT_REORDER_SCENES -> reorder(params, required);
             case STORYBOARD_LIST -> {
                 list(params, required, choice("episode", "scene", "shot"));
@@ -244,6 +246,7 @@ class McpProjectToolSchemas {
                 reorder(params, required);
             }
             case STORYBOARD_DELETE -> delete(params, required, choice("scene", "shot"));
+            case STORYBOARD_BATCH_DELETE -> batchDelete(params, required, choice("scene", "shot"));
             case STORYBOARD_APPEND_SHOTS -> {
                 required(params, required, "sceneId", ID);
                 required(params, required, "expectedParentVersion", VERSION);
@@ -267,6 +270,16 @@ class McpProjectToolSchemas {
             case ASSET_UPDATE -> {
                 update(params, required, choice("asset", "assetItem"), forms(patch, ASSET, ASSET_ITEM));
                 params.put("expectedParentVersion", VERSION);
+            }
+            case ASSET_BATCH_DELETE -> {
+                batchDelete(params, required, choice("asset", "assetItem"));
+                params.putAll(properties("parentId", described(ID, "删除子资产时填写所属主资产 ID"),
+                        "expectedParentVersion", described(VERSION, "删除子资产时填写主资产当前版本")));
+                var schema = new LinkedHashMap<>(object(params, required.toArray(String[]::new)));
+                schema.put("if", Map.of("properties", Map.of("kind", choice("assetItem"))));
+                schema.put("then", Map.of("required", List.of("parentId", "expectedParentVersion")));
+                schema.put("else", Map.of("properties", Map.of("parentId", false, "expectedParentVersion", false)));
+                return schema;
             }
             case MEDIA_GET -> required(params, required, "mediaResourceId", MEDIA_ID);
             case MEDIA_BIND -> {
@@ -320,6 +333,13 @@ class McpProjectToolSchemas {
     private static void delete(Map<String, Object> params, List<String> required, Map<String, Object> kind) {
         get(params, required, kind);
         required(params, required, "expectedVersion", VERSION);
+    }
+
+    private static void batchDelete(Map<String, Object> params, List<String> required, Map<String, Object> kind) {
+        required(params, required, "kind", kind);
+        var target = object(properties("id", ID, "expectedVersion", VERSION), "id", "expectedVersion");
+        required(params, required, "targets", described(array(target, 1, MAX_TARGETS),
+                "同一类型的明确 ID 与版本，ID 不可重复，任一目标失败则全部回滚"));
     }
 
     private static void reorder(Map<String, Object> params, List<String> required) {

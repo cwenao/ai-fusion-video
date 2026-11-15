@@ -120,7 +120,7 @@ public class ResourceCommandService {
             return receipt;
         }));
         // 事务提交后清理对应业务缓存；处理器的 evict 由 Spring Cache 代理执行。
-        handler.evict();
+        handler.evict(command);
         return result;
     }
 

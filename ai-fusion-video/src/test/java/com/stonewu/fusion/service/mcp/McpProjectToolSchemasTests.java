@@ -134,6 +134,33 @@ class McpProjectToolSchemasTests {
     }
 
     @Test
+    void batchDeleteRequiresExplicitVersionedTargetsAndOnlyAssetItemsTakeParentVersion() {
+        var args = input("""
+                {"projectId":"4","kind":"assetItem","requestId":"delete-variants","parentId":"10",
+                 "expectedParentVersion":3,"targets":[{"id":"11","expectedVersion":0},{"id":"12","expectedVersion":2}]}
+                """);
+        var assetSchema = schemas.contract(McpProjectTool.ASSET_BATCH_DELETE).validator();
+        McpProjectToolSchemas.validate(assetSchema, args, "arguments");
+        assertThrows(McpProjectFailure.class, () -> McpProjectToolSchemas.validate(assetSchema,
+                args.deepCopy().put("kind", "asset"), "arguments"));
+        var withoutParentVersion = args.deepCopy();
+        withoutParentVersion.remove("expectedParentVersion");
+        assertThrows(McpProjectFailure.class,
+                () -> McpProjectToolSchemas.validate(assetSchema, withoutParentVersion, "arguments"));
+
+        var shots = input("""
+                {"projectId":"4","kind":"shot","requestId":"delete-shots","targets":[{"id":"11","expectedVersion":2}]}
+                """);
+        var shotSchema = schemas.contract(McpProjectTool.STORYBOARD_BATCH_DELETE).validator();
+        McpProjectToolSchemas.validate(shotSchema, shots, "arguments");
+        assertThrows(McpProjectFailure.class, () -> McpProjectToolSchemas.validate(shotSchema,
+                shots.deepCopy().put("kind", "storyboard"), "arguments"));
+        ((ObjectNode) shots.at("/targets/0")).remove("expectedVersion");
+        assertThrows(McpProjectFailure.class,
+                () -> McpProjectToolSchemas.validate(shotSchema, shots, "arguments"));
+    }
+
+    @Test
     void assetItemLabelsCanBeClearedOnlyThroughPropertyChanges() {
         var type = CanvasValueType.ASSET_ITEM;
         schemas.validateFields(type, false, input("""

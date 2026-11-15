@@ -18,5 +18,10 @@ public interface ResourceCommandHandler {
 
     ResourceMutation apply(ResourceCommand command, ResourceCommandContext context);
 
-    void evict();
+    default void evict(ResourceCommand command) {
+        evict();
+    }
+
+    default void evict() {
+    }
 }

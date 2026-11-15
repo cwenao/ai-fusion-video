@@ -96,6 +96,7 @@ class McpProjectTools {
             case SCRIPT_CREATE -> create(grant, McpProjectValues.script(kind), args, key);
             case SCRIPT_UPDATE -> update(grant, McpProjectValues.script(kind), args, key);
             case SCRIPT_DELETE -> delete(grant, McpProjectValues.script(kind), args, key);
+            case SCRIPT_BATCH_DELETE -> batchDelete(grant, SCRIPT_SCENE, args, key);
             case SCRIPT_REORDER_SCENES -> reorder(grant, SCRIPT_EPISODE, args, key);
             case STORYBOARD_LIST -> list(grant, McpProjectValues.storyboard(kind), args,
                     McpProjectValues.storyboard(args.path("parentKind").asText()));
@@ -104,6 +105,7 @@ class McpProjectTools {
             case STORYBOARD_CREATE -> create(grant, McpProjectValues.storyboard(kind), args, key);
             case STORYBOARD_UPDATE -> update(grant, McpProjectValues.storyboard(kind), args, key);
             case STORYBOARD_DELETE -> delete(grant, McpProjectValues.storyboard(kind), args, key);
+            case STORYBOARD_BATCH_DELETE -> batchDelete(grant, McpProjectValues.storyboard(kind), args, key);
             case STORYBOARD_REORDER -> reorder(grant, McpProjectValues.storyboard(args.path("parentKind").asText()), args, key);
             case STORYBOARD_APPEND_SHOTS -> appendShots(grant, args, key);
             case PROMPT_GET -> prompt(grant, args, null);
@@ -113,6 +115,7 @@ class McpProjectTools {
                     false));
             case ASSET_CREATE -> create(grant, CanvasValueType.fromCode(kind), args, key);
             case ASSET_UPDATE -> update(grant, CanvasValueType.fromCode(kind), args, key);
+            case ASSET_BATCH_DELETE -> batchDelete(grant, CanvasValueType.fromCode(kind), args, key);
             case MEDIA_GET -> Outcome.read(media.get(grant, args.path("mediaResourceId").asText()));
             case MEDIA_BIND -> bindMedia(grant, args, key);
         };
@@ -204,6 +207,24 @@ class McpProjectTools {
                 args.path("expectedVersion").intValue()));
         return new Outcome(json.object(Map.of("id", Long.toString(target), "kind", McpProjectValues.kind(type),
                 "deleted", true)), receipt);
+    }
+
+    private Outcome batchDelete(ProjectGrant grant, CanvasValueType type, ObjectNode args, String key) {
+        var targets = new ArrayList<ResourceBatchDeleteCommand.Target>();
+        args.path("targets").forEach(target -> targets.add(new ResourceBatchDeleteCommand.Target(
+                id(target, "id"), target.path("expectedVersion").intValue())));
+        Long parentId = type == ASSET_ITEM ? id(args, "parentId") : null;
+        Integer parentVersion = type == ASSET_ITEM ? args.path("expectedParentVersion").intValue() : null;
+        var receipt = submit(grant, new ResourceBatchDeleteCommand(key, type, grant.projectId(), parentId,
+                parentVersion, targets));
+        var output = json.object(Map.of());
+        var deleted = output.putArray("deleted");
+        receipt.result().path("deleted").forEach(resource -> deleted.addObject()
+                .put("id", resource.path("id").asText())
+                .put("kind", McpProjectValues.kind(type))
+                .put("version", resource.path("version").intValue())
+                .put("deleted", true));
+        return new Outcome(output, receipt);
     }
 
     private Outcome reorder(ProjectGrant grant, CanvasValueType parent, ObjectNode args, String key) {
@@ -353,6 +374,13 @@ class McpProjectTools {
                     || "asset".equals(resourceKind)) ? "expectedParentVersion" : "expectedVersion";
         if (args.has(field)) {
             details.put("expectedVersion", args.path(field).intValue());
+        } else if (resourceKind != null && args.has("targets")) {
+            for (var target : args.path("targets")) {
+                if (target.path("id").asText().equals(details.get("resourceId"))) {
+                    details.put("expectedVersion", target.path("expectedVersion").intValue());
+                    break;
+                }
+            }
         }
         return new McpProjectFailure(409, "VERSION_CONFLICT", failure.getMessage(), details);
     }

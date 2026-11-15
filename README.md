@@ -163,6 +163,16 @@ https://github.com/user-attachments/assets/acd181a0-541c-4163-a000-fa9ed72a5106
 
 已有主资产可用 `fusion_asset_list`（`kind: "assetItem"`，`parentId` 为主资产 ID）分页读取全部子资产及其时间线和表现状态。新增子资产用 `fusion_asset_create` 的 `kind: "assetItem"`，更新用 `fusion_asset_update` 的 `patch.propertyChanges`，并传入当前父版本；更新还需要子资产自身版本。字段省略时保留原值，传 `null` 可清空。每个子资产按 ID 单独绑定媒体和引用。
 
+批量删除接受同一项目中 1 至 20 个明确的目标。传入 `projectId`、`requestId`、资源类型 `kind` 和 `targets: [{ "id": "42", "expectedVersion": 3 }]`。使用对应的详情或列表工具取得 ID 和版本。
+
+| 工具 | 可选类型与删除范围 |
+| --- | --- |
+| `fusion_script_batch_delete` | `scene` 删除剧本场次 |
+| `fusion_storyboard_batch_delete` | `shot` 删除镜头，`scene` 删除分镜场景及其镜头 |
+| `fusion_asset_batch_delete` | `asset` 删除主资产及其子资产，`assetItem` 删除同一主资产下指定的子资产。删除子资产时另传 `parentId` 和 `expectedParentVersion` |
+
+删除采用软删除，媒体原件保留。任一目标不存在、越权或版本冲突时整批回滚。成功后 `data.deleted` 返回指定目标，`versions` 包含级联删除或版本递增的资源。网络重试沿用原参数和 `requestId`。
+
 在分镜表格、卡片或镜头详情点击「打开视频工具」，可把已保存的视频提示词、首尾帧和关联资产的图片、音频、视频带入生成表单。生成完成后，在同项目的成片上点击「回填到镜头」，即可将选中的视频与封面写回原镜头。操作和工具参数见[分镜与资产 MCP 说明](dev-docs/3-completed/20261115-分镜资产MCP与视频工具/development-plan.md)。
 
 ### ComfyUI 工作流

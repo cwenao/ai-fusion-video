@@ -10,6 +10,7 @@ enum McpProjectTool {
     SCRIPT_CREATE(true, "在剧本或分集中追加分集或场次"),
     SCRIPT_UPDATE(true, "按版本更新剧本、分集或场次"),
     SCRIPT_DELETE(true, "按版本删除剧本场次"),
+    SCRIPT_BATCH_DELETE(true, "在同一项目中按版本批量删除剧本场次，整批提交"),
     SCRIPT_REORDER_SCENES(true, "按剧本分集版本调整直属场次顺序，须传完整 ID 列表"),
     STORYBOARD_LIST(false, "分页读取分镜分集、场景或镜头"),
     STORYBOARD_GET(false, "读取分镜主档、分集、场景或镜头详情，包括提示词、自定义内容和媒体绑定"),
@@ -17,6 +18,7 @@ enum McpProjectTool {
     STORYBOARD_UPDATE(true, "按版本更新分镜内容"),
     STORYBOARD_REORDER(true, "按父对象版本调整直属分集、场次或镜头的顺序，须传完整 ID 列表"),
     STORYBOARD_DELETE(true, "按版本删除镜头或删除场次及场次内镜头"),
+    STORYBOARD_BATCH_DELETE(true, "按版本批量删除镜头或分镜场景，删除场景会同时删除其镜头"),
     STORYBOARD_APPEND_SHOTS(true, "在同一场景内原子追加一批镜头"),
     PROMPT_GET(false, "读取指定镜头或资产的提示词槽位和版本"),
     PROMPT_SET(true, "按版本首次填写、修改或清空指定提示词槽位"),
@@ -24,6 +26,7 @@ enum McpProjectTool {
     ASSET_GET(false, "读取主资产设定，或子资产的时间线、表现状态、外观描述和生图提示词"),
     ASSET_CREATE(true, "一次创建主资产及其多个子资产，或向已有主资产追加一个子资产"),
     ASSET_UPDATE(true, "按版本更新资产设定，或更新子资产的时间线、表现状态、外观和生图提示词"),
+    ASSET_BATCH_DELETE(true, "按版本批量删除主资产及其子资产，或仅删除同一主资产下指定的子资产"),
     MEDIA_GET(false, "读取项目媒体原件元数据和下载路径"),
     MEDIA_BIND(true, "按版本绑定已上传的原件、替换或清空指定槽位");
 
@@ -41,8 +44,9 @@ enum McpProjectTool {
 
     boolean canReplaceContent() {
         return switch (this) {
-            case SCRIPT_UPDATE, SCRIPT_DELETE, SCRIPT_REORDER_SCENES, STORYBOARD_UPDATE, STORYBOARD_DELETE, STORYBOARD_REORDER,
-                 PROMPT_SET, ASSET_UPDATE, MEDIA_BIND -> true;
+            case SCRIPT_UPDATE, SCRIPT_DELETE, SCRIPT_BATCH_DELETE, SCRIPT_REORDER_SCENES,
+                 STORYBOARD_UPDATE, STORYBOARD_DELETE, STORYBOARD_BATCH_DELETE, STORYBOARD_REORDER,
+                 PROMPT_SET, ASSET_UPDATE, ASSET_BATCH_DELETE, MEDIA_BIND -> true;
             default -> false;
         };
     }
