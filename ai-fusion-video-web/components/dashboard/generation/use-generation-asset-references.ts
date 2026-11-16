@@ -7,7 +7,8 @@ import type { AiModel, ModelPreset } from "@/lib/api/ai-model";
 import { getApiErrorMessage } from "@/lib/api/api-error";
 import { projectApi } from "@/lib/api/project";
 import type { StoryboardItem } from "@/lib/api/storyboard";
-import { loadAssetReference, validateAssetReferences } from "@/lib/asset-reference-client";
+import { loadAssetImagePrompt, loadAssetReference, validateAssetReferences } from "@/lib/asset-reference-client";
+import { ASSET_IMAGE_PROMPT_QUERY_KEYS, parseAssetImagePromptSource } from "@/lib/asset-image-prompt-source";
 import { ASSET_REFERENCE_QUERY_KEYS, parseAssetReferenceIdentity, type AssetReference, type AssetReferenceMediaType } from "@/lib/asset-references";
 import { loadStoryboardVideo, validateStoryboardImages } from "@/lib/storyboard-video-client";
 import { STORYBOARD_VIDEO_QUERY_KEYS, parseStoryboardVideoIdentity, storyboardImageReferences } from "@/lib/storyboard-video-source";
@@ -55,6 +56,8 @@ export function useGenerationAssetReferences(options: Options) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const query = searchParams.toString();
+  const promptImport = options.mode === "image" && ASSET_IMAGE_PROMPT_QUERY_KEYS.some((key) => searchParams.has(key));
+  const waitingForMedia = !promptImport && (options.loadingModels || !options.imageAvailability.runtimeConfigLoaded);
   const storyboardQuery = options.mode === "video" && (searchParams.has("shotId") || searchParams.has("shotVersion"));
   const importedStoryboard = useRef<string | null>(null);
   const storyboardImport = storyboardQuery && importedStoryboard.current !== query;
@@ -113,7 +116,7 @@ export function useGenerationAssetReferences(options: Options) {
   }
 
   useEffect(() => {
-    if (options.loadingModels || !options.imageAvailability.runtimeConfigLoaded) {
+    if (waitingForMedia) {
       return;
     }
     if (storyboardQuery && importedStoryboard.current === query) {
@@ -122,16 +125,18 @@ export function useGenerationAssetReferences(options: Options) {
     }
     let cancelled = false;
     let identity;
+    let promptSource;
     let shot;
     try {
       const params = new URLSearchParams(query);
+      promptSource = promptImport ? parseAssetImagePromptSource(params) : null;
       shot = storyboardQuery ? parseStoryboardVideoIdentity(params) : null;
-      identity = shot ? null : parseAssetReferenceIdentity(params);
+      identity = shot || promptSource ? null : parseAssetReferenceIdentity(params);
     } catch (cause) {
       setError(getApiErrorMessage(cause));
       return;
     }
-    if (!identity && !shot) {
+    if (!identity && !shot && !promptSource) {
       setBusy(false);
       return;
     }
@@ -139,6 +144,22 @@ export function useGenerationAssetReferences(options: Options) {
     setError("");
     const snapshot = latest.current;
     void (async () => {
+      if (promptSource) {
+        const { prompt, projectId } = await loadAssetImagePrompt(promptSource);
+        const nextContext = await projectContext(projectId);
+        if (cancelled) {
+          return;
+        }
+        if (latest.current.form.prompt.trim() || generationReferenceUrls(latest.current.form).length
+          || (context && context.id !== projectId)) {
+          throw new Error("请清空当前提示词和参考素材后重试带入");
+        }
+        snapshot.setForm((current) => ({ ...current, prompt }));
+        setContext(nextContext);
+        removeImportKeys(ASSET_IMAGE_PROMPT_QUERY_KEYS);
+        toast.success("已带入子资产生图提示词");
+        return;
+      }
       const assertUnchanged = () => {
         if (latest.current.form !== snapshot.form || latest.current.modelId !== snapshot.modelId) {
           throw new Error("模型或表单已变化，请重新带入");
@@ -226,7 +247,7 @@ export function useGenerationAssetReferences(options: Options) {
     };
   // The URL/retry is the import command. Form/model edits must not reapply it.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, retry, storyboardQuery, options.loadingModels, options.imageAvailability.runtimeConfigLoaded, pathname, router]);
+  }, [query, retry, promptImport, storyboardQuery, waitingForMedia, pathname, router]);
 
   const mediaTypes: AssetReferenceMediaType[] = [];
   if (fieldConfig) {
@@ -289,10 +310,13 @@ export function useGenerationAssetReferences(options: Options) {
     },
     targetLabel: fieldConfig?.label,
     context, busy, error, selectionIssue, confirm, mediaTypes, clear, validateForSubmit,
+    promptImport, hasReferences: activeUrls.size > 0,
     retryImport: () => setRetry((value) => value + 1),
     dismissError: () => {
       setError("");
-      if (storyboardQuery) {
+      if (promptImport) {
+        removeImportKeys(ASSET_IMAGE_PROMPT_QUERY_KEYS);
+      } else if (storyboardQuery) {
         removeImportKeys(STORYBOARD_VIDEO_QUERY_KEYS);
       }
     },

@@ -1,10 +1,27 @@
 import { assetApi } from "./api/asset";
 import { getMediaResource, mediaId } from "./api/media";
+import { getAssetImagePrompt, type AssetImagePromptSource } from "./asset-image-prompt-source";
 import { resolveAssetReferenceIdentity, type AssetReference, type AssetReferenceIdentity } from "./asset-references";
 
 export async function loadAssetReference(identity: AssetReferenceIdentity): Promise<AssetReference> {
   const [asset, items] = await Promise.all([assetApi.get(identity.assetId), assetApi.listItems(identity.assetId)]);
   return resolveAssetReferenceIdentity({ ...asset, items }, identity);
+}
+
+export async function loadAssetImagePrompt({ itemId, itemVersion }: AssetImagePromptSource) {
+  const item = await assetApi.getItem(itemId);
+  if (item.version !== itemVersion) {
+    throw new Error("子资产已更新，请从项目资产重新带入提示词");
+  }
+  const prompt = getAssetImagePrompt(item);
+  if (!prompt.trim()) {
+    throw new Error("当前子资产没有已保存的生图提示词");
+  }
+  const asset = await assetApi.get(item.assetId);
+  if (asset.projectId === null) {
+    throw new Error("该子资产不属于项目");
+  }
+  return { prompt, projectId: asset.projectId };
 }
 
 /** Re-read the authorized asset and the actual managed resource, retaining only stable references. */

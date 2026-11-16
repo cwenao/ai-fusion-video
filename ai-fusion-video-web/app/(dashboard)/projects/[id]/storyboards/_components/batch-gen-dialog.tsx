@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { Sparkles, ImageIcon, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { getAssetImagePrompt } from "@/lib/asset-image-generation";
+import { getAssetImagePrompt } from "@/lib/asset-image-prompt-source";
 import { resolveMediaUrl } from "@/lib/api/client";
 import type { AssetItem } from "@/lib/api/asset";
 import { SafeImage } from "@/components/media/managed-image";

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { usePromptTemplates } from "@/hooks/use-prompt-templates";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { getAssetImagePrompt } from "@/lib/asset-image-generation";
+import { getAssetImagePrompt } from "@/lib/asset-image-prompt-source";
 import type { AssetWithItems } from "@/lib/api/asset";
 import { ASSET_TYPES } from "./asset-types";
 import { AssetImagePromptTemplateSelect } from "./asset-image-prompt-template-select";

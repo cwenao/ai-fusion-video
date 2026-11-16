@@ -11,7 +11,9 @@ export function GenerationAssetNotice({ assets, writebackBusy }: {
 }) {
   return (
     <div className="flex min-w-0 flex-col gap-2" aria-live="polite">
-      {assets.busy && <p className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" />正在载入参考素材…</p>}
+      {assets.busy && <p className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" />
+        {assets.promptImport ? "正在带入提示词…" : "正在载入参考素材…"}
+      </p>}
       {assets.context && (
         <div className="flex min-w-0 flex-wrap items-center gap-2 rounded-lg border border-border/30 bg-card/50 p-2">
           <FolderOpen className="size-4 shrink-0 text-muted-foreground" />
@@ -25,7 +27,9 @@ export function GenerationAssetNotice({ assets, writebackBusy }: {
               返回分镜
             </Button>
           )}
-          <Button type="button" variant="ghost" onClick={assets.clear} disabled={assets.busy || writebackBusy} title="清空参考素材并退出当前项目">清空参考</Button>
+          <Button type="button" variant="ghost" onClick={assets.clear} disabled={assets.busy || writebackBusy} title="清空参考素材并退出当前项目">
+            {assets.context.id !== null && !assets.hasReferences && !assets.isStoryboard ? "退出项目" : "清空参考"}
+          </Button>
         </div>
       )}
       {assets.referenceIssue && (

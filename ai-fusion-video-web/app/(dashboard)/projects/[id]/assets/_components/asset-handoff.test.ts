@@ -54,6 +54,7 @@ function fixture() {
     "@/components/media/managed-audio": { ManagedAudio: "ManagedAudio" },
     "@/lib/api/storage": { uploadFile: async () => "media://uploaded" },
     "@/lib/api/api-error": { getApiErrorMessage: (error: Error) => error.message },
+    "@/lib/api/toast-api-error": { toastApiError: () => {} },
     "@/lib/store/pipeline-store": {},
     "@/lib/utils": { cn: (...values: unknown[]) => values.filter(Boolean).join(" ") },
   };

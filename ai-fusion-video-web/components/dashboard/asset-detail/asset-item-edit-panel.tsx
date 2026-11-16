@@ -18,7 +18,8 @@ import { assetApi, type AssetItem } from "@/lib/api/asset";
 import { resolveMediaUrl } from "@/lib/api/client";
 import { uploadFile } from "@/lib/api/storage";
 import { AssetImageGenerationDialog } from "@/components/assets/asset-image-generation-dialog";
-import { enqueueAssetImageGeneration, getAssetImagePrompt } from "@/lib/asset-image-generation";
+import { enqueueAssetImageGeneration } from "@/lib/asset-image-generation";
+import { getAssetImagePrompt } from "@/lib/asset-image-prompt-source";
 import {
   Check,
   Images,

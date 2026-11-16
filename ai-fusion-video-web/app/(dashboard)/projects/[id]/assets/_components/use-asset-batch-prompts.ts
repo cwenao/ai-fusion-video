@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { assetApi, type AssetItem, type AssetWithItems } from "@/lib/api/asset";
 import { getApiErrorMessage, getApiErrorStatus } from "@/lib/api/api-error";
-import { getAssetImagePrompt } from "@/lib/asset-image-generation";
+import { getAssetImagePrompt } from "@/lib/asset-image-prompt-source";
 import type { Project } from "@/lib/api/project";
 import { useCommandRequestKey } from "@/hooks/use-command-request-key";
 import { enqueueProjectText, projectTextOutput } from "@/lib/project-text-generation";

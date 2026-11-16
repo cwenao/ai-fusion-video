@@ -1,11 +1,5 @@
 import type { ImageModelOptions } from "@/components/dashboard/generation/image-model-fields";
-import type { AssetItem } from "@/lib/api/asset";
 import { usePipelineStore } from "@/lib/store/pipeline-store";
-
-export function getAssetImagePrompt(item: AssetItem | null): string {
-  const value = item?.properties?.imagePrompt;
-  return typeof value === "string" ? value : "";
-}
 
 interface AssetImageGenerationRequest {
   projectId: number;

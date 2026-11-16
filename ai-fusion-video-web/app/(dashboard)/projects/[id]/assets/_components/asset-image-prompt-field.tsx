@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useRef, useState } from "react";
-import { Sparkles } from "lucide-react";
+import { ArrowUpRight, Sparkles } from "lucide-react";
 import { ScriptSourcePreview } from "@/components/dashboard/script-source-preview";
 import { DialogScrollBody } from "@/components/shared/dialog-scroll-body";
 import { Button } from "@/components/ui/button";
@@ -23,10 +23,15 @@ interface AssetImagePromptFieldProps {
   value: string;
   disabled: boolean;
   onChange: (value: string) => void;
+  imageTool?: {
+    needsSave: boolean;
+    blockedReason?: string;
+    onOpen: () => Promise<void>;
+  };
 }
 
 export function AssetImagePromptField({
-  projectId, asset, itemName, itemType, appearance, variant, value, disabled, onChange,
+  projectId, asset, itemName, itemType, appearance, variant, value, disabled, onChange, imageTool,
 }: AssetImagePromptFieldProps) {
   const field = useId();
   const sourceRef = useRef<HTMLTextAreaElement>(null);
@@ -42,6 +47,15 @@ export function AssetImagePromptField({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <label id={`${field}-label`} htmlFor={field} className="text-sm font-medium">生图提示词</label>
         <div className="flex flex-wrap items-center gap-2">
+          {imageTool && (
+            <Button type="button" variant="outline"
+              disabled={disabled || overflow || !value.trim() || Boolean(imageTool.blockedReason)}
+              title={imageTool.blockedReason || "将提示词带入生图工具"}
+              onClick={() => void imageTool.onOpen()}>
+              <ArrowUpRight />
+              {imageTool.needsSave ? "保存并去生图" : "带提示词去生图"}
+            </Button>
+          )}
           <Button type="button" variant="outline" disabled={disabled || (!preview && !value.trim())}
             onClick={() => setPreview(!preview)}>
             {preview ? "编辑源码" : "预览"}

@@ -24,7 +24,7 @@ export function generationSubmitRequest(
   const referenceImages = clean(form.referenceImages);
   const common = {
     projectId: projectId ?? undefined,
-    prompt: form.prompt.trim(),
+    prompt: mode === "image" ? form.prompt : form.prompt.trim(),
     modelId,
     ratio: form.ratio || undefined,
     resolution: form.resolution || undefined,

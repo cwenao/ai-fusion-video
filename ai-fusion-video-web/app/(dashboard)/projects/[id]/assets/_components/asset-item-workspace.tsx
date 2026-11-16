@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Check,
   Loader2,
@@ -10,13 +11,14 @@ import {
   X,
 } from "lucide-react";
 import type { AssetItem, AssetWithItems } from "@/lib/api/asset";
-import { getAssetImagePrompt } from "@/lib/asset-image-generation";
+import { assetImagePromptHref, getAssetImagePrompt } from "@/lib/asset-image-prompt-source";
 import { assetReferences } from "@/lib/asset-references";
 import { AssetImageGenerationDialog } from "@/components/assets/asset-image-generation-dialog";
 import type { ImageModelOptions } from "@/components/dashboard/generation/image-model-fields";
 import { AssetGenerationActions } from "@/components/assets/asset-generation-actions";
 import { uploadFile } from "@/lib/api/storage";
 import { getApiErrorMessage } from "@/lib/api/api-error";
+import { toastApiError } from "@/lib/api/toast-api-error";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -66,6 +68,7 @@ export function AssetItemWorkspace({
   onCancelCreate,
   onGenerate,
 }: AssetItemWorkspaceProps) {
+  const router = useRouter();
   const [base, setBase] = useState(item);
   const [creationVersion] = useState(parentVersion);
   const initialName = base?.name || "";
@@ -155,6 +158,7 @@ export function AssetItemWorkspace({
     setImageUrl(updated.imageUrl || "");
     setImagePrompt(getAssetImagePrompt(updated));
     setVariant(getAssetItemVariant(updated.properties));
+    return updated;
   };
 
   const create = async (image?: ImageModelOptions) => {
@@ -165,6 +169,19 @@ export function AssetItemWorkspace({
   };
 
   const generationBlockedReason = imagePrompt.trim() ? undefined : "请先生成或填写生图提示词。";
+  const openImageTool = async () => {
+    if (!base || disabled || generationBlockedReason || navigationBlockedReason) {
+      return;
+    }
+    try {
+      const source = dirty ? await save() : base;
+      if (source) {
+        router.push(assetImagePromptHref(source));
+      }
+    } catch (cause) {
+      toastApiError(cause, "无法带入生图工具");
+    }
+  };
   const generationLabel = mode === "create" ? "创建并生图" : dirty ? "保存并生图" : "生成图片";
 
   const generate = async (image: ImageModelOptions) => {
@@ -312,6 +329,11 @@ export function AssetItemWorkspace({
             value={imagePrompt}
             disabled={saving || uploading}
             onChange={setImagePrompt}
+            imageTool={base ? {
+              needsSave: dirty,
+              blockedReason: navigationBlockedReason || (!name.trim() ? "请先填写子资产名称" : undefined),
+              onOpen: openImageTool,
+            } : undefined}
           />
         </div>
 
