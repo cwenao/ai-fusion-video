@@ -6,6 +6,7 @@ import com.stonewu.fusion.service.canvas.model.CanvasValueType;
 import com.stonewu.fusion.service.resource.model.ResourceChange;
 import com.stonewu.fusion.service.resource.model.ResourceHeader;
 
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -29,5 +30,13 @@ public final class ResourceMutations {
     public static ResourceChange change(CanvasValueType type, long id, Long projectId, int version, boolean deleted,
                                         List<String> fields) {
         return new ResourceChange(UUID.randomUUID().toString(), type, id, projectId, version, deleted, fields);
+    }
+
+    static ResourceChange latestChange(ResourceChange previous, ResourceChange latest) {
+        // 同批次的共享对象只发布最终版本，保留两次变更的字段范围。
+        var fields = new LinkedHashSet<>(previous.changedFields());
+        fields.addAll(latest.changedFields());
+        return new ResourceChange(latest.eventId(), latest.resourceType(), latest.resourceId(), latest.projectId(),
+                latest.version(), latest.deleted(), List.copyOf(fields));
     }
 }

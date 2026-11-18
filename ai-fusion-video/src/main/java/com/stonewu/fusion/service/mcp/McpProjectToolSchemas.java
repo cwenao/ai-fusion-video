@@ -23,6 +23,7 @@ import static com.stonewu.fusion.service.resource.AssetFields.MAX_CREATION_ITEMS
 import static com.stonewu.fusion.service.resource.AssetFields.MAX_VARIANT_LABEL_LENGTH;
 import static com.stonewu.fusion.service.resource.AssetFields.TIMELINE;
 import static com.stonewu.fusion.service.resource.model.ResourceBatchDeleteCommand.MAX_TARGETS;
+import static com.stonewu.fusion.service.resource.model.ResourceBatchWriteCommand.MAX_ENTRIES;
 
 @Component
 @ConditionalOnProperty(name = "app.project-mcp.enabled", havingValue = "true")
@@ -44,6 +45,13 @@ class McpProjectToolSchemas {
     private static final Map<String, Object> ASSET_TYPE = choice("character", "scene", "prop", "vehicle",
             "building", "costume", "effect", "material", "image");
     private static final Map<String, Object> TARGET = choice("shot", "asset", "assetItem");
+    private static final Map<String, Object> SCRIPT_DETAIL = choice("script", "episode", "scene");
+    private static final Map<String, Object> SCRIPT_CHILD = choice("episode", "scene");
+    private static final Map<String, Object> BOARD_DETAIL = choice("storyboard", "episode", "scene", "shot");
+    private static final Map<String, Object> BOARD_CHILD = choice("episode", "scene", "shot");
+    private static final Map<String, Object> ASSET_KIND = choice("asset", "assetItem");
+    private static final Map<String, Object> RAW_CONTENT = described(BOOLEAN,
+            "是否返回剧本原文 rawContent。分集默认返回，主档默认省略");
     private static final Map<String, Object> PROMPT = choice("firstFramePrompt", "lastFramePrompt", "videoPrompt",
             "aiPrompt", "imagePrompt");
     private static final Map<String, Object> SLOTS = choice("cover", "image", "thumbnail", "video", "audio",
@@ -215,31 +223,43 @@ class McpProjectToolSchemas {
             }
             case WORKSPACE_INITIALIZE -> required(params, required, "expectedVersion", VERSION);
             case SCRIPT_LIST -> {
-                list(params, required, choice("episode", "scene"));
+                list(params, required, SCRIPT_CHILD);
                 required(params, required, "parentId", ID);
                 params.put("includeRawContent", described(BOOLEAN, "是否返回分集剧本原文 rawContent，默认 true"));
             }
             case SCRIPT_GET -> {
-                get(params, required, choice("script", "episode", "scene"));
-                params.put("includeRawContent", described(BOOLEAN,
-                        "是否返回剧本原文 rawContent。分集默认返回，主档默认省略"));
+                get(params, required, SCRIPT_DETAIL);
+                params.put("includeRawContent", RAW_CONTENT);
             }
-            case SCRIPT_CREATE -> create(params, required, choice("episode", "scene"), true,
+            case SCRIPT_BATCH_GET -> {
+                batchGet(params, required, SCRIPT_DETAIL);
+                params.put("includeRawContent", RAW_CONTENT);
+            }
+            case SCRIPT_CREATE -> create(params, required, SCRIPT_CHILD, true,
                     forms(create, SCRIPT_EPISODE, SCRIPT_SCENE));
-            case SCRIPT_UPDATE -> update(params, required, choice("script", "episode", "scene"),
+            case SCRIPT_BATCH_CREATE -> batchCreate(params, required, SCRIPT_CHILD, true,
+                    forms(create, SCRIPT_EPISODE, SCRIPT_SCENE));
+            case SCRIPT_UPDATE -> update(params, required, SCRIPT_DETAIL,
+                    forms(patch, SCRIPT, SCRIPT_EPISODE, SCRIPT_SCENE));
+            case SCRIPT_BATCH_UPDATE -> batchUpdate(params, required, SCRIPT_DETAIL, false,
                     forms(patch, SCRIPT, SCRIPT_EPISODE, SCRIPT_SCENE));
             case SCRIPT_DELETE -> delete(params, required, choice("scene"));
             case SCRIPT_BATCH_DELETE -> batchDelete(params, required, choice("scene"));
             case SCRIPT_REORDER_SCENES -> reorder(params, required);
             case STORYBOARD_LIST -> {
-                list(params, required, choice("episode", "scene", "shot"));
+                list(params, required, BOARD_CHILD);
                 required(params, required, "parentKind", choice("storyboard", "episode", "scene"));
                 required(params, required, "parentId", ID);
             }
-            case STORYBOARD_GET -> get(params, required, choice("storyboard", "episode", "scene", "shot"));
-            case STORYBOARD_CREATE -> create(params, required, choice("episode", "scene", "shot"), true,
+            case STORYBOARD_GET -> get(params, required, BOARD_DETAIL);
+            case STORYBOARD_BATCH_GET -> batchGet(params, required, BOARD_DETAIL);
+            case STORYBOARD_CREATE -> create(params, required, BOARD_CHILD, true,
                     forms(create, STORYBOARD_EPISODE, STORYBOARD_SCENE, SHOT));
-            case STORYBOARD_UPDATE -> update(params, required, choice("storyboard", "episode", "scene", "shot"),
+            case STORYBOARD_BATCH_CREATE -> batchCreate(params, required, BOARD_CHILD, true,
+                    forms(create, STORYBOARD_EPISODE, STORYBOARD_SCENE, SHOT));
+            case STORYBOARD_UPDATE -> update(params, required, BOARD_DETAIL,
+                    forms(patch, STORYBOARD, STORYBOARD_EPISODE, STORYBOARD_SCENE, SHOT));
+            case STORYBOARD_BATCH_UPDATE -> batchUpdate(params, required, BOARD_DETAIL, false,
                     forms(patch, STORYBOARD, STORYBOARD_EPISODE, STORYBOARD_SCENE, SHOT));
             case STORYBOARD_REORDER -> {
                 required(params, required, "parentKind", choice("storyboard", "episode", "scene"));
@@ -259,35 +279,49 @@ class McpProjectToolSchemas {
                     required(params, required, "text", nullable(TEXT));
                 }
             }
+            case PROMPT_BATCH_GET -> {
+                required(params, required, "targetKind", TARGET);
+                required(params, required, "slot", PROMPT);
+                required(params, required, "targetIds", batchIds(ID));
+            }
+            case PROMPT_BATCH_SET -> {
+                required(params, required, "targetKind", TARGET);
+                required(params, required, "slot", PROMPT);
+                batchTargets(params, required, "targetId", "text", nullable(TEXT), true);
+            }
             case ASSET_LIST -> {
-                list(params, required, choice("asset", "assetItem"));
+                list(params, required, ASSET_KIND);
                 params.putAll(properties("parentId", ID, "assetType", ASSET_TYPE, "keyword",
                         Map.of("type", "string", "maxLength", 200)));
             }
-            case ASSET_GET -> get(params, required, choice("asset", "assetItem"));
-            case ASSET_CREATE -> create(params, required, choice("asset", "assetItem"), false,
+            case ASSET_GET -> get(params, required, ASSET_KIND);
+            case ASSET_BATCH_GET -> batchGet(params, required, ASSET_KIND);
+            case ASSET_CREATE -> create(params, required, ASSET_KIND, false,
                     forms(create, ASSET, ASSET_ITEM));
+            case ASSET_BATCH_CREATE -> {
+                batchCreate(params, required, ASSET_KIND, false, forms(create, ASSET, ASSET_ITEM));
+                return assetParentSchema(params, required);
+            }
             case ASSET_UPDATE -> {
-                update(params, required, choice("asset", "assetItem"), forms(patch, ASSET, ASSET_ITEM));
+                update(params, required, ASSET_KIND, forms(patch, ASSET, ASSET_ITEM));
                 params.put("expectedParentVersion", VERSION);
             }
+            case ASSET_BATCH_UPDATE -> batchUpdate(params, required, ASSET_KIND, true, forms(patch, ASSET, ASSET_ITEM));
             case ASSET_BATCH_DELETE -> {
-                batchDelete(params, required, choice("asset", "assetItem"));
+                batchDelete(params, required, ASSET_KIND);
                 params.putAll(properties("parentId", described(ID, "删除子资产时填写所属主资产 ID"),
                         "expectedParentVersion", described(VERSION, "删除子资产时填写主资产当前版本")));
-                var schema = new LinkedHashMap<>(object(params, required.toArray(String[]::new)));
-                schema.put("if", Map.of("properties", Map.of("kind", choice("assetItem"))));
-                schema.put("then", Map.of("required", List.of("parentId", "expectedParentVersion")));
-                schema.put("else", Map.of("properties", Map.of("parentId", false, "expectedParentVersion", false)));
-                return schema;
+                return assetParentSchema(params, required);
             }
             case MEDIA_GET -> required(params, required, "mediaResourceId", MEDIA_ID);
+            case MEDIA_BATCH_GET -> required(params, required, "mediaResourceIds", batchIds(MEDIA_ID));
             case MEDIA_BIND -> {
                 target(params, required);
-                var binding = object(properties("slot", SLOTS, "mediaResourceId",
-                        described(nullable(MEDIA_ID), "托管媒体 ID；传 null 清空槽位")), "slot",
-                        "mediaResourceId");
-                required(params, required, "bindings", array(binding, 1, 8));
+                required(params, required, "bindings", bindings());
+            }
+            case MEDIA_BATCH_BIND -> {
+                required(params, required, "targetKind", TARGET);
+                batchTargets(params, required, "targetId", "bindings", bindings(), true);
             }
         }
         if (tool == McpProjectTool.PROMPT_SET || tool == McpProjectTool.MEDIA_BIND) {
@@ -313,14 +347,50 @@ class McpProjectToolSchemas {
         required(params, required, "id", ID);
     }
 
+    private static void batchGet(Map<String, Object> params, List<String> required, Map<String, Object> kind) {
+        required(params, required, "kind", kind);
+        required(params, required, "ids", batchIds(ID));
+    }
+
+    private static Map<String, Object> batchIds(Map<String, Object> id) {
+        var schema = new LinkedHashMap<>(array(id, 1, MAX_ENTRIES));
+        schema.put("uniqueItems", true);
+        return schema;
+    }
+
+    private static Map<String, Object> bindings() {
+        return array(object(properties("slot", SLOTS, "mediaResourceId",
+                described(nullable(MEDIA_ID), "托管媒体 ID，传 null 清空槽位")), "slot", "mediaResourceId"), 1, 8);
+    }
+
     private static void create(Map<String, Object> params, List<String> required, Map<String, Object> kind,
                                boolean parentRequired, Map<String, Object> fields) {
         required(params, required, "kind", kind);
         required(params, required, "fields", fields);
+        creationParent(params, required, parentRequired);
+    }
+
+    private static void batchCreate(Map<String, Object> params, List<String> required, Map<String, Object> kind,
+                                    boolean parentRequired, Map<String, Object> fields) {
+        required(params, required, "kind", kind);
+        required(params, required, "items", described(array(fields, 1, MAX_ENTRIES),
+                "每项使用单条新增的 fields 结构，按数组顺序执行，任一项失败则全部回滚"));
+        creationParent(params, required, parentRequired);
+    }
+
+    private static void creationParent(Map<String, Object> params, List<String> required, boolean parentRequired) {
         params.putAll(properties("parentId", ID, "expectedParentVersion", VERSION));
         if (parentRequired) {
             required.addAll(List.of("parentId", "expectedParentVersion"));
         }
+    }
+
+    private static Map<String, Object> assetParentSchema(Map<String, Object> params, List<String> required) {
+        var schema = new LinkedHashMap<>(object(params, required.toArray(String[]::new)));
+        schema.put("if", Map.of("properties", Map.of("kind", choice("assetItem"))));
+        schema.put("then", Map.of("required", List.of("parentId", "expectedParentVersion")));
+        schema.put("else", Map.of("properties", Map.of("parentId", false, "expectedParentVersion", false)));
+        return schema;
     }
 
     private static void update(Map<String, Object> params, List<String> required, Map<String, Object> kind,
@@ -328,6 +398,23 @@ class McpProjectToolSchemas {
         get(params, required, kind);
         required(params, required, "expectedVersion", VERSION);
         required(params, required, "patch", fields);
+    }
+
+    private static void batchUpdate(Map<String, Object> params, List<String> required, Map<String, Object> kind,
+                                    boolean assetParent, Map<String, Object> fields) {
+        required(params, required, "kind", kind);
+        batchTargets(params, required, "id", "patch", fields, assetParent);
+    }
+
+    private static void batchTargets(Map<String, Object> params, List<String> required, String idField,
+                                     String dataField, Map<String, Object> data, boolean assetParent) {
+        var fields = properties(idField, ID, "expectedVersion", VERSION, dataField, data);
+        if (assetParent) {
+            fields.put("expectedParentVersion", described(VERSION, "仅在目标为子资产时必填，使用批次开始前的主资产版本"));
+        }
+        var target = object(fields, idField, "expectedVersion", dataField);
+        required(params, required, "targets", described(array(target, 1, MAX_ENTRIES),
+                "同类目标的 ID、当前版本和写入内容，ID 不可重复，任一项失败则全部回滚"));
     }
 
     private static void delete(Map<String, Object> params, List<String> required, Map<String, Object> kind) {

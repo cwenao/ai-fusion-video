@@ -21,6 +21,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
@@ -93,6 +95,16 @@ public class McpProjectMedia {
 
     ObjectNode get(ProjectGrant grant, String mediaId) {
         return describe(scoped(grant, mediaId, false).resource(), grant.projectId());
+    }
+
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public ObjectNode batchGet(ProjectGrant grant, JsonNode mediaIds) {
+        var result = json.object(Map.of());
+        var items = result.putArray("items");
+        for (var id : mediaIds) {
+            items.add(get(grant, id.textValue()));
+        }
+        return result;
     }
 
     ObjectNode uploadOptions(long projectId) {

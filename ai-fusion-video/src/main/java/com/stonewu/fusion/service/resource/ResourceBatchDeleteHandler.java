@@ -96,8 +96,7 @@ public class ResourceBatchDeleteHandler implements ResourceCommandHandler {
             deleted.add(mutation.result());
             undo.add(mutation.previousValues());
             for (var change : mutation.changes()) {
-                changes.merge(new Key(change.resourceType(), change.resourceId()), change,
-                        ResourceBatchDeleteHandler::latestChange);
+                changes.merge(new Key(change.resourceType(), change.resourceId()), change, ResourceMutations::latestChange);
             }
             if (command.resourceType() == ASSET_ITEM) {
                 parentVersion = changes.get(new Key(ASSET, command.parentId())).version();
@@ -119,14 +118,6 @@ public class ResourceBatchDeleteHandler implements ResourceCommandHandler {
         resources.find(type, id, false, replay)
                 .filter(header -> Objects.equals(header.projectId(), projectId))
                 .orElseThrow(() -> new CanvasException(404, CanvasErrorCode.RESOURCE_DELETED, "业务对象不存在或已删除", Map.of()));
-    }
-
-    private static ResourceChange latestChange(ResourceChange previous, ResourceChange latest) {
-        // 同批中的共享父对象只发布最终版本。媒体引用观察器也按最终版本登记一次。
-        Set<String> fields = new LinkedHashSet<>(previous.changedFields());
-        fields.addAll(latest.changedFields());
-        return new ResourceChange(latest.eventId(), latest.resourceType(), latest.resourceId(), latest.projectId(),
-                latest.version(), latest.deleted(), List.copyOf(fields));
     }
 
     private static CanvasException invalid(String message) {

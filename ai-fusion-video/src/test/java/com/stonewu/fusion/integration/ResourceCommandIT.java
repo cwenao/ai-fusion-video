@@ -44,6 +44,9 @@ import com.stonewu.fusion.service.resource.model.ResourceDeleteCommand;
 import com.stonewu.fusion.service.resource.model.ResourceBatchDeleteCommand;
 import com.stonewu.fusion.service.resource.model.ResourceBatchDeleteCommand.Target;
 import com.stonewu.fusion.service.resource.ResourceBatchDeleteHandler;
+import com.stonewu.fusion.service.resource.ResourceBatchWriteHandler;
+import com.stonewu.fusion.service.resource.model.ResourceBatchWriteCommand;
+import com.stonewu.fusion.service.media.ResourceBindMediaHandler;
 import com.stonewu.fusion.service.resource.model.InitializeProjectWorkspaceCommand;
 import com.stonewu.fusion.service.resource.ResourceAgentFence;
 import com.stonewu.fusion.service.resource.ResourceCommandService;
@@ -201,7 +204,7 @@ class ResourceCommandIT {
                 ScriptResourcePatchHandler.class, ScriptResourceCreateHandler.class, ScriptResourceDeleteHandler.class,
                 ScriptSourceHandler.class, ScriptScenesHandler.class, AssetFields.class, AssetCommandSupport.class,
                 AssetMutationRepository.class, AssetResourceCreateHandler.class, AssetResourcePatchHandler.class, AssetResourceDeleteHandler.class,
-                ResourceBatchDeleteHandler.class,
+                ResourceBatchDeleteHandler.class, ResourceBatchWriteHandler.class, ResourceBindMediaHandler.class,
                 AssetReadRepository.class, AssetResourceQueryService.class, AssetBatchCreateHandler.class,
                 StoryboardMutationRepository.class, StoryboardReadRepository.class, StoryboardFields.class, StoryboardCommandSupport.class, StoryboardRelations.class, StoryboardCreation.class, StoryboardVersionView.class, StoryboardResourceQueryService.class, StoryboardResourceCreateHandler.class, StoryboardResourcePatchHandler.class, StoryboardResourceDeleteHandler.class, StoryboardChildrenHandler.class, StoryboardBatchPatchHandler.class);
         context.refresh();
@@ -916,6 +919,61 @@ class ResourceCommandIT {
         assertThat(receipt.changes()).hasSize(4).allMatch(change -> change.deleted());
         assertThat(commands.execute(valid, USER)).isEqualTo(receipt);
         rejects(() -> queries.get(CanvasValueType.ASSET_ITEM, firstItemId, ACTOR), CanvasErrorCode.RESOURCE_DELETED);
+    }
+
+    @Test
+    void batchCreateRollsBackAnEarlierEpisodeAndReplaysOneReceipt() {
+        long projectId = project();
+        var workspace = commands.execute(new InitializeProjectWorkspaceCommand(UUID.randomUUID().toString(),
+                projectId, 0), USER);
+        long scriptId = workspace.result().at("/script/id").longValue();
+        String requestId = UUID.randomUUID().toString();
+        var first = new ResourceCreateCommand(requestId, CanvasValueType.SCRIPT_EPISODE, projectId,
+                mapper.createObjectNode().put("scriptId", scriptId).put("parentVersion", 0).put("episodeNumber", 1));
+        rejects(() -> commands.execute(new ResourceBatchWriteCommand(requestId, first.resourceType(), projectId,
+                List.of(first, first)), USER), CanvasErrorCode.INVALID_COMMAND);
+        assertThat(resources.scriptChildren(CanvasValueType.SCRIPT_EPISODE, scriptId)).isEmpty();
+
+        var second = new ResourceCreateCommand(requestId, first.resourceType(), projectId,
+                first.fields().deepCopy().put("episodeNumber", 2));
+        var batch = new ResourceBatchWriteCommand(requestId, first.resourceType(), projectId, List.of(first, second));
+        var result = commands.execute(batch, USER);
+        assertThat(result.result().path("items")).hasSize(2);
+        assertThat(result.changes()).filteredOn(change -> change.resourceType() == CanvasValueType.SCRIPT)
+                .singleElement().satisfies(change -> assertThat(change.version()).isEqualTo(2));
+        assertThat(commands.execute(batch, USER)).isEqualTo(result);
+        rejects(() -> commands.execute(new ResourceBatchWriteCommand(requestId, first.resourceType(), projectId,
+                List.of(second, first)), USER), CanvasErrorCode.REQUEST_CONFLICT);
+    }
+
+    @Test
+    void batchUpdatesAssetSiblingsAgainstTheOriginalParentAndReportsTheFinalVersion() {
+        long projectId = project();
+        var fields = mapper.createObjectNode().put("type", "character").put("name", "批量修改表现");
+        fields.putArray("items").addObject().put("name", "演出前");
+        fields.withArray("items").addObject().put("name", "演出后");
+        var asset = commands.execute(new ResourceCreateCommand(UUID.randomUUID().toString(), CanvasValueType.ASSET,
+                projectId, fields), USER).result();
+        long firstId = asset.at("/items/0/id").longValue();
+        long secondId = asset.at("/items/1/id").longValue();
+        String requestId = UUID.randomUUID().toString();
+        var type = CanvasValueType.ASSET_ITEM;
+        var first = new ResourcePatchCommand(requestId, type, firstId, 0,
+                mapper.createObjectNode().put("name", "候场"), 0);
+        var staleParent = new ResourcePatchCommand(requestId, type, secondId, 0,
+                mapper.createObjectNode().put("name", "谢幕"), 1);
+        rejects(() -> commands.execute(new ResourceBatchWriteCommand(requestId, type, projectId,
+                List.of(first, staleParent)), USER), CanvasErrorCode.VERSION_CONFLICT);
+        assertThat(queries.get(type, firstId, ACTOR).data().path("name").asText()).isEqualTo("演出前");
+
+        var second = new ResourcePatchCommand(requestId, type, secondId, 0, staleParent.patch(), 0);
+        var batch = new ResourceBatchWriteCommand(requestId, type, projectId, List.of(first, second));
+        var receipt = commands.execute(batch, USER);
+        assertThat(receipt.result().at("/items/0/name").asText()).isEqualTo("候场");
+        assertThat(receipt.result().at("/items/1/name").asText()).isEqualTo("谢幕");
+        assertThat(receipt.result().path("items")).allSatisfy(item ->
+                assertThat(item.path("assetVersion").intValue()).isEqualTo(2));
+        assertThat(commands.execute(batch, USER)).isEqualTo(receipt);
     }
 
     @Test

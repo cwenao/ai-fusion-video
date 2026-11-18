@@ -9,6 +9,7 @@ import com.stonewu.fusion.service.canvas.CanvasJson;
 import com.stonewu.fusion.service.canvas.model.CanvasValueType;
 
 import java.util.LinkedHashSet;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -35,6 +36,14 @@ final class McpProjectValues {
 
     static long id(JsonNode args, String field) {
         return parseId(args.path(field), field);
+    }
+
+    static List<Long> ids(JsonNode args, String field) {
+        var result = new ArrayList<Long>();
+        for (var value : args.path(field)) {
+            result.add(parseId(value, field));
+        }
+        return result;
     }
 
     static CanvasValueType script(String kind) {

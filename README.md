@@ -145,7 +145,7 @@ https://github.com/user-attachments/assets/acd181a0-541c-4163-a000-fa9ed72a5106
 
 ### 外部 Agent 接入项目
 
-融光提供 `/api/mcp` 的 Streamable HTTP 入口。外部 Agent 可在授权项目中创建、读取和更新剧本、分镜、提示词和资产，提交后在原项目继续编辑。
+融光提供 `/api/mcp` 的 Streamable HTTP 入口。外部 Agent 可在授权项目中批量读取、新增和修改剧本、分镜、资产，也可按资源类型批量删除。
 
 在后端配置 `PROJECT_MCP_ENABLED=true`，并将 `PROJECT_MCP_ALLOWED_HOSTS` 设置为接入域名。在「系统设置 → MCP服务」选择项目、访问权限和有效期，签发后复制一次性显示的项目凭证。通过安全渠道将凭证交给接入方，作为客户端的 Bearer 令牌。「全部项目」覆盖签发时所在空间内签发人有权访问的项目，权限随成员关系变化。工具调用仍需传入具体项目的 `projectId`。`read` 用于读取，`read_write` 可在有编辑权限的项目中提交内容和上传文件。有效期 `0` 表示永久有效。
 
@@ -163,7 +163,17 @@ https://github.com/user-attachments/assets/acd181a0-541c-4163-a000-fa9ed72a5106
 
 已有主资产可用 `fusion_asset_list`（`kind: "assetItem"`，`parentId` 为主资产 ID）分页读取全部子资产及其时间线和表现状态。新增子资产用 `fusion_asset_create` 的 `kind: "assetItem"`，更新用 `fusion_asset_update` 的 `patch.propertyChanges`，并传入当前父版本；更新还需要子资产自身版本。字段省略时保留原值，传 `null` 可清空。每个子资产按 ID 单独绑定媒体和引用。
 
-批量删除接受同一项目中 1 至 20 个明确的目标。传入 `projectId`、`requestId`、资源类型 `kind` 和 `targets: [{ "id": "42", "expectedVersion": 3 }]`。使用对应的详情或列表工具取得 ID 和版本。
+批量工具每次处理同一项目中 1 至 20 个同类对象。各条目的字段沿用单条工具，结果按输入顺序返回。查询 ID 可先用对应的 `list` 工具。批量详情遇到不存在或越权的目标时整批报错。
+
+| 操作 | 工具 | 参数和返回值 |
+| --- | --- | --- |
+| 读取 | `fusion_script_batch_get`、`fusion_storyboard_batch_get`、`fusion_asset_batch_get` | `kind` 和字符串 ID 数组 `ids`，返回 `data.items`。剧本原文开关 `includeRawContent` 与单条读取一致 |
+| 新增 | `fusion_script_batch_create`、`fusion_storyboard_batch_create`、`fusion_asset_batch_create` | `kind` 和 `items`，每项使用单条新增的 `fields` 结构。新增子对象时传同一个 `parentId` 及批次开始前的 `expectedParentVersion`。`data.items` 中每项含 `resource`，主资产还包含新建的子资产 |
+| 修改 | `fusion_script_batch_update`、`fusion_storyboard_batch_update`、`fusion_asset_batch_update` | `kind` 和 `targets`，每项包含 `id`、`expectedVersion`、`patch`。更新子资产时每项另传批次开始前的 `expectedParentVersion`。返回 `data.items` |
+| 提示词 | `fusion_prompt_batch_get`、`fusion_prompt_batch_set` | 传同一个 `targetKind` 和 `slot`。读取传 `targetIds`，设置传 `targets`，每项包含 `targetId`、`expectedVersion`、`text`。子资产设置时每项另传 `expectedParentVersion` |
+| 媒体 | `fusion_media_batch_get`、`fusion_media_batch_bind` | 读取原件元数据传 `mediaResourceIds`。绑定传 `targetKind` 和 `targets`，每项包含 `targetId`、`expectedVersion`、`bindings`。绑定子资产时每项另传 `expectedParentVersion` |
+
+批量删除传入资源类型 `kind` 和 `targets: [{ "id": "42", "expectedVersion": 3 }]`。
 
 | 工具 | 可选类型与删除范围 |
 | --- | --- |
@@ -171,7 +181,7 @@ https://github.com/user-attachments/assets/acd181a0-541c-4163-a000-fa9ed72a5106
 | `fusion_storyboard_batch_delete` | `shot` 删除镜头，`scene` 删除分镜场景及其镜头 |
 | `fusion_asset_batch_delete` | `asset` 删除主资产及其子资产，`assetItem` 删除同一主资产下指定的子资产。删除子资产时另传 `parentId` 和 `expectedParentVersion` |
 
-删除采用软删除，媒体原件保留。任一目标不存在、越权或版本冲突时整批回滚。成功后 `data.deleted` 返回指定目标，`versions` 包含级联删除或版本递增的资源。网络重试沿用原参数和 `requestId`。
+删除采用软删除，媒体原件保留，`data.deleted` 返回指定目标。所有批量工具都需要 `projectId`，写入还需要 `requestId`。任一条目校验或写入失败时整批回滚。成功后 `versions` 包含受影响资源的最终版本。网络重试沿用原参数和 `requestId`，同一请求标识提交不同内容会报冲突。
 
 在分镜表格、卡片或镜头详情点击「打开视频工具」，可把已保存的视频提示词、首尾帧和关联资产的图片、音频、视频带入生成表单。生成完成后，在同项目的成片上点击「回填到镜头」，即可将选中的视频与封面写回原镜头。操作和工具参数见[分镜与资产 MCP 说明](dev-docs/3-completed/20261115-分镜资产MCP与视频工具/development-plan.md)。
 

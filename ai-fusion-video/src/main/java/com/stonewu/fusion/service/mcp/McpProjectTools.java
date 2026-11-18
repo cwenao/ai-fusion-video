@@ -26,6 +26,7 @@ import java.util.Set;
 
 import static com.stonewu.fusion.service.canvas.model.CanvasValueType.*;
 import static com.stonewu.fusion.service.mcp.McpProjectValues.id;
+import static com.stonewu.fusion.service.mcp.McpProjectValues.ids;
 import static com.stonewu.fusion.service.resource.AssetFields.IMAGE_PROMPT;
 
 @Slf4j
@@ -93,8 +94,11 @@ class McpProjectTools {
             case WORKSPACE_INITIALIZE -> initialize(grant, args, key);
             case SCRIPT_LIST -> list(grant, McpProjectValues.script(kind), args, null);
             case SCRIPT_GET -> scriptDetail(grant, McpProjectValues.script(kind), args);
+            case SCRIPT_BATCH_GET -> batchDetail(grant, McpProjectValues.script(kind), args);
             case SCRIPT_CREATE -> create(grant, McpProjectValues.script(kind), args, key);
+            case SCRIPT_BATCH_CREATE -> batchCreate(grant, McpProjectValues.script(kind), args, key);
             case SCRIPT_UPDATE -> update(grant, McpProjectValues.script(kind), args, key);
+            case SCRIPT_BATCH_UPDATE -> batchUpdate(grant, McpProjectValues.script(kind), args, key);
             case SCRIPT_DELETE -> delete(grant, McpProjectValues.script(kind), args, key);
             case SCRIPT_BATCH_DELETE -> batchDelete(grant, SCRIPT_SCENE, args, key);
             case SCRIPT_REORDER_SCENES -> reorder(grant, SCRIPT_EPISODE, args, key);
@@ -102,22 +106,31 @@ class McpProjectTools {
                     McpProjectValues.storyboard(args.path("parentKind").asText()));
             case STORYBOARD_GET -> Outcome.read(resources.detail(grant, McpProjectValues.storyboard(kind),
                     id(args, "id"), false));
+            case STORYBOARD_BATCH_GET -> batchDetail(grant, McpProjectValues.storyboard(kind), args);
             case STORYBOARD_CREATE -> create(grant, McpProjectValues.storyboard(kind), args, key);
+            case STORYBOARD_BATCH_CREATE -> batchCreate(grant, McpProjectValues.storyboard(kind), args, key);
             case STORYBOARD_UPDATE -> update(grant, McpProjectValues.storyboard(kind), args, key);
+            case STORYBOARD_BATCH_UPDATE -> batchUpdate(grant, McpProjectValues.storyboard(kind), args, key);
             case STORYBOARD_DELETE -> delete(grant, McpProjectValues.storyboard(kind), args, key);
             case STORYBOARD_BATCH_DELETE -> batchDelete(grant, McpProjectValues.storyboard(kind), args, key);
             case STORYBOARD_REORDER -> reorder(grant, McpProjectValues.storyboard(args.path("parentKind").asText()), args, key);
             case STORYBOARD_APPEND_SHOTS -> appendShots(grant, args, key);
             case PROMPT_GET -> prompt(grant, args, null);
             case PROMPT_SET -> prompt(grant, args, key);
+            case PROMPT_BATCH_GET, PROMPT_BATCH_SET -> batchPrompt(grant, args, key);
             case ASSET_LIST -> assetList(grant, CanvasValueType.fromCode(kind), args);
             case ASSET_GET -> Outcome.read(resources.detail(grant, CanvasValueType.fromCode(kind), id(args, "id"),
                     false));
+            case ASSET_BATCH_GET -> batchDetail(grant, CanvasValueType.fromCode(kind), args);
             case ASSET_CREATE -> create(grant, CanvasValueType.fromCode(kind), args, key);
+            case ASSET_BATCH_CREATE -> batchCreate(grant, CanvasValueType.fromCode(kind), args, key);
             case ASSET_UPDATE -> update(grant, CanvasValueType.fromCode(kind), args, key);
+            case ASSET_BATCH_UPDATE -> batchUpdate(grant, CanvasValueType.fromCode(kind), args, key);
             case ASSET_BATCH_DELETE -> batchDelete(grant, CanvasValueType.fromCode(kind), args, key);
             case MEDIA_GET -> Outcome.read(media.get(grant, args.path("mediaResourceId").asText()));
+            case MEDIA_BATCH_GET -> Outcome.read(media.batchGet(grant, args.path("mediaResourceIds")));
             case MEDIA_BIND -> bindMedia(grant, args, key);
+            case MEDIA_BATCH_BIND -> batchBindMedia(grant, args, key);
         };
     }
 
@@ -129,6 +142,10 @@ class McpProjectTools {
 
     private Outcome scriptDetail(ProjectGrant grant, CanvasValueType type, ObjectNode args) {
         return Outcome.read(resources.detail(grant, type, id(args, "id"), includeRawContent(type, args)));
+    }
+
+    private Outcome batchDetail(ProjectGrant grant, CanvasValueType type, ObjectNode args) {
+        return Outcome.read(resources.batchDetail(grant, type, ids(args, "ids"), includeRawContent(type, args)));
     }
 
     private boolean includeRawContent(CanvasValueType type, ObjectNode args) {
@@ -160,7 +177,26 @@ class McpProjectTools {
     }
 
     private Outcome create(ProjectGrant grant, CanvasValueType type, ObjectNode args, String key) {
-        var input = (ObjectNode) args.path("fields");
+        var receipt = submit(grant, createCommand(grant, type, args, (ObjectNode) args.path("fields"), key));
+        return new Outcome(created(grant, type, receipt.result(), receipt.changes()), receipt);
+    }
+
+    private Outcome batchCreate(ProjectGrant grant, CanvasValueType type, ObjectNode args, String key) {
+        var entries = new ArrayList<ResourceCommand>();
+        for (var item : args.path("items")) {
+            entries.add(createCommand(grant, type, args, (ObjectNode) item, key));
+        }
+        var receipt = submitBatch(grant, type, key, entries);
+        var data = json.object(Map.of());
+        var items = data.putArray("items");
+        for (var item : receipt.result().path("items")) {
+            items.add(created(grant, type, (ObjectNode) item, receipt.changes()));
+        }
+        return new Outcome(data, receipt);
+    }
+
+    private ResourceCreateCommand createCommand(ProjectGrant grant, CanvasValueType type, ObjectNode args,
+                                                ObjectNode input, String key) {
         schemas.validateFields(type, true, input);
         var fields = McpProjectValues.internalFields(input);
         requireReferences(grant, List.of(fields));
@@ -179,25 +215,46 @@ class McpProjectTools {
             fields.put(McpProjectValues.parentField(type), parentId)
                     .put("parentVersion", args.path("expectedParentVersion").intValue());
         }
-        var receipt = submit(grant, new ResourceCreateCommand(key, type, projectId, fields));
-        var output = written(grant, type, receipt);
+        return new ResourceCreateCommand(key, type, projectId, fields);
+    }
+
+    private ObjectNode created(ProjectGrant grant, CanvasValueType type, ObjectNode snapshot, List<ResourceChange> changes) {
+        var output = json.object(Map.of("resource", resources.written(grant, type, snapshot, changes)));
         if (type == ASSET) {
             var children = output.putArray("items");
-            receipt.result().path("items").forEach(item ->
-                    children.add(resources.written(grant, ASSET_ITEM, (ObjectNode) item, receipt.changes())));
+            snapshot.path("items").forEach(item ->
+                    children.add(resources.written(grant, ASSET_ITEM, (ObjectNode) item, changes)));
             output.set("initialItem", children.get(0));
         }
-        return new Outcome(output, receipt);
+        return output;
     }
 
     private Outcome update(ProjectGrant grant, CanvasValueType type, ObjectNode args, String key) {
+        var receipt = submit(grant, updateCommand(grant, type, args, key));
+        return new Outcome(written(grant, type, receipt), receipt);
+    }
+
+    private Outcome batchUpdate(ProjectGrant grant, CanvasValueType type, ObjectNode args, String key) {
+        var entries = new ArrayList<ResourceCommand>();
+        for (var target : args.path("targets")) {
+            entries.add(updateCommand(grant, type, (ObjectNode) target, key));
+        }
+        var receipt = submitBatch(grant, type, key, entries);
+        var data = json.object(Map.of());
+        var items = data.putArray("items");
+        for (var item : receipt.result().path("items")) {
+            items.add(resources.written(grant, type, (ObjectNode) item, receipt.changes()));
+        }
+        return new Outcome(data, receipt);
+    }
+
+    private ResourcePatchCommand updateCommand(ProjectGrant grant, CanvasValueType type, ObjectNode args, String key) {
         var input = (ObjectNode) args.path("patch");
         schemas.validateFields(type, false, input);
         long target = id(args, "id");
         var fields = McpProjectValues.internalFields(input);
         requireReferences(grant, List.of(fields));
-        var receipt = patch(grant, type, target, args, key, fields);
-        return new Outcome(written(grant, type, receipt), receipt);
+        return patchCommand(grant, type, target, args, key, fields);
     }
 
     private Outcome delete(ProjectGrant grant, CanvasValueType type, ObjectNode args, String key) {
@@ -271,43 +328,94 @@ class McpProjectTools {
     private Outcome prompt(ProjectGrant grant, ObjectNode args, String key) {
         var type = CanvasValueType.fromCode(args.path("targetKind").asText());
         long target = id(args, "targetId");
+        String slot = promptSlot(type, args);
+        if (key == null) {
+            return Outcome.read(resources.prompt(grant, type, target, slot));
+        }
+        var receipt = submit(grant, promptCommand(grant, type, target, args, key, slot));
+        return new Outcome(resources.promptView(type, receipt.result(), slot), receipt);
+    }
+
+    private Outcome batchPrompt(ProjectGrant grant, ObjectNode args, String key) {
+        var type = CanvasValueType.fromCode(args.path("targetKind").asText());
+        String slot = promptSlot(type, args);
+        if (key == null) {
+            return Outcome.read(resources.batchPrompt(grant, type, ids(args, "targetIds"), slot));
+        }
+        var entries = new ArrayList<ResourceCommand>();
+        for (var target : args.path("targets")) {
+            entries.add(promptCommand(grant, type, id(target, "targetId"), (ObjectNode) target, key, slot));
+        }
+        var receipt = submitBatch(grant, type, key, entries);
+        var data = json.object(Map.of());
+        var items = data.putArray("items");
+        for (var item : receipt.result().path("items")) {
+            items.add(resources.promptView(type, (ObjectNode) item, slot));
+        }
+        return new Outcome(data, receipt);
+    }
+
+    private String promptSlot(CanvasValueType type, ObjectNode args) {
         String slot = args.path("slot").asText();
         boolean imagePrompt = IMAGE_PROMPT.equals(slot);
         if (type == SHOT ? !SHOT_PROMPTS.contains(slot)
                 : !("aiPrompt".equals(slot) || (type == ASSET_ITEM && imagePrompt))) {
             throw McpProjectFailure.invalid("slot", "提示词槽位与对象类型不匹配");
         }
-        if (key == null) {
-            return Outcome.read(resources.prompt(grant, type, target, slot));
-        }
+        return slot;
+    }
+
+    private ResourcePatchCommand promptCommand(ProjectGrant grant, CanvasValueType type, long target, ObjectNode args,
+                                               String key, String slot) {
         var fields = json.object(Map.of());
-        if (imagePrompt) {
+        if (IMAGE_PROMPT.equals(slot)) {
             fields.putObject("propertyChanges").set(slot, args.get("text"));
         } else {
             fields.set(slot, args.get("text"));
         }
-        var receipt = patch(grant, type, target, args, key, fields);
-        return new Outcome(resources.promptView(type, receipt.result(), slot), receipt);
+        return patchCommand(grant, type, target, args, key, fields);
     }
 
     private Outcome bindMedia(ProjectGrant grant, ObjectNode args, String key) {
         var type = CanvasValueType.fromCode(args.path("targetKind").asText());
-        long target = id(args, "targetId");
-        resources.requireHeader(grant, type, target);
-        var parentVersion = parentVersion(type, args);
-        var bindings = media.checkedBindings(grant, type, args.path("bindings"));
-        var receipt = submit(grant, new ResourceBindMediaCommand(key, type, target,
-                args.path("expectedVersion").intValue(), parentVersion, bindings));
+        var receipt = submit(grant, bindCommand(grant, type, args, key));
         var data = written(grant, type, receipt);
         data.set("bindings", args.path("bindings"));
         return new Outcome(data, receipt);
     }
 
-    private ResourceCommandReceipt patch(ProjectGrant grant, CanvasValueType type, long id, ObjectNode args, String key,
-                                         ObjectNode patch) {
+    private Outcome batchBindMedia(ProjectGrant grant, ObjectNode args, String key) {
+        var type = CanvasValueType.fromCode(args.path("targetKind").asText());
+        var entries = new ArrayList<ResourceCommand>();
+        for (var target : args.path("targets")) {
+            entries.add(bindCommand(grant, type, (ObjectNode) target, key));
+        }
+        var receipt = submitBatch(grant, type, key, entries);
+        var data = json.object(Map.of());
+        var items = data.putArray("items");
+        var snapshots = receipt.result().path("items");
+        for (int index = 0; index < snapshots.size(); index++) {
+            var item = items.addObject();
+            item.set("resource", resources.written(grant, type, (ObjectNode) snapshots.get(index), receipt.changes()));
+            item.set("bindings", args.path("targets").get(index).path("bindings"));
+        }
+        return new Outcome(data, receipt);
+    }
+
+    private ResourceBindMediaCommand bindCommand(ProjectGrant grant, CanvasValueType type, ObjectNode args, String key) {
+        long target = id(args, "targetId");
+        resources.requireHeader(grant, type, target);
+        var parentVersion = parentVersion(type, args);
+        var bindings = media.checkedBindings(grant, type, args.path("bindings"));
+        return new ResourceBindMediaCommand(key, type, target, args.path("expectedVersion").intValue(), parentVersion,
+                bindings);
+    }
+
+    private ResourcePatchCommand patchCommand(ProjectGrant grant, CanvasValueType type, long id, ObjectNode args,
+                                              String key, ObjectNode patch) {
         resources.requireHeader(grant, type, id);
-        return submit(grant, new ResourcePatchCommand(key, type, id, args.path("expectedVersion").intValue(), patch,
-                parentVersion(type, args)));
+        return new ResourcePatchCommand(key, type, id, args.path("expectedVersion").intValue(), patch,
+                parentVersion(type, args));
     }
 
     private Integer parentVersion(CanvasValueType type, ObjectNode args) {
@@ -323,6 +431,11 @@ class McpProjectTools {
 
     private ResourceCommandReceipt submit(ProjectGrant grant, ResourceCommand command) {
         return commands.execute(command, ResourceCommandContext.user(grant.actor(), null));
+    }
+
+    private ResourceCommandReceipt submitBatch(ProjectGrant grant, CanvasValueType type, String key,
+                                               List<ResourceCommand> entries) {
+        return submit(grant, new ResourceBatchWriteCommand(key, type, grant.projectId(), entries));
     }
 
     private void requireReferences(ProjectGrant grant, List<ObjectNode> fields) {
@@ -372,7 +485,9 @@ class McpProjectTools {
                     || tool == McpProjectTool.ASSET_CREATE || tool == McpProjectTool.STORYBOARD_APPEND_SHOTS
                     || tool == McpProjectTool.STORYBOARD_REORDER || tool == McpProjectTool.SCRIPT_REORDER_SCENES
                     || "asset".equals(resourceKind)) ? "expectedParentVersion" : "expectedVersion";
-        if (args.has(field)) {
+        if (source.containsKey("expectedVersion")) {
+            details.put("expectedVersion", source.get("expectedVersion"));
+        } else if (args.has(field)) {
             details.put("expectedVersion", args.path(field).intValue());
         } else if (resourceKind != null && args.has("targets")) {
             for (var target : args.path("targets")) {

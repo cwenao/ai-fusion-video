@@ -99,6 +99,16 @@ class McpProjectResources {
     }
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public ObjectNode batchDetail(ProjectGrant grant, CanvasValueType type, List<Long> ids, boolean includeRawContent) {
+        var result = json.object(Map.of());
+        var items = result.putArray("items");
+        for (long id : ids) {
+            items.add(detail(grant, type, id, includeRawContent));
+        }
+        return result;
+    }
+
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public ObjectNode children(ProjectGrant grant, CanvasValueType child, CanvasValueType parentType, long parentId,
                                PageRequest page, boolean includeRawContent) {
         var header = requireHeader(grant, parentType, parentId);
@@ -124,6 +134,16 @@ class McpProjectResources {
         requireHeader(grant, type, id);
         var data = queries.get(type, id, grant.actor()).data();
         return promptView(type, data, slot);
+    }
+
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public ObjectNode batchPrompt(ProjectGrant grant, CanvasValueType type, List<Long> ids, String slot) {
+        var result = json.object(Map.of());
+        var items = result.putArray("items");
+        for (long id : ids) {
+            items.add(prompt(grant, type, id, slot));
+        }
+        return result;
     }
 
     ObjectNode promptView(CanvasValueType type, ObjectNode data, String slot) {

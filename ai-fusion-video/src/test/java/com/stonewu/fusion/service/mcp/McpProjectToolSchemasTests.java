@@ -161,6 +161,43 @@ class McpProjectToolSchemasTests {
     }
 
     @Test
+    void batchReadRequiresBoundedDistinctStringIds() {
+        var schema = schemas.contract(McpProjectTool.SCRIPT_BATCH_GET).validator();
+        var valid = input("""
+                {"projectId":"4","kind":"episode","ids":["9007199254740993","12"],"includeRawContent":false}
+                """);
+        McpProjectToolSchemas.validate(schema, valid, "arguments");
+        valid.withArray("ids").add("12");
+        assertThrows(McpProjectFailure.class, () -> McpProjectToolSchemas.validate(schema, valid, "arguments"));
+        var tooMany = valid.putArray("ids");
+        for (int i = 1; i <= 21; i++) {
+            tooMany.add(Integer.toString(i));
+        }
+        assertThrows(McpProjectFailure.class, () -> McpProjectToolSchemas.validate(schema, valid, "arguments"));
+    }
+
+    @Test
+    void batchWriteRequiresOriginalParentAndTargetVersions() {
+        var create = schemas.contract(McpProjectTool.ASSET_BATCH_CREATE).validator();
+        var variants = input("""
+                {"projectId":"4","kind":"assetItem","requestId":"create-variants","parentId":"10",
+                 "expectedParentVersion":0,"items":[{"name":"雨夜"},{"name":"清晨"}]}
+                """);
+        McpProjectToolSchemas.validate(create, variants, "arguments");
+        variants.remove("expectedParentVersion");
+        assertThrows(McpProjectFailure.class, () -> McpProjectToolSchemas.validate(create, variants, "arguments"));
+
+        var update = schemas.contract(McpProjectTool.STORYBOARD_BATCH_UPDATE).validator();
+        var edits = input("""
+                {"projectId":"4","kind":"shot","requestId":"update-shots",
+                 "targets":[{"id":"1","expectedVersion":0,"patch":{"videoPrompt":null}}]}
+                """);
+        McpProjectToolSchemas.validate(update, edits, "arguments");
+        ((ObjectNode) edits.at("/targets/0")).remove("expectedVersion");
+        assertThrows(McpProjectFailure.class, () -> McpProjectToolSchemas.validate(update, edits, "arguments"));
+    }
+
+    @Test
     void assetItemLabelsCanBeClearedOnlyThroughPropertyChanges() {
         var type = CanvasValueType.ASSET_ITEM;
         schemas.validateFields(type, false, input("""
