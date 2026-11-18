@@ -105,6 +105,15 @@ class McpProjectResources {
         for (long id : ids) {
             items.add(detail(grant, type, id, includeRawContent));
         }
+        if (type == ASSET) {
+            var childrenByAsset = assets.itemsByAssetIds(ids);
+            for (int index = 0; index < ids.size(); index++) {
+                var children = ((ObjectNode) items.get(index)).putArray("items");
+                for (long childId : childrenByAsset.getOrDefault(ids.get(index), List.of())) {
+                    children.add(detail(grant, ASSET_ITEM, childId, false));
+                }
+            }
+        }
         return result;
     }
 

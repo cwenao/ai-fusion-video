@@ -32,7 +32,7 @@ enum McpProjectTool {
     PROMPT_BATCH_SET(true, "按版本批量填写、修改或清空同类对象的指定提示词槽位，整批提交"),
     ASSET_LIST(false, "分页读取项目资产，或按父资产读取子资产及其时间线和表现状态"),
     ASSET_GET(false, "读取主资产设定，或子资产的时间线、表现状态、外观描述和生图提示词"),
-    ASSET_BATCH_GET(false, "按 ID 批量读取主资产或子资产的完整详情"),
+    ASSET_BATCH_GET(false, "按 ID 批量读取资产详情。kind 为 asset 时，每条主资产的 items 同时返回全部子资产详情"),
     ASSET_CREATE(true, "一次创建主资产及其多个子资产，或向已有主资产追加一个子资产"),
     ASSET_BATCH_CREATE(true, "批量创建主资产，或在同一主资产下批量追加子资产，整批提交"),
     ASSET_UPDATE(true, "按版本更新资产设定，或更新子资产的时间线、表现状态、外观和生图提示词"),

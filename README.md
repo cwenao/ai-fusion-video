@@ -165,6 +165,8 @@ https://github.com/user-attachments/assets/acd181a0-541c-4163-a000-fa9ed72a5106
 
 批量工具每次处理同一项目中 1 至 20 个同类对象。各条目的字段沿用单条工具，结果按输入顺序返回。查询 ID 可先用对应的 `list` 工具。批量详情遇到不存在或越权的目标时整批报错。
 
+`fusion_asset_batch_get` 的 `kind: "asset"` 返回每条主资产及 `data.items[].items` 中的全部子资产详情。子资产按排序号和 ID 升序排列，包含自身版本、父资产版本、设定与媒体绑定状态。没有子资产时返回空数组。项目全量同步可先分页列出主资产 ID，再按每批最多 20 个 ID 读取主资产及其子资产。
+
 | 操作 | 工具 | 参数和返回值 |
 | --- | --- | --- |
 | 读取 | `fusion_script_batch_get`、`fusion_storyboard_batch_get`、`fusion_asset_batch_get` | `kind` 和字符串 ID 数组 `ids`，返回 `data.items`。剧本原文开关 `includeRawContent` 与单条读取一致 |

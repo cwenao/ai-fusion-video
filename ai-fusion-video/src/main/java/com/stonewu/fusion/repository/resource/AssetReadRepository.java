@@ -15,6 +15,10 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import static java.util.stream.Collectors.groupingBy;
+import static java.util.stream.Collectors.mapping;
+import static java.util.stream.Collectors.toList;
+
 @Repository
 @RequiredArgsConstructor
 public class AssetReadRepository {
@@ -40,6 +44,14 @@ public class AssetReadRepository {
 
     public List<Long> items(long assetId) {
         return items.selectList(assetItems(assetId)).stream().map(AssetItem::getId).toList();
+    }
+
+    public Map<Long, List<Long>> itemsByAssetIds(List<Long> assetIds) {
+        return items.selectList(new LambdaQueryWrapper<AssetItem>()
+                .select(AssetItem::getAssetId, AssetItem::getId)
+                .in(AssetItem::getAssetId, assetIds)
+                .orderByAsc(AssetItem::getAssetId, AssetItem::getSortOrder, AssetItem::getId))
+                .stream().collect(groupingBy(AssetItem::getAssetId, mapping(AssetItem::getId, toList())));
     }
 
     public IPage<Long> pageItems(long assetId, int page, int size) {

@@ -30,6 +30,7 @@ import static com.stonewu.fusion.service.canvas.model.CanvasValueType.SCRIPT;
 import static com.stonewu.fusion.service.canvas.model.CanvasValueType.SCRIPT_EPISODE;
 import static com.stonewu.fusion.service.canvas.model.CanvasValueType.ASSET;
 import static com.stonewu.fusion.service.canvas.model.CanvasValueType.ASSET_ITEM;
+import static com.stonewu.fusion.service.mcp.McpProjectTool.ASSET_BATCH_GET;
 import static com.stonewu.fusion.service.mcp.McpProjectTool.ASSET_GET;
 import static com.stonewu.fusion.service.mcp.McpProjectTool.PROMPT_SET;
 import static com.stonewu.fusion.service.mcp.McpProjectTool.SCRIPT_GET;
@@ -48,10 +49,11 @@ class McpProjectScriptSyncTests {
     private final Grant grant = new Grant("只读凭证", 11L, actor, McpProjectCredentials.READ);
     private final ResourceReadRepository repository = mock(ResourceReadRepository.class);
     private final ResourceQueryService queries = mock(ResourceQueryService.class);
+    private final AssetReadRepository assets = mock(AssetReadRepository.class);
     private final McpProjectToolSchemas schemas = new McpProjectToolSchemas(new CanvasMcpSchemas(), json);
     private final McpProjectMedia media = mock(McpProjectMedia.class);
     private final McpProjectResources resources = new McpProjectResources(repository, mock(StoryboardReadRepository.class),
-            mock(AssetReadRepository.class), queries, schemas, media, json);
+            assets, queries, schemas, media, json);
     private final McpProjectCredentials credentials = new McpProjectCredentials(mock(McpProjectCredentialMapper.class),
             mock(CanvasAccessPolicy.class));
     private final ResourceCommandService commands = mock(ResourceCommandService.class);
@@ -143,6 +145,26 @@ class McpProjectScriptSyncTests {
         var updated = json.object(tools.call(PROMPT_SET, writeGrant, patch).structuredContent());
         assertThat(updated.at("/data/text").textValue()).isEqualTo("逆光");
         assertThat(updated.at("/data/parentVersion").intValue()).isEqualTo(5);
+    }
+
+    @Test
+    void batchAssetDetailsReturnEachParentsCompleteChildrenInTheSameCall() {
+        resource(ASSET, 41L, json.object(Map.of("id", 41L, "version", 4, "name", "雨伞")));
+        resource(ASSET, 43L, json.object(Map.of("id", 43L, "version", 4, "name", "空主资产")));
+        var first = json.object(Map.of("id", 42L, "assetId", 41L, "version", 4, "name", "晴天"));
+        first.putObject("properties").put("timeline", "十年前").put("appearanceState", "折叠")
+                .put("imagePrompt", "柔光").put("videoUrl", "https://example.test/private.mp4");
+        var second = json.object(Map.of("id", 44L, "assetId", 41L, "version", 4, "name", "雨夜"));
+        resource(ASSET_ITEM, 42L, first);
+        resource(ASSET_ITEM, 44L, second);
+        when(assets.itemsByAssetIds(List.of(43L, 41L))).thenReturn(Map.of(41L, List.of(42L, 44L)));
+
+        var result = call(ASSET_BATCH_GET, Map.of("kind", "asset", "ids", List.of("43", "41")));
+        assertThat(result.at("/data/items/0/id").textValue()).isEqualTo("43");
+        assertThat(result.at("/data/items/0/items")).isEqualTo(json.object(Map.of("items", List.of())).get("items"));
+        assertThat(result.at("/data/items/1/items")).isEqualTo(json.object(Map.of("items", List.of(
+                call(ASSET_GET, Map.of("kind", "assetItem", "id", "42")).get("data"),
+                call(ASSET_GET, Map.of("kind", "assetItem", "id", "44")).get("data")))).get("items"));
     }
 
     private ObjectNode call(McpProjectTool tool, Map<String, Object> arguments) {
