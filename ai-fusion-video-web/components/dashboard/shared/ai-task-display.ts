@@ -64,6 +64,7 @@ export const toolDisplayNames: Record<string, string> = {
   delete_script_child_resource: "删除剧本子资源",
   get_project_storyboard: "查询项目分镜",
   get_storyboard: "查询分镜详情",
+  get_storyboard_item: "查询分镜镜头",
   insert_storyboard_item: "插入分镜条目",
   update_storyboard_scene: "更新分镜场次",
   update_storyboard_item: "更新分镜镜头",

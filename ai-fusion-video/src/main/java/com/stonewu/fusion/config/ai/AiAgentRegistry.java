@@ -677,7 +677,7 @@ public class AiAgentRegistry {
                 .type("storyboard_video_executor")
                 .name("分镜视频生成执行器")
                 .toolNames(List.of(
-                        "get_project", "get_storyboard_scene_items",
+                        "get_project", "get_storyboard_item",
                         "get_generation_model_capabilities", "generate_video", "get_generation_task",
                         "update_storyboard_item_video"))
                 .systemPrompt(loadPrompt("storyboard-video-executor.system.md"))

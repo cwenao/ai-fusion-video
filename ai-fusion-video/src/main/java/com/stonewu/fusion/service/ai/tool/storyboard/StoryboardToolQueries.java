@@ -16,12 +16,23 @@ import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
+import java.util.function.UnaryOperator;
 
 import static com.stonewu.fusion.service.canvas.model.CanvasValueType.*;
 
 @Component
 @RequiredArgsConstructor
 public class StoryboardToolQueries {
+    private static final Set<String> VIDEO_SHOT_FIELDS = Set.of("id", "version", "status", "storyboardId",
+            "storyboardEpisodeId", "storyboardSceneId", "shotNumber", "autoShotNumber", "content",
+            "sceneExpectation", "dialogue", "sound", "soundEffect", "music", "shotType", "duration",
+            "cameraMovement", "cameraAngle", "cameraEquipment", "focalLength", "transition", "videoPrompt",
+            "firstFrameImageUrl", "lastFrameImageUrl");
+    private static final Set<String> SCENE_CONTEXT_FIELDS = Set.of("sceneNumber", "sceneHeading", "location",
+            "timeOfDay", "intExt");
+    private static final Set<String> VIDEO_REFERENCE_FIELDS = Set.of("assetItemId", "assetType", "itemType", "name",
+            "imageUrl", "unavailable", "errorCode");
+
     private final StoryboardResourceQueryService boards;
     private final ResourceQueryService resources;
     private final StoryboardAssetReferences assets;
@@ -43,6 +54,8 @@ public class StoryboardToolQueries {
                 }
                 case "get_storyboard" ->
                         details(StoryboardFields.id(params.get("storyboardId"), "storyboardId"), actor);
+                case "get_storyboard_item" ->
+                        item(StoryboardFields.id(params.get("storyboardItemId"), "storyboardItemId"), actor);
                 case "get_storyboard_scene_items" -> scene(params, actor);
                 default -> throw StoryboardFields.invalid("分镜查询工具未登记");
             };
@@ -97,6 +110,20 @@ public class StoryboardToolQueries {
         return board;
     }
 
+    private ObjectNode item(long id, CanvasActor actor) {
+        var shot = resources.get(SHOT, id, actor);
+        var result = shot.data();
+        var references = assets.resolve(result, shot.header().projectId(), actor, new HashMap<>());
+        result.retain(VIDEO_SHOT_FIELDS).put("storyboardItemId", id);
+        if (result.hasNonNull("storyboardSceneId")) {
+            var scene = resources.get(STORYBOARD_SCENE, result.path("storyboardSceneId").longValue(), actor).data();
+            result.setAll(scene.retain(SCENE_CONTEXT_FIELDS));
+        }
+        attachReferences(result, references, this::videoReference);
+        media(result);
+        return result;
+    }
+
     private ObjectNode scene(ObjectNode params, CanvasActor actor) {
         Long sceneId = params.has("storyboardSceneId") ? StoryboardFields.id(params.get("storyboardSceneId"),
                 "storyboardSceneId") : null;
@@ -126,16 +153,31 @@ public class StoryboardToolQueries {
                 item.put("isCurrentTarget", item.path("id").longValue() == targetId);
             }
             var references = assets.resolve(item, header.projectId(), actor, refs);
-            item.putArray("characterRefs").addAll(references.characters().stream().map(this::referenceMedia).toList());
-            item.putArray("propRefs").addAll(references.props().stream().map(this::referenceMedia).toList());
-            if (references.scene() != null) {
-                item.set("sceneRef", referenceMedia(references.scene()));
-            }
+            attachReferences(item, references, this::referenceMedia);
             media(item);
         }
         result.put("storyboardSceneId", sceneId).put("sceneVersion", header.version())
                 .put("totalItems", result.path("items").size());
         result.set("sceneName", result.get("sceneHeading"));
+        return result;
+    }
+
+    private void attachReferences(ObjectNode item, StoryboardAssetReferences.References references,
+                                  UnaryOperator<ObjectNode> projection) {
+        item.putArray("characterRefs").addAll(references.characters().stream().map(projection).toList());
+        item.putArray("propRefs").addAll(references.props().stream().map(projection).toList());
+        if (references.scene() != null) {
+            item.set("sceneRef", projection.apply(references.scene()));
+        }
+    }
+
+    private ObjectNode videoReference(ObjectNode reference) {
+        ObjectNode result = reference.deepCopy().retain(VIDEO_REFERENCE_FIELDS);
+        var appearance = reference.path("properties").path("appearanceDescription");
+        if (appearance.isTextual()) {
+            result.set("appearanceDescription", appearance);
+        }
+        media(result);
         return result;
     }
 

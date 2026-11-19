@@ -160,6 +160,7 @@ class AiAgentToolRegistrationTests {
                 "update_script_scene",
                 "get_storyboard",
                 "get_storyboard_scene_items",
+                "get_storyboard_item",
                 "save_storyboard_episode",
                 "save_storyboard_scene_shots",
                 "insert_storyboard_item",

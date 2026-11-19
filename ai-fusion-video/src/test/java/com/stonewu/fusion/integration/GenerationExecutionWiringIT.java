@@ -94,6 +94,7 @@ class GenerationExecutionWiringIT {
     static final AtomicReference<List<JsonNode>> STORYBOARD_SHOTS = new AtomicReference<>(List.of());
     static final AtomicInteger STORYBOARD_SUBMISSIONS = new AtomicInteger();
     static final Map<String, String> STORYBOARD_VIDEO_REQUESTS = new ConcurrentHashMap<>();
+    static final Map<Long, String> STORYBOARD_SHOT_LOOKUPS = new ConcurrentHashMap<>();
     static final AtomicReference<List<String>> STORYBOARD_PROPOSED_REFERENCES = new AtomicReference<>(List.of());
     static final String SAVED_STORYBOARD_PROMPT = "分镜验收，蓝色灯光\n镜头向左平移。";
     static final String DRAFT_STORYBOARD_PROMPT = "分镜验收，红色背景";
@@ -216,6 +217,7 @@ class GenerationExecutionWiringIT {
         STORYBOARD_PROPOSED_REFERENCES.set(List.of());
         STORYBOARD_SUBMISSIONS.set(0);
         STORYBOARD_VIDEO_REQUESTS.clear();
+        STORYBOARD_SHOT_LOOKUPS.clear();
         jdbc.update("UPDATE afv_ai_model SET default_model=FALSE WHERE model_type=3");
         var f = fixture("sync");
         VIDEO.set(sampleVideo());
@@ -265,9 +267,15 @@ class GenerationExecutionWiringIT {
         var shot = storyboardChild(f, "item", scene, shotFields);
         var shots = List.of(shot);
         if (disconnectBatch) {
-            var updatedScene = ok(get("/api/storyboard/scene/" + scene.path("id").asLong(), f.headers));
+            String scenePath = "/api/storyboard/scene/" + scene.path("id").asLong();
+            var updatedScene = ok(get(scenePath, f.headers));
             shots = List.of(shot, storyboardChild(f, "item", updatedScene,
                     Map.of("content", "第二个镜头", "sceneAssetItemId", references.get(2).itemId())));
+            // 其余九个镜头足以触发 AgentScope 对整场查询结果的截断。
+            String longContent = "未选镜头的布景、人物动作和运镜构思。".repeat(550);
+            for (int index = 0; index < 9; index++) {
+                storyboardChild(f, "item", ok(get(scenePath, f.headers)), Map.of("content", longContent));
+            }
         }
         STORYBOARD_SHOTS.set(shots);
         var shotIds = shots.stream().map(item -> item.path("id").asLong()).toList();
@@ -338,6 +346,21 @@ class GenerationExecutionWiringIT {
         String runId = position[0];
         String replayPath = "/api/ai/pipeline/reconnect?runId=" + runId + "&afterSequence=" + position[1];
         try {
+            await().atMost(Duration.ofSeconds(15)).untilAsserted(() ->
+                    assertThat(STORYBOARD_SHOT_LOOKUPS).containsOnlyKeys(shotIds));
+            for (long shotId : shotIds) {
+                String lookup = STORYBOARD_SHOT_LOOKUPS.get(shotId);
+                assertThat(lookup.startsWith("{")).as("镜头 %s 的查询应返回完整 JSON，实际 %s 字符",
+                        shotId, lookup.length()).isTrue();
+                var data = JSON.readTree(lookup);
+                assertThat(data.path("storyboardItemId").asLong()).isEqualTo(shotId);
+                assertThat(data.path("version").isIntegralNumber()).isTrue();
+            }
+            var saved = JSON.readTree(STORYBOARD_SHOT_LOOKUPS.get(shotIds.getFirst()));
+            assertThat(saved.path("videoPrompt").textValue()).isEqualTo(SAVED_STORYBOARD_PROMPT);
+            assertThat(saved.at("/characterRefs/0/imageUrl").asText()).isEqualTo(references.get(0).reference());
+            assertThat(saved.at("/propRefs/0/imageUrl").asText()).isEqualTo(references.get(1).reference());
+            assertThat(saved.at("/sceneRef/imageUrl").asText()).isEqualTo(references.get(2).reference());
             await().atMost(Duration.ofSeconds(25)).untilAsserted(() -> {
                 var jobs = jdbc.queryForList("""
                         SELECT j.phase FROM afv_remote_generation_job j JOIN afv_generation_submission s
@@ -1172,36 +1195,53 @@ class GenerationExecutionWiringIT {
 
     private static void storyboardChat(HttpExchange exchange, JsonNode body) throws IOException {
         var messages = body.path("messages");
-        boolean root = body.path("tools").findValuesAsText("name").contains("generate_storyboard_video");
+        var tools = body.path("tools").findValuesAsText("name");
+        boolean root = tools.contains("generate_storyboard_video");
+        var last = messages.get(messages.size() - 1);
+        boolean toolResult = "tool".equals(last.path("role").asText());
+        boolean lookupResult = !root && toolResult && last.path("tool_call_id").asText().startsWith("shot-context-");
         var delta = JSON.createObjectNode().put("role", "assistant");
-        String finish = "stop";
-        if ("tool".equals(messages.get(messages.size() - 1).path("role").asText())) {
+        if (toolResult && !lookupResult) {
             delta.put("content", "已经收到实际执行结果。");
-        } else {
-            finish = "tool_calls";
-            var shots = STORYBOARD_SHOTS.get();
+            chatChunk(exchange, body, delta, "stop");
+            return;
+        }
+        var shots = STORYBOARD_SHOTS.get();
+        if (root) {
             var calls = delta.putArray("tool_calls");
-            if (root) {
-                for (int index = 0; index < shots.size(); index++) {
-                    long id = shots.get(index).path("id").asLong();
-                    calls.addObject().put("index", index).put("id", "shot-child-" + id).put("type", "function")
-                            .putObject("function").put("name", "generate_storyboard_video")
-                            .put("arguments", JSON.writeValueAsString(Map.of("message", "storyboardItemId: " + id + "。")));
+            for (int index = 0; index < shots.size(); index++) {
+                long id = shots.get(index).path("id").asLong();
+                calls.addObject().put("index", index).put("id", "shot-child-" + id).put("type", "function")
+                        .putObject("function").put("name", "generate_storyboard_video")
+                        .put("arguments", JSON.writeValueAsString(Map.of("message", "storyboardItemId: " + id + "。")));
+            }
+        } else {
+            String input = messages.toString();
+            long id = shots.stream().mapToLong(item -> item.path("id").asLong())
+                    .filter(shotId -> input.contains("storyboardItemId: " + shotId + "。"))
+                    .findFirst().orElseThrow();
+            if (lookupResult) {
+                String lookup = last.path("content").asText();
+                STORYBOARD_SHOT_LOOKUPS.put(id, lookup);
+                if (!lookup.startsWith("{")) {
+                    delta.put("content", "未取得目标镜头，视频未提交。");
+                    chatChunk(exchange, body, delta, "stop");
+                    return;
                 }
-            } else {
-                var input = messages.toString();
-                var shot = shots.stream().filter(item -> input.contains("storyboardItemId: " + item.path("id").asLong() + "。"))
-                        .findFirst().orElseThrow();
-                long id = shot.path("id").asLong();
+                var shot = JSON.readTree(lookup);
                 String arguments = JSON.writeValueAsString(Map.of("prompt", DRAFT_STORYBOARD_PROMPT,
                         "reviewTargetId", id, "expectedVersion", shot.path("version").asInt(),
                         "ratio", "16:9", "resolution", "1280x720", "duration", 4,
                         "referenceImageUrls", STORYBOARD_PROPOSED_REFERENCES.get()));
-                calls.addObject().put("index", 0).put("id", "shot-video-" + id).put("type", "function")
+                delta.putArray("tool_calls").addObject().put("index", 0).put("id", "shot-video-" + id).put("type", "function")
                         .putObject("function").put("name", "generate_video").put("arguments", arguments);
+            } else {
+                delta.putArray("tool_calls").addObject().put("index", 0).put("id", "shot-context-" + id).put("type", "function")
+                        .putObject("function").put("name", "get_storyboard_item")
+                        .put("arguments", JSON.writeValueAsString(Map.of("storyboardItemId", id)));
             }
         }
-        chatChunk(exchange, body, delta, finish);
+        chatChunk(exchange, body, delta, "tool_calls");
     }
 
     private static void projectImageChat(HttpExchange exchange, JsonNode body, ImagePipeline fixture) throws IOException {

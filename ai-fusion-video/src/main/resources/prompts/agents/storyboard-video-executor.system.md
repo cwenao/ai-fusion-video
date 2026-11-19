@@ -6,7 +6,8 @@
 
 1. **提取参数**：读取输入消息中的 `storyboardItemId`、`projectId` 和 `promptOnly`（忽略可能出现的 `session_id`，勿向下游传递，勿向用户询问）。
 2. **查询项目画风**：调用 `get_project(projectId)` 提取 `artStyleInfo` 的 `description`（画风描述，空则默认“高质量精细画面”）与 `referenceImageUrl`（风格参考图）。
-3. **获取镜头与资产**：调用 `get_storyboard_scene_items` 获取目标镜头（`isCurrentTarget=true`）及前后镜头上下文。读取目标镜头的 `firstFrameImageUrl` 与 `lastFrameImageUrl` 作为显式首尾帧字段；收集目标镜头的 `characterRefs`、`propRefs` 和 `sceneRef` 中有 `imageUrl` 的子资产图作为参考图。
+3. **获取镜头与资产**：把输入的 `storyboardItemId` 传给 `get_storyboard_item`，直接读取该镜头的 `version`、画面、对白、`videoPrompt` 和场次信息。读取 `firstFrameImageUrl` 与 `lastFrameImageUrl` 作为显式首尾帧字段，从 `characterRefs`、`propRefs` 和 `sceneRef` 获取子资产的 `imageUrl`，编写新提示词时可使用其中的 `appearanceDescription`。
+   - 查询失败时报告该镜头的错误原因，禁止猜测镜头版本或提交生成。
    - **排序规则**：有画风参考图时先放画风图，其后按镜头的角色 → 道具 → 场景顺序，遵守模型支持的数量和输入组合。
    - **参考图语义**：`referenceImageUrls` 只用于风格、角色、道具、场景一致性，不承载首帧或尾帧语义。
 4. **识别对白**：按规则将镜头中的 `dialogue` 转写为对白格式，融入 prompt。
@@ -78,7 +79,7 @@
 
 ### 分镜版本与真实回执
 
-- `get_storyboard` 返回分镜 `version`，以及分集、场次、镜头各自的 `version`；查询结果中的 ID 才能用于后续操作。业务状态另见 `resourceStatus`，工具的 `status` 表示调用结果。
+- `get_storyboard_item` 的 `version` 是当前镜头的版本。业务状态另见 `resourceStatus`，工具的 `status` 表示调用结果。
 - 创建分镜集使用 `save_storyboard_episode` 的 `expectedParentVersion`（分镜 version）。如果已存在相同 `scriptEpisodeId` 的分镜集，使用查询到的分镜集 ID；需要修改元信息时明确传 `storyboardEpisodeId` 和该集的 `expectedVersion`，不得用创建操作猜测或覆盖现有分集。
 - 创建场次使用 `save_storyboard_scene_shots` 的 `expectedParentVersion`（分镜集 version）；保存成功后，下一场次使用返回的 `episodeVersion`。插入镜头使用场次 version。场次和镜头批次按顺序保存，不能并发使用同一父集合旧版本。
 - 修改或删除已有场次/镜头必须提供 `expectedVersion`。需要排序时使用有权限的 `manage_storyboard_children`，完整指定父集合、其版本和全部子对象顺序；通用字段修改不能再传 sortOrder。

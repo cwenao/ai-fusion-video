@@ -19,7 +19,8 @@ public final class AgentToolCategories {
                  "get_script_episode_source", "get_script_scene",
                  "update_script_info", "save_script_episode", "save_script_scene_items", "manage_script_scenes",
                  "update_script_scene", "update_script", "delete_script_child_resource" -> "剧本创作";
-            case "get_project_storyboard", "get_storyboard", "get_storyboard_scene_items", "save_storyboard_episode",
+            case "get_project_storyboard", "get_storyboard", "get_storyboard_scene_items", "get_storyboard_item",
+                 "save_storyboard_episode",
                  "save_storyboard_scene_shots", "manage_storyboard_children", "batch_update_storyboard",
                  "insert_storyboard_item",
                  "update_storyboard_scene", "update_storyboard_item", "delete_storyboard_child_resource",
