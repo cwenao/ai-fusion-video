@@ -16,6 +16,7 @@ import com.stonewu.fusion.service.resource.ResourceQueryService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import static org.mockito.Mockito.verifyNoInteractions;
 import com.stonewu.fusion.service.ai.tool.storyboard.StoryboardToolCommands;
+import com.stonewu.fusion.service.generation.ProjectMediaCompletion;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -57,7 +58,8 @@ class LifecycleToolExecutorTests {
     @Test
     void refusesToDeleteTheFixedStoryboardContainer() {
         ResourceCommandService commands = mock(ResourceCommandService.class);
-        StoryboardToolCommands storyboards = new StoryboardToolCommands(commands, mock(ResourceQueryService.class), new CanvasJson(new ObjectMapper()));
+        StoryboardToolCommands storyboards = new StoryboardToolCommands(commands, mock(ResourceQueryService.class),
+                new CanvasJson(new ObjectMapper()), mock(ProjectMediaCompletion.class));
         DeleteStoryboardChildResourceToolExecutor executor = new DeleteStoryboardChildResourceToolExecutor(storyboards);
         String result = executor.execute("{\"resourceType\":\"storyboard\",\"resourceId\":5}", CONTEXT);
         assertThat(JSONUtil.parseObj(result).getStr("status")).isEqualTo("error");

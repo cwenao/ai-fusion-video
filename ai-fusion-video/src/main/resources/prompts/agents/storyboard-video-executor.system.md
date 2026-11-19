@@ -17,14 +17,14 @@
    - `supportsReferenceImages=false`：不传 `referenceImageUrls`，在 prompt 中详述角色/场景/道具外观特征。
    - `supportsReferenceVideos/Audios=false`：不传对应字段。禁止对不支持的参数做重复重试。
 6. **调用生成与更新**：
-   - 目标镜头已有 `videoPrompt` 时，原样传给 `generate_video`。提交时以镜头版本中保存的提示词为准，参考素材的编号应与原文对应。未保存提示词时按下文编写。
+   - 目标镜头已有 `videoPrompt` 时，原样传给 `generate_video`。项目分镜流水线以保存的镜头描述为准，后端依据实际参考图槽位校正可识别的图号。未保存提示词时按下文编写，在首次引用图片时写明绑定资产的 `assetName` 或子资产名称。
    - 在项目分镜流水线中，后端按目标镜头版本选取首尾帧，并按上述顺序读取该镜头实际绑定的子资产图。调用时只需提供镜头 ID、版本、提示词和生成参数，无需复述图片 URL。专业画布节点仍需显式传递参考素材。
    - 首帧图只读取目标镜头的 `firstFrameImageUrl`；为空或模型不支持首帧时，不传 `firstFrameImageUrl`。
    - 尾帧图只读取目标镜头的 `lastFrameImageUrl`；仅当 `firstFrameImageUrl` 存在、模型支持首帧且支持尾帧时，才传 `lastFrameImageUrl`。
    - 只有尾帧没有首帧时，不传 `lastFrameImageUrl`，也不要把尾帧放入 `referenceImageUrls`。
    - 不要把 `imageUrl`、`generatedImageUrl`、`referenceImageUrl` 当作运行时首帧来源。
    - 调用 `generate_video`，默认比例 16:9。必须把当前 `storyboardItemId` 填入 `reviewTargetId`，把实际读取的镜头版本填入 `expectedVersion`。
-   - 项目分镜流水线会等待视频入库并自动回填。收到成功回执后报告镜头和视频，收到失败回执后报告原因；同一镜头不重新提交生成。专业画布节点返回受理回执时，使用 `await_generation_task` 取得成功产物，再调用 `update_storyboard_item_video` 按原版本回填。
+   - 项目分镜流水线会等待视频入库并自动回填。收到 `autoBackfilled=true`、`commandId` 和镜头 `version` 就直接报告成功，禁止再次调用 `update_storyboard_item_video`。收到失败回执后报告原因，禁止重新提交同一镜头。专业画布节点返回受理回执时，使用 `await_generation_task` 取得成功产物，再调用 `update_storyboard_item_video` 按原版本回填。
 
 ## 2. 参考图与对白引用规则
 

@@ -1,11 +1,14 @@
 package com.stonewu.fusion.service.generation;
 
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.stonewu.fusion.common.BusinessException;
 import com.stonewu.fusion.entity.ai.AgentRun;
+import com.stonewu.fusion.entity.resource.ResourceCommandEntity;
 import com.stonewu.fusion.mapper.ai.AgentRunMapper;
 import com.stonewu.fusion.mapper.generation.GenerationSubmissionMapper;
 import com.stonewu.fusion.mapper.project.ProjectMapper;
+import com.stonewu.fusion.mapper.resource.ResourceCommandMapper;
 import com.stonewu.fusion.service.canvas.CanvasJson;
 import com.stonewu.fusion.service.canvas.model.CanvasActor;
 import com.stonewu.fusion.service.canvas.model.CanvasValueType;
@@ -20,6 +23,7 @@ import com.stonewu.fusion.service.resource.ResourceCommandService;
 import com.stonewu.fusion.service.resource.ResourceQueryService;
 import com.stonewu.fusion.service.resource.StoryboardFields;
 import com.stonewu.fusion.service.resource.model.ResourceCommandContext;
+import com.stonewu.fusion.service.resource.model.ResourceCommandReceipt;
 import com.stonewu.fusion.service.resource.model.ResourceSnapshot;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -33,6 +37,7 @@ import java.util.Set;
 @Component
 @RequiredArgsConstructor
 public class ProjectMediaCompletion {
+    private static final String VIDEO_WRITEBACK_PREFIX = "storyboard-video:";
     private static final Set<String> ENDED = Set.of("SUCCEEDED", "PARTIAL_FAILED", "FAILED", "CANCELLED",
             "NEEDS_REVIEW", "UNKNOWN_SUBMISSION");
 
@@ -44,6 +49,7 @@ public class ProjectMediaCompletion {
     private final ImageGenerationService images;
     private final ResourceQueryService resources;
     private final ResourceCommandService commands;
+    private final ResourceCommandMapper writebackCommands;
     private final CanvasJson json;
     private final ProjectMapper projects;
     private final ProjectMediaVersions versions;
@@ -59,6 +65,42 @@ public class ProjectMediaCompletion {
         var resource = requireResource(run, binding, context.actor());
         versions.check(run, binding, resource);
         return resource;
+    }
+
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public ResourceCommandReceipt existingVideoWriteback(ResourceCommandContext context, long shotId, String video) {
+        if (context.canvasId() != null || !MediaReference.managed(video)) {
+            return null;
+        }
+        var run = runs.selectByRunId(context.agentRunId());
+        if (run == null || run.getProjectId() == null || run.getCanvasScopeJson() != null
+                || ProjectMediaPipeline.forExecutor(run.getAgentType()) != ProjectMediaPipeline.VIDEO
+                || !Objects.equals(run.getUserId(), context.actor().userId())
+                || !Objects.equals(run.getActorTeamId(), context.actor().teamId())) {
+            return null;
+        }
+        var committed = writebackCommands.selectList(Wrappers.lambdaQuery(ResourceCommandEntity.class)
+                .eq(ResourceCommandEntity::getAgentRunId, run.getRunId())
+                .eq(ResourceCommandEntity::getActorUserId, context.actor().userId())
+                .eq(ResourceCommandEntity::getOrigin, "system")
+                .likeRight(ResourceCommandEntity::getRequestId, VIDEO_WRITEBACK_PREFIX)
+                .isNotNull(ResourceCommandEntity::getCommittedAt));
+        for (var row : committed) {
+            var receipt = json.read(row.getResultJson(), ResourceCommandReceipt.class);
+            if (receipt.result().path("id").asLong() != shotId
+                    || !video.equals(receipt.result().path("generatedVideoUrl").textValue())) {
+                continue;
+            }
+            var shot = resources.get(CanvasValueType.SHOT, shotId, context.actor());
+            if (!Objects.equals(shot.header().projectId(), run.getProjectId())) {
+                throw new BusinessException(403, "回填对象不属于当前项目");
+            }
+            if (!video.equals(shot.data().path("generatedVideoUrl").textValue())) {
+                throw new BusinessException(409, "镜头已经换用其他视频，已生成的视频可在创作记录查看");
+            }
+            return receipt;
+        }
+        return null;
     }
 
     @Transactional(isolation = Isolation.READ_COMMITTED)
@@ -121,7 +163,7 @@ public class ProjectMediaCompletion {
         }
         projects.lock(run.getProjectId());
         var resource = requireResource(run, binding, actor);
-        String requestId = (video ? "storyboard-video:" : "project-image:") + submission.id();
+        String requestId = (video ? VIDEO_WRITEBACK_PREFIX : "project-image:") + submission.id();
         var fields = json.object(Map.of(binding.mediaField(), media));
         fields.put(binding.promptField(), video ? videoTask.getPrompt() : imageTask.getPrompt());
         if (binding.target() == Target.ASSET) {
@@ -130,9 +172,13 @@ public class ProjectMediaCompletion {
         var command = versions.patch(run, requestId, binding, resource, fields);
         var receipt = commands.patch(command,
                 new ResourceCommandContext(actor, "system", null, run.getRunId(), toolCallId, null, null));
-        return Map.of("status", "success", "state", "SUCCEEDED", "taskId", submission.publicTaskId(),
+        var result = json.object(Map.of("status", "success", "state", "SUCCEEDED", "taskId", submission.publicTaskId(),
                 binding.target() == Target.ASSET ? "assetItemId" : "storyboardItemId", binding.id(),
-                video ? "videoUrl" : "imageUrl", media, "commandId", receipt.commandId());
+                video ? "videoUrl" : "imageUrl", media, "commandId", receipt.commandId()));
+        if (video) {
+            result.put("autoBackfilled", true).set("version", receipt.result().get("version"));
+        }
+        return result;
     }
 
     private Binding binding(AgentRun run, ProjectMediaPipeline pipeline, ObjectNode input) {

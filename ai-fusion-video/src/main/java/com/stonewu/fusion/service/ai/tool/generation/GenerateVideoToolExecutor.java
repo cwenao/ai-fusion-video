@@ -179,12 +179,13 @@ public class GenerateVideoToolExecutor implements ToolExecutor {
             if (target == null) {
                 referenceImageUrls = parseUrlArray(params, "referenceImageUrls");
             } else {
-                var images = storyboardReferences.resolve(target, mutation.actor(),
+                var inputs = storyboardReferences.resolve(target, mutation.actor(),
                         generationModelCapabilityService.resolveVideoCapability(model),
-                        config.getBool("exclusiveInputModes", config.getBool("mutuallyExclusiveInputModes", false)));
-                firstFrameImageUrl = images.first();
-                lastFrameImageUrl = images.last();
-                referenceImageUrls = images.references().isEmpty() ? null : JSONUtil.toJsonStr(images.references());
+                        config.getBool("exclusiveInputModes", config.getBool("mutuallyExclusiveInputModes", false)), prompt);
+                prompt = inputs.prompt();
+                firstFrameImageUrl = inputs.first();
+                lastFrameImageUrl = inputs.last();
+                referenceImageUrls = inputs.references().isEmpty() ? null : JSONUtil.toJsonStr(inputs.references());
             }
             String generateMode = StrUtil.isNotBlank(firstFrameImageUrl) ? "image2video" : "text2video";
             // 旧模型保留原工具默认值；新契约由统一校验应用模型默认值。

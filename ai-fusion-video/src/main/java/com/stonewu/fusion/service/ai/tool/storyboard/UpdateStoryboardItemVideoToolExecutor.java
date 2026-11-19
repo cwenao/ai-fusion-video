@@ -32,8 +32,9 @@ public class UpdateStoryboardItemVideoToolExecutor implements ToolExecutor {
     @Override
     public String getToolDescription() {
         return """
-                将生成的视频URL保存到分镜条目中。
-                调用 generate_video 获取视频URL后，使用此工具将视频关联到对应的分镜镜头。
+                保存镜头的视频提示词，或回填需要手动关联的视频与封面。
+                项目分镜流水线的 generate_video 返回 autoBackfilled=true 时已经回填，直接报告该回执，无需调用此工具。
+                专业画布生成的视频须按已读取版本手动回填。仅保存提示词时只传 videoPrompt。
                 """;
     }
 

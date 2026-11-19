@@ -61,7 +61,8 @@ public class StoryboardAssetReferences {
                 }
                 var data = snapshot.data();
                 var parent = resources.get(CanvasValueType.ASSET, data.path("assetId").longValue(), actor);
-                return data.put("assetItemId", id).put("assetType", parent.data().path("type").textValue());
+                return data.put("assetItemId", id).put("assetType", parent.data().path("type").textValue())
+                        .put("assetName", parent.data().path("name").textValue());
             } catch (CanvasException failure) {
                 if (failure.getErrorCode() != CanvasErrorCode.RESOURCE_DELETED
                         && failure.getErrorCode() != CanvasErrorCode.ACCESS_DENIED) {

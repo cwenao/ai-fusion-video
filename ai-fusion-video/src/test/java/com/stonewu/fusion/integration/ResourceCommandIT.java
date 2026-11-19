@@ -119,6 +119,7 @@ import com.stonewu.fusion.service.resource.model.StoryboardChildrenCommand;
 import com.stonewu.fusion.service.resource.model.StoryboardBatchPatchCommand;
 import com.stonewu.fusion.service.ai.tool.storyboard.StoryboardToolCommands;
 import com.stonewu.fusion.service.ai.tool.storyboard.StoryboardToolQueries;
+import com.stonewu.fusion.service.generation.ProjectMediaCompletion;
 import com.stonewu.fusion.service.system.SystemConfigService;
 import com.stonewu.fusion.service.storyboard.StoryboardAssetReferences;
 import java.util.List;
@@ -1326,7 +1327,7 @@ class ResourceCommandIT {
         long scriptEpisode = episode(root.data().path("scriptId").longValue(), 0, 1);
         String run = agentRun(root.header().projectId());
         var json = context.getBean(CanvasJson.class);
-        var tools = new StoryboardToolCommands(commands, queries, json);
+        var tools = new StoryboardToolCommands(commands, queries, json, mock(ProjectMediaCompletion.class));
         var references = new StoryboardAssetReferences(queries, mock(SystemConfigService.class), json);
         var reads = new StoryboardToolQueries(context.getBean(StoryboardResourceQueryService.class), queries, references, json);
         ObjectNode creation = mapper.createObjectNode().put("storyboardId", board).put("scriptEpisodeId", scriptEpisode)

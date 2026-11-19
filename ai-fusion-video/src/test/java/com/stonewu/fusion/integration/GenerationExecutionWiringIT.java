@@ -95,9 +95,12 @@ class GenerationExecutionWiringIT {
     static final AtomicInteger STORYBOARD_SUBMISSIONS = new AtomicInteger();
     static final Map<String, String> STORYBOARD_VIDEO_REQUESTS = new ConcurrentHashMap<>();
     static final Map<Long, String> STORYBOARD_SHOT_LOOKUPS = new ConcurrentHashMap<>();
+    static final Map<Long, JsonNode> STORYBOARD_WRITEBACK_REPLAYS = new ConcurrentHashMap<>();
     static final AtomicReference<List<String>> STORYBOARD_PROPOSED_REFERENCES = new AtomicReference<>(List.of());
     static final String SAVED_STORYBOARD_PROMPT = "分镜验收，蓝色灯光\n镜头向左平移。";
     static final String DRAFT_STORYBOARD_PROMPT = "分镜验收，红色背景";
+    static final String SCENE_PICTURE_PROMPT = "<Subject 1> 旅人。\n<Subject 2> 石案。\n<Subject 3> 图片1 提供的古庙内景，固定镜头。";
+    static final String PROP_PICTURE_PROMPT = "<Subject 1> 旅人的手。<Subject 2> 是青灰石案，由 <Picture 1> 定义：雨水滴落。<Subject 3> 是古庙。";
     static final Map<String, ImagePipeline> IMAGE_PIPELINES = new ConcurrentHashMap<>();
     @DynamicPropertySource static void properties(DynamicPropertyRegistry p) {
         p.add("spring.datasource.url", MYSQL::getJdbcUrl);
@@ -210,14 +213,16 @@ class GenerationExecutionWiringIT {
     }
 
     @ParameterizedTest
-    @CsvSource({"false,false", "true,false", "false,true"})
-    void storyboardVideoPersistsThroughWaitingAndDisconnect(boolean editWhileWaiting, boolean disconnectBatch)
+    @CsvSource({"false,false,false", "true,false,false", "false,true,false", "false,true,true"})
+    void storyboardVideoPersistsThroughWaitingAndDisconnect(boolean editWhileWaiting, boolean disconnectBatch,
+                                                            boolean alignPictures)
             throws Exception {
         STORYBOARD_READY_SUBMISSIONS.set(0);
         STORYBOARD_PROPOSED_REFERENCES.set(List.of());
         STORYBOARD_SUBMISSIONS.set(0);
         STORYBOARD_VIDEO_REQUESTS.clear();
         STORYBOARD_SHOT_LOOKUPS.clear();
+        STORYBOARD_WRITEBACK_REPLAYS.clear();
         jdbc.update("UPDATE afv_ai_model SET default_model=FALSE WHERE model_type=3");
         var f = fixture("sync");
         VIDEO.set(sampleVideo());
@@ -257,20 +262,27 @@ class GenerationExecutionWiringIT {
                 "videoPrompt", SAVED_STORYBOARD_PROMPT));
         List<VideoAsset> references = List.of();
         if (disconnectBatch) {
-            references = List.of(videoAsset(f, projectId, "character", 0x0000ff),
-                    videoAsset(f, projectId, "prop", 0xff0000), videoAsset(f, projectId, "scene", 0x00ff00));
+            references = List.of(videoAsset(f, projectId, "character", "旅人", 0x0000ff),
+                    videoAsset(f, projectId, "prop", "石案", 0xff0000), videoAsset(f, projectId, "scene", "古庙", 0x00ff00));
             shotFields.put("characterIds", List.of(references.get(0).itemId()));
             shotFields.put("propIds", List.of(references.get(1).itemId()));
             shotFields.put("sceneAssetItemId", references.get(2).itemId());
             STORYBOARD_PROPOSED_REFERENCES.set(List.of(references.get(2).reference()));
+        }
+        if (alignPictures) {
+            shotFields.put("videoPrompt", SCENE_PICTURE_PROMPT);
         }
         var shot = storyboardChild(f, "item", scene, shotFields);
         var shots = List.of(shot);
         if (disconnectBatch) {
             String scenePath = "/api/storyboard/scene/" + scene.path("id").asLong();
             var updatedScene = ok(get(scenePath, f.headers));
-            shots = List.of(shot, storyboardChild(f, "item", updatedScene,
-                    Map.of("content", "第二个镜头", "sceneAssetItemId", references.get(2).itemId())));
+            Map<String, Object> secondFields = Map.of("content", "第二个镜头", "sceneAssetItemId", references.get(2).itemId());
+            if (alignPictures) {
+                secondFields = new HashMap<>(shotFields);
+                secondFields.put("videoPrompt", PROP_PICTURE_PROMPT);
+            }
+            shots = List.of(shot, storyboardChild(f, "item", updatedScene, secondFields));
             // 其余九个镜头足以触发 AgentScope 对整场查询结果的截断。
             String longContent = "未选镜头的布景、人物动作和运镜构思。".repeat(550);
             for (int index = 0; index < 9; index++) {
@@ -288,7 +300,7 @@ class GenerationExecutionWiringIT {
         headers.putAll(f.headers);
         headers.setAccept(List.of(MediaType.TEXT_EVENT_STREAM));
         if (disconnectBatch) {
-            verifyDisconnectedStoryboardBatch(body, f.headers, projectId, shotIds, references);
+            verifyDisconnectedStoryboardBatch(body, f.headers, projectId, shotIds, references, alignPictures);
             return;
         }
         var pipeline = CompletableFuture.supplyAsync(() ->
@@ -340,7 +352,8 @@ class GenerationExecutionWiringIT {
     }
 
     private void verifyDisconnectedStoryboardBatch(Map<String, Object> body, HttpHeaders headers, long projectId,
-                                                   List<Long> shotIds, List<VideoAsset> references) throws Exception {
+                                                   List<Long> shotIds, List<VideoAsset> references, boolean alignPictures)
+            throws Exception {
         String cursor = disconnectAfterFirstPipelineEvent(body, headers);
         String[] position = cursor.split(":", 2);
         String runId = position[0];
@@ -357,7 +370,8 @@ class GenerationExecutionWiringIT {
                 assertThat(data.path("version").isIntegralNumber()).isTrue();
             }
             var saved = JSON.readTree(STORYBOARD_SHOT_LOOKUPS.get(shotIds.getFirst()));
-            assertThat(saved.path("videoPrompt").textValue()).isEqualTo(SAVED_STORYBOARD_PROMPT);
+            assertThat(saved.path("videoPrompt").textValue())
+                    .isEqualTo(alignPictures ? SCENE_PICTURE_PROMPT : SAVED_STORYBOARD_PROMPT);
             assertThat(saved.at("/characterRefs/0/imageUrl").asText()).isEqualTo(references.get(0).reference());
             assertThat(saved.at("/propRefs/0/imageUrl").asText()).isEqualTo(references.get(1).reference());
             assertThat(saved.at("/sceneRef/imageUrl").asText()).isEqualTo(references.get(2).reference());
@@ -401,11 +415,13 @@ class GenerationExecutionWiringIT {
         streamHeaders.setAccept(List.of(MediaType.TEXT_EVENT_STREAM));
         var replay = http.exchange(replayPath, HttpMethod.GET, new HttpEntity<>(streamHeaders), String.class);
         assertThat(replay.getBody()).contains("\"outputType\":\"DONE\"");
+        String firstPrompt = alignPictures ? SCENE_PICTURE_PROMPT.replace("图片1", "图片3") : SAVED_STORYBOARD_PROMPT;
+        String secondPrompt = alignPictures ? PROP_PICTURE_PROMPT.replace("Picture 1", "Picture 2") : DRAFT_STORYBOARD_PROMPT;
         for (int index = 0; index < shotIds.size(); index++) {
             var written = ok(get("/api/storyboard/item/" + shotIds.get(index), headers));
             assertThat(written.path("generatedVideoUrl").asText()).startsWith("media://");
-            assertThat(written.path("videoPrompt").asText())
-                    .isEqualTo(index == 0 ? SAVED_STORYBOARD_PROMPT : DRAFT_STORYBOARD_PROMPT);
+            assertThat(written.path("videoPrompt").asText()).isEqualTo(index == 0 ? firstPrompt : secondPrompt);
+            assertThat(written.path("version").asInt()).isEqualTo(STORYBOARD_SHOTS.get().get(index).path("version").asInt() + 1);
         }
         assertThat(STORYBOARD_SUBMISSIONS.get()).isEqualTo(shotIds.size());
         assertThat(jdbc.queryForList("""
@@ -418,10 +434,22 @@ class GenerationExecutionWiringIT {
             var content = JSON.readTree(raw).path("content");
             requests.put(content.get(0).path("text").asText(), content.findValuesAsText("url"));
         }
-        assertThat(requests).containsOnlyKeys(SAVED_STORYBOARD_PROMPT, DRAFT_STORYBOARD_PROMPT);
-        assertThat(requests.get(SAVED_STORYBOARD_PROMPT)).containsExactlyElementsOf(
-                references.stream().map(VideoAsset::dataUri).toList());
-        assertThat(requests.get(DRAFT_STORYBOARD_PROMPT)).containsExactly(references.get(2).dataUri());
+        assertThat(requests).containsOnlyKeys(firstPrompt, secondPrompt);
+        var orderedImages = references.stream().map(VideoAsset::dataUri).toList();
+        assertThat(requests.get(firstPrompt)).containsExactlyElementsOf(orderedImages);
+        assertThat(requests.get(secondPrompt)).containsExactlyElementsOf(alignPictures ? orderedImages
+                : List.of(references.get(2).dataUri()));
+        var duplicate = STORYBOARD_WRITEBACK_REPLAYS.get(shotIds.getFirst());
+        assertThat(duplicate).as("自动回填后重复提交同一视频应返回原回执").isNotNull();
+        assertThat(duplicate.path("status").asText()).isEqualTo("success");
+        assertThat(duplicate.path("autoBackfilled").asBoolean()).isTrue();
+        assertThat(duplicate.path("version").asInt()).isEqualTo(STORYBOARD_SHOTS.get().getFirst().path("version").asInt() + 1);
+        assertThat(duplicate.path("commandId").asText()).isEqualTo(jdbc.queryForObject("""
+                SELECT rc.id FROM afv_resource_command rc JOIN afv_agent_run c ON rc.agent_run_id=c.run_id
+                JOIN afv_resource_revision r ON r.command_id=rc.id AND r.resource_type='shot'
+                WHERE c.parent_run_id=? AND rc.request_id LIKE 'storyboard-video:%'
+                  AND r.resource_id = ?
+                """, String.class, runId, shotIds.getFirst()));
     }
 
     private JsonNode replayCompletedTool(String path, HttpHeaders headers, String toolCallId) {
@@ -455,7 +483,7 @@ class GenerationExecutionWiringIT {
     private record VideoAsset(long itemId, String reference, String dataUri) {
     }
 
-    private VideoAsset videoAsset(Fixture f, long projectId, String type, int rgb) throws IOException {
+    private VideoAsset videoAsset(Fixture f, long projectId, String type, String name, int rgb) throws IOException {
         var image = new BufferedImage(8, 8, BufferedImage.TYPE_INT_RGB);
         image.setRGB(0, 0, rgb);
         var bytes = new ByteArrayOutputStream();
@@ -476,7 +504,7 @@ class GenerationExecutionWiringIT {
                 JsonNode.class)).path("id").asText();
         String reference = "media://" + mediaId;
         var asset = ok(http.postForEntity("/api/asset", new HttpEntity<>(Map.of("projectId", projectId,
-                "requestId", UUID.randomUUID().toString(), "fields", Map.of("name", type, "type", type)),
+                "requestId", UUID.randomUUID().toString(), "fields", Map.of("name", name, "type", type)),
                 f.headers), JsonNode.class));
         var original = asset.path("items").get(0);
         long itemId = original.path("id").asLong();
@@ -1199,14 +1227,37 @@ class GenerationExecutionWiringIT {
         boolean root = tools.contains("generate_storyboard_video");
         var last = messages.get(messages.size() - 1);
         boolean toolResult = "tool".equals(last.path("role").asText());
-        boolean lookupResult = !root && toolResult && last.path("tool_call_id").asText().startsWith("shot-context-");
+        String lastCall = last.path("tool_call_id").asText();
+        boolean lookupResult = !root && toolResult && lastCall.startsWith("shot-context-");
         var delta = JSON.createObjectNode().put("role", "assistant");
+        var shots = STORYBOARD_SHOTS.get();
+        if (!root && toolResult && shots.size() == 2) {
+            var firstShot = shots.getFirst();
+            long id = firstShot.path("id").asLong();
+            String content = last.path("content").asText();
+            if (lastCall.equals("shot-writeback-" + id)) {
+                STORYBOARD_WRITEBACK_REPLAYS.put(id, JSON.readTree(content));
+            } else if (!lookupResult && content.startsWith("{")) {
+                var receipt = JSON.readTree(content);
+                if ("success".equals(receipt.path("status").textValue())
+                        && receipt.path("storyboardItemId").asLong() == id && receipt.hasNonNull("videoUrl")) {
+                    var arguments = JSON.createObjectNode().put("storyboardItemId", id)
+                            .put("expectedVersion", firstShot.path("version").asInt())
+                            .put("videoUrl", receipt.path("videoUrl").textValue())
+                            .put("coverUrl", "https://example.com/poster.png");
+                    delta.putArray("tool_calls").addObject().put("index", 0).put("type", "function")
+                            .put("id", "shot-writeback-" + id).putObject("function")
+                            .put("name", "update_storyboard_item_video").put("arguments", arguments.toString());
+                    chatChunk(exchange, body, delta, "tool_calls");
+                    return;
+                }
+            }
+        }
         if (toolResult && !lookupResult) {
             delta.put("content", "已经收到实际执行结果。");
             chatChunk(exchange, body, delta, "stop");
             return;
         }
-        var shots = STORYBOARD_SHOTS.get();
         if (root) {
             var calls = delta.putArray("tool_calls");
             for (int index = 0; index < shots.size(); index++) {

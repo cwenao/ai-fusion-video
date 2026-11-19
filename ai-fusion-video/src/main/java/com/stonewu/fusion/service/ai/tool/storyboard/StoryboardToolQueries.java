@@ -30,7 +30,7 @@ public class StoryboardToolQueries {
             "firstFrameImageUrl", "lastFrameImageUrl");
     private static final Set<String> SCENE_CONTEXT_FIELDS = Set.of("sceneNumber", "sceneHeading", "location",
             "timeOfDay", "intExt");
-    private static final Set<String> VIDEO_REFERENCE_FIELDS = Set.of("assetItemId", "assetType", "itemType", "name",
+    private static final Set<String> VIDEO_REFERENCE_FIELDS = Set.of("assetItemId", "assetType", "assetName", "itemType", "name",
             "imageUrl", "unavailable", "errorCode");
 
     private final StoryboardResourceQueryService boards;
