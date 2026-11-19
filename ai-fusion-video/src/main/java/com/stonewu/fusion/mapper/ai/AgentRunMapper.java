@@ -55,6 +55,12 @@ public interface AgentRunMapper extends BaseMapper<AgentRun> {
             @Param("nextSequence") long nextSequence,
             @Param("now") LocalDateTime now);
 
+    int advanceWaitingExternalSequence(
+            @Param("runId") long runId,
+            @Param("toolCallId") String toolCallId,
+            @Param("nextSequence") long nextSequence,
+            @Param("now") LocalDateTime now);
+
     int enterWaitingConfirmation(
             @Param("runId") long runId,
             @Param("ownerEpoch") long ownerEpoch,

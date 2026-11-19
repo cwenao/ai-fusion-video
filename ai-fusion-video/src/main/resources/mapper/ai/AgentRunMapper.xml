@@ -139,6 +139,11 @@
           AND lease_until &gt; #{now}
           AND deadline_at &gt; #{now}
     </update>
+    <update id="advanceWaitingExternalSequence">
+        UPDATE afv_agent_run SET next_sequence = #{nextSequence}, update_time = #{now}
+        WHERE id = #{runId} AND status = 'WAITING_EXTERNAL' AND waiting_tool_call_id = #{toolCallId}
+          AND wait_expires_at &gt; #{now}
+    </update>
     <update id="enterWaitingConfirmation">
         UPDATE afv_agent_run
         SET status = 'WAITING_CONFIRMATION',

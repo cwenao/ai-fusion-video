@@ -5,13 +5,11 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.stonewu.fusion.service.ai.ToolExecutionContext;
 import com.stonewu.fusion.service.canvas.CanvasJson;
 import com.stonewu.fusion.service.canvas.model.CanvasActor;
-import com.stonewu.fusion.service.canvas.model.CanvasErrorCode;
 import com.stonewu.fusion.service.canvas.model.CanvasException;
-import com.stonewu.fusion.service.media.MediaReference;
 import com.stonewu.fusion.service.resource.ResourceQueryService;
 import com.stonewu.fusion.service.resource.StoryboardFields;
 import com.stonewu.fusion.service.resource.StoryboardResourceQueryService;
-import com.stonewu.fusion.service.system.SystemConfigService;
+import com.stonewu.fusion.service.storyboard.StoryboardAssetReferences;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Isolation;
@@ -26,7 +24,7 @@ import static com.stonewu.fusion.service.canvas.model.CanvasValueType.*;
 public class StoryboardToolQueries {
     private final StoryboardResourceQueryService boards;
     private final ResourceQueryService resources;
-    private final SystemConfigService configuration;
+    private final StoryboardAssetReferences assets;
     private final CanvasJson json;
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
@@ -127,21 +125,11 @@ public class StoryboardToolQueries {
             if (targetId != null) {
                 item.put("isCurrentTarget", item.path("id").longValue() == targetId);
             }
-            for (String key : List.of("characterIds", "propIds")) {
-                var references = item.putArray(key.equals("characterIds") ? "characterRefs" : "propRefs");
-                JsonNode ids = item.get(key);
-                if (ids != null && !ids.isNull()) {
-                    if (!ids.isArray()) {
-                        throw StoryboardFields.invalid("镜头资产引用不是 ID 数组");
-                    }
-                    for (JsonNode id : ids) {
-                        references.add(reference(StoryboardFields.id(id, key), header.projectId(), actor, refs));
-                    }
-                }
-            }
-            if (item.hasNonNull("sceneAssetItemId")) {
-                item.set("sceneRef",
-                        reference(item.path("sceneAssetItemId").longValue(), header.projectId(), actor, refs));
+            var references = assets.resolve(item, header.projectId(), actor, refs);
+            item.putArray("characterRefs").addAll(references.characters().stream().map(this::referenceMedia).toList());
+            item.putArray("propRefs").addAll(references.props().stream().map(this::referenceMedia).toList());
+            if (references.scene() != null) {
+                item.set("sceneRef", referenceMedia(references.scene()));
             }
             media(item);
         }
@@ -151,27 +139,10 @@ public class StoryboardToolQueries {
         return result;
     }
 
-    private ObjectNode reference(long id, Long project, CanvasActor actor, Map<Long, ObjectNode> refs) {
-        return refs.computeIfAbsent(id, ignored -> {
-            try {
-                var snapshot = resources.get(ASSET_ITEM, id, actor);
-                if (!Objects.equals(snapshot.header().projectId(), project)) {
-                    return json.object(
-                            Map.of("assetItemId", id, "unavailable", true, "errorCode", "INVALID_RESOURCE_REFERENCE"));
-                }
-                ObjectNode result = snapshot.data();
-                result.put("assetItemId", id);
-                media(result);
-                return result;
-            } catch (CanvasException unavailable) {
-                if (!List.of(CanvasErrorCode.RESOURCE_DELETED, CanvasErrorCode.ACCESS_DENIED)
-                        .contains(unavailable.getErrorCode())) {
-                    throw unavailable;
-                }
-                return json.object(
-                        Map.of("assetItemId", id, "unavailable", true, "errorCode", unavailable.getErrorCode()));
-            }
-        });
+    private ObjectNode referenceMedia(ObjectNode reference) {
+        ObjectNode result = reference.deepCopy();
+        media(result);
+        return result;
     }
 
     private void media(ObjectNode value) {
@@ -181,14 +152,13 @@ public class StoryboardToolQueries {
             if (value.hasNonNull(key)) {
                 String stored = value.path(key).textValue();
                 value.put(key + "Stored", stored);
-                value.put(key, (MediaReference.managed(stored) ? stored : configuration.resolvePublicUrl(stored)));
+                value.put(key, assets.mediaSource(stored));
             }
         }
         if (value.get("customData") instanceof ObjectNode data && data.hasNonNull("videoPosterUrl")) {
             String stored = data.path("videoPosterUrl").textValue();
             data.put("videoPosterUrlStored", stored);
-            data.put("videoPosterUrl",
-                    (MediaReference.managed(stored) ? stored : configuration.resolvePublicUrl(stored)));
+            data.put("videoPosterUrl", assets.mediaSource(stored));
         }
     }
 }

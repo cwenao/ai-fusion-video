@@ -22,6 +22,9 @@ public interface AgentWaitingStatePort {
     Mono<PendingExternalExecution> getPendingExternalAuthorized(
             String runId, long currentUserId, String toolCallId);
 
+    Mono<Void> recordExternalToolResults(
+            String runId, long currentUserId, String toolCallId, String resultPayloadJson);
+
     Mono<ResumedAgentRun> resumeConfirmation(ResumeConfirmationCommand command);
 
     Mono<ResumedAgentRun> resumeExternal(ResumeExternalCommand command);

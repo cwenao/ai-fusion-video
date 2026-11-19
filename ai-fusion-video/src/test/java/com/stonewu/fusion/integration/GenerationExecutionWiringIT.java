@@ -90,10 +90,11 @@ class GenerationExecutionWiringIT {
     static final HttpServer PROVIDER = provider();
     static final byte[] PNG = png();
     static final AtomicReference<byte[]> VIDEO = new AtomicReference<>();
-    static final AtomicBoolean STORYBOARD_VIDEO_READY = new AtomicBoolean(false);
+    static final AtomicInteger STORYBOARD_READY_SUBMISSIONS = new AtomicInteger();
     static final AtomicReference<List<JsonNode>> STORYBOARD_SHOTS = new AtomicReference<>(List.of());
     static final AtomicInteger STORYBOARD_SUBMISSIONS = new AtomicInteger();
     static final Map<String, String> STORYBOARD_VIDEO_REQUESTS = new ConcurrentHashMap<>();
+    static final AtomicReference<List<String>> STORYBOARD_PROPOSED_REFERENCES = new AtomicReference<>(List.of());
     static final String SAVED_STORYBOARD_PROMPT = "分镜验收，蓝色灯光\n镜头向左平移。";
     static final String DRAFT_STORYBOARD_PROMPT = "分镜验收，红色背景";
     static final Map<String, ImagePipeline> IMAGE_PIPELINES = new ConcurrentHashMap<>();
@@ -211,7 +212,8 @@ class GenerationExecutionWiringIT {
     @CsvSource({"false,false", "true,false", "false,true"})
     void storyboardVideoPersistsThroughWaitingAndDisconnect(boolean editWhileWaiting, boolean disconnectBatch)
             throws Exception {
-        STORYBOARD_VIDEO_READY.set(false);
+        STORYBOARD_READY_SUBMISSIONS.set(0);
+        STORYBOARD_PROPOSED_REFERENCES.set(List.of());
         STORYBOARD_SUBMISSIONS.set(0);
         STORYBOARD_VIDEO_REQUESTS.clear();
         jdbc.update("UPDATE afv_ai_model SET default_model=FALSE WHERE model_type=3");
@@ -222,9 +224,14 @@ class GenerationExecutionWiringIT {
                 INSERT INTO afv_ai_model(id, name, code, model_type, model_protocol, api_config_id, config,
                     max_concurrency, multimodal_input_types, multimodal_input_transports, reasoning_effort_levels,
                     default_model)
-                VALUES (?, '分镜视频生成桩', 'sora-2', 3, 'openai', ?, '{"pollIntervalMillis":1000}', 1,
+                VALUES (?, '分镜视频生成桩', ?, 3, ?, ?, ?, 1,
                     JSON_ARRAY(), JSON_OBJECT(), JSON_ARRAY(), TRUE)
-                """, model, f.id);
+                """, model, disconnectBatch ? "storyboard-multi-reference" : "sora-2",
+                disconnectBatch ? "volcengine" : "openai", f.id,
+                disconnectBatch ? """
+                        {"pollIntervalMillis":1000,"supportReferenceImages":true,"maxReferenceImages":6,
+                         "referenceImageInputFormats":["data_uri"]}
+                        """ : "{\"pollIntervalMillis\":1000}");
         var reviewer = reviewer(f, "分镜审查桩", "video");
         reviewer.remote().release.countDown();
         long chat = IDS.incrementAndGet();
@@ -244,12 +251,23 @@ class GenerationExecutionWiringIT {
         var board = ok(get("/api/storyboard/project/" + projectId, f.headers));
         var episode = storyboardChild(f, "episode", board, Map.of("episodeNumber", 1));
         var scene = storyboardChild(f, "scene", episode, Map.of("sceneNumber", "1"));
-        var shot = storyboardChild(f, "item", scene, Map.of("content", "红色背景，固定镜头",
+        var shotFields = new HashMap<String, Object>(Map.of("content", "红色背景，固定镜头",
                 "videoPrompt", SAVED_STORYBOARD_PROMPT));
+        List<VideoAsset> references = List.of();
+        if (disconnectBatch) {
+            references = List.of(videoAsset(f, projectId, "character", 0x0000ff),
+                    videoAsset(f, projectId, "prop", 0xff0000), videoAsset(f, projectId, "scene", 0x00ff00));
+            shotFields.put("characterIds", List.of(references.get(0).itemId()));
+            shotFields.put("propIds", List.of(references.get(1).itemId()));
+            shotFields.put("sceneAssetItemId", references.get(2).itemId());
+            STORYBOARD_PROPOSED_REFERENCES.set(List.of(references.get(2).reference()));
+        }
+        var shot = storyboardChild(f, "item", scene, shotFields);
         var shots = List.of(shot);
         if (disconnectBatch) {
             var updatedScene = ok(get("/api/storyboard/scene/" + scene.path("id").asLong(), f.headers));
-            shots = List.of(shot, storyboardChild(f, "item", updatedScene, Map.of("content", "第二个镜头")));
+            shots = List.of(shot, storyboardChild(f, "item", updatedScene,
+                    Map.of("content", "第二个镜头", "sceneAssetItemId", references.get(2).itemId())));
         }
         STORYBOARD_SHOTS.set(shots);
         var shotIds = shots.stream().map(item -> item.path("id").asLong()).toList();
@@ -262,7 +280,7 @@ class GenerationExecutionWiringIT {
         headers.putAll(f.headers);
         headers.setAccept(List.of(MediaType.TEXT_EVENT_STREAM));
         if (disconnectBatch) {
-            verifyDisconnectedStoryboardBatch(body, f.headers, projectId, shotIds);
+            verifyDisconnectedStoryboardBatch(body, f.headers, projectId, shotIds, references);
             return;
         }
         var pipeline = CompletableFuture.supplyAsync(() ->
@@ -282,7 +300,7 @@ class GenerationExecutionWiringIT {
                         JsonNode.class));
             }
         } finally {
-            STORYBOARD_VIDEO_READY.set(true);
+            STORYBOARD_READY_SUBMISSIONS.set(Integer.MAX_VALUE);
         }
         assertThat(pipeline.get(45, TimeUnit.SECONDS).getBody()).contains("\"outputType\":\"DONE\"");
         var written = ok(get(shotPath, f.headers));
@@ -314,10 +332,11 @@ class GenerationExecutionWiringIT {
     }
 
     private void verifyDisconnectedStoryboardBatch(Map<String, Object> body, HttpHeaders headers, long projectId,
-                                                   List<Long> shotIds) throws Exception {
+                                                   List<Long> shotIds, List<VideoAsset> references) throws Exception {
         String cursor = disconnectAfterFirstPipelineEvent(body, headers);
         String[] position = cursor.split(":", 2);
         String runId = position[0];
+        String replayPath = "/api/ai/pipeline/reconnect?runId=" + runId + "&afterSequence=" + position[1];
         try {
             await().atMost(Duration.ofSeconds(25)).untilAsserted(() -> {
                 var jobs = jdbc.queryForList("""
@@ -332,8 +351,22 @@ class GenerationExecutionWiringIT {
                     SET j.deadline_at = TIMESTAMPADD(SECOND, -1, UTC_TIMESTAMP(6))
                     WHERE s.project_id = ? AND j.phase = 'NEW' AND j.permit_held = FALSE
                     """, projectId)).isEqualTo(1);
+            STORYBOARD_READY_SUBMISSIONS.set(1);
+            await().atMost(Duration.ofSeconds(25)).untilAsserted(() -> {
+                assertThat(jdbc.queryForList("""
+                        SELECT c.status FROM afv_agent_run c WHERE c.parent_run_id=? ORDER BY c.status
+                        """, String.class, runId)).containsExactly("COMPLETED", "WAITING_EXTERNAL");
+            });
+            String completedTool = jdbc.queryForObject("""
+                    SELECT parent_tool_call_id FROM afv_agent_run WHERE parent_run_id=? AND status='COMPLETED'
+                    """, String.class, runId);
+            JsonNode receipt = CompletableFuture.supplyAsync(() -> replayCompletedTool(replayPath, headers, completedTool))
+                    .get(10, TimeUnit.SECONDS);
+            assertThat(receipt.path("toolStatus").asText()).isEqualTo("success");
+            assertThat(ok(get("/api/ai/pipeline/status?runId=" + runId, headers)).path("status").asText())
+                    .isEqualTo("WAITING_EXTERNAL");
         } finally {
-            STORYBOARD_VIDEO_READY.set(true);
+            STORYBOARD_READY_SUBMISSIONS.set(Integer.MAX_VALUE);
         }
 
         await().atMost(Duration.ofSeconds(30)).untilAsserted(() -> {
@@ -343,8 +376,7 @@ class GenerationExecutionWiringIT {
         var streamHeaders = new HttpHeaders();
         streamHeaders.putAll(headers);
         streamHeaders.setAccept(List.of(MediaType.TEXT_EVENT_STREAM));
-        var replay = http.exchange("/api/ai/pipeline/reconnect?runId=" + runId + "&afterSequence=" + position[1],
-                HttpMethod.GET, new HttpEntity<>(streamHeaders), String.class);
+        var replay = http.exchange(replayPath, HttpMethod.GET, new HttpEntity<>(streamHeaders), String.class);
         assertThat(replay.getBody()).contains("\"outputType\":\"DONE\"");
         for (int index = 0; index < shotIds.size(); index++) {
             var written = ok(get("/api/storyboard/item/" + shotIds.get(index), headers));
@@ -353,6 +385,83 @@ class GenerationExecutionWiringIT {
                     .isEqualTo(index == 0 ? SAVED_STORYBOARD_PROMPT : DRAFT_STORYBOARD_PROMPT);
         }
         assertThat(STORYBOARD_SUBMISSIONS.get()).isEqualTo(shotIds.size());
+        assertThat(jdbc.queryForList("""
+                SELECT COUNT(*) FROM afv_agent_event e JOIN afv_agent_run c
+                ON c.parent_run_id=e.run_id AND c.parent_tool_call_id=e.tool_call_id
+                WHERE e.run_id=? AND e.output_type='TOOL_FINISHED' GROUP BY c.id
+                """, Integer.class, runId)).containsExactly(1, 1);
+        var requests = new HashMap<String, List<String>>();
+        for (String raw : STORYBOARD_VIDEO_REQUESTS.values()) {
+            var content = JSON.readTree(raw).path("content");
+            requests.put(content.get(0).path("text").asText(), content.findValuesAsText("url"));
+        }
+        assertThat(requests).containsOnlyKeys(SAVED_STORYBOARD_PROMPT, DRAFT_STORYBOARD_PROMPT);
+        assertThat(requests.get(SAVED_STORYBOARD_PROMPT)).containsExactlyElementsOf(
+                references.stream().map(VideoAsset::dataUri).toList());
+        assertThat(requests.get(DRAFT_STORYBOARD_PROMPT)).containsExactly(references.get(2).dataUri());
+    }
+
+    private JsonNode replayCompletedTool(String path, HttpHeaders headers, String toolCallId) {
+        var request = HttpRequest.newBuilder(URI.create(http.getRootUri() + path))
+                .header(HttpHeaders.AUTHORIZATION, headers.getFirst(HttpHeaders.AUTHORIZATION))
+                .header(HttpHeaders.ACCEPT, MediaType.TEXT_EVENT_STREAM_VALUE)
+                .timeout(Duration.ofSeconds(8)).build();
+        try (var client = HttpClient.newHttpClient()) {
+            var response = client.send(request, HttpResponse.BodyHandlers.ofInputStream());
+            try (var reader = new BufferedReader(new InputStreamReader(response.body(), StandardCharsets.UTF_8))) {
+                assertThat(response.statusCode()).isEqualTo(200);
+                for (String line; (line = reader.readLine()) != null; ) {
+                    if (line.startsWith("data:")) {
+                        var event = JSON.readTree(line.substring(5));
+                        if ("TOOL_FINISHED".equals(event.path("outputType").asText())
+                                && toolCallId.equals(event.path("toolCallId").asText())) {
+                            return event;
+                        }
+                    }
+                }
+                throw new AssertionError("重连流未收到已完成子 Agent 的回执");
+            }
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError("读取子 Agent 回执被中断", interrupted);
+        } catch (IOException failure) {
+            throw new AssertionError("无法读取子 Agent 回执", failure);
+        }
+    }
+
+    private record VideoAsset(long itemId, String reference, String dataUri) {
+    }
+
+    private VideoAsset videoAsset(Fixture f, long projectId, String type, int rgb) throws IOException {
+        var image = new BufferedImage(8, 8, BufferedImage.TYPE_INT_RGB);
+        image.setRGB(0, 0, rgb);
+        var bytes = new ByteArrayOutputStream();
+        ImageIO.write(image, "png", bytes);
+        var upload = new LinkedMultiValueMap<String, Object>();
+        upload.add("file", new ByteArrayResource(bytes.toByteArray()) {
+            @Override
+            public String getFilename() {
+                return type + ".png";
+            }
+        });
+        upload.add("requestId", UUID.randomUUID().toString());
+        upload.add("projectId", Long.toString(projectId));
+        var uploadHeaders = new HttpHeaders();
+        uploadHeaders.addAll(f.headers);
+        uploadHeaders.setContentType(MediaType.MULTIPART_FORM_DATA);
+        String mediaId = ok(http.postForEntity("/api/media-resources/upload", new HttpEntity<>(upload, uploadHeaders),
+                JsonNode.class)).path("id").asText();
+        String reference = "media://" + mediaId;
+        var asset = ok(http.postForEntity("/api/asset", new HttpEntity<>(Map.of("projectId", projectId,
+                "requestId", UUID.randomUUID().toString(), "fields", Map.of("name", type, "type", type)),
+                f.headers), JsonNode.class));
+        var original = asset.path("items").get(0);
+        long itemId = original.path("id").asLong();
+        var patch = Map.of("requestId", UUID.randomUUID().toString(), "id", itemId,
+                "version", original.path("version").asInt(), "assetVersion", asset.path("version").asInt(),
+                "patch", Map.of("imageUrl", reference));
+        ok(http.exchange("/api/asset/item", HttpMethod.PUT, new HttpEntity<>(patch, f.headers), JsonNode.class));
+        return new VideoAsset(itemId, reference, "data:image/png;base64," + Base64.getEncoder().encodeToString(bytes.toByteArray()));
     }
 
     private String disconnectAfterFirstPipelineEvent(Map<String, Object> body, HttpHeaders headers) throws Exception {
@@ -1086,7 +1195,8 @@ class GenerationExecutionWiringIT {
                 long id = shot.path("id").asLong();
                 String arguments = JSON.writeValueAsString(Map.of("prompt", DRAFT_STORYBOARD_PROMPT,
                         "reviewTargetId", id, "expectedVersion", shot.path("version").asInt(),
-                        "ratio", "16:9", "resolution", "1280x720", "duration", 4));
+                        "ratio", "16:9", "resolution", "1280x720", "duration", 4,
+                        "referenceImageUrls", STORYBOARD_PROPOSED_REFERENCES.get()));
                 calls.addObject().put("index", 0).put("id", "shot-video-" + id).put("type", "function")
                         .putObject("function").put("name", "generate_video").put("arguments", arguments);
             }
@@ -1143,6 +1253,10 @@ class GenerationExecutionWiringIT {
         sendMedia(exchange, "text/event-stream", response);
     }
 
+    private static boolean storyboardVideoReady(String id) {
+        return Integer.parseInt(id.substring(id.lastIndexOf('-') + 1)) <= STORYBOARD_READY_SUBMISSIONS.get();
+    }
+
     private static HttpServer provider() {
         try {
             var server = HttpServer.create(new InetSocketAddress(0), 0);
@@ -1162,8 +1276,22 @@ class GenerationExecutionWiringIT {
                         id = path.substring("/v1/videos/".length());
                     }
                     boolean storyboard = id.startsWith("storyboard-review-video-");
-                    String state = storyboard && !STORYBOARD_VIDEO_READY.get() ? "in_progress" : "completed";
+                    String state = storyboard && !storyboardVideoReady(id) ? "in_progress" : "completed";
                     respond(exchange, 200, Map.of("id", id, "status", state, "seconds", "4"));
+                }
+            });
+            server.createContext("/api/v3/contents/generations/tasks", exchange -> {
+                if ("POST".equals(exchange.getRequestMethod())) {
+                    String id = "storyboard-review-video-" + STORYBOARD_SUBMISSIONS.incrementAndGet();
+                    STORYBOARD_VIDEO_REQUESTS.put(id, new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+                    respond(exchange, 200, Map.of("id", id));
+                } else {
+                    String path = exchange.getRequestURI().getPath();
+                    String id = path.substring(path.lastIndexOf('/') + 1);
+                    String source = "http://localhost:" + server.getAddress().getPort() + "/v1/videos/" + id + "/content";
+                    respond(exchange, 200, storyboardVideoReady(id)
+                            ? Map.of("status", "succeeded", "duration", 4, "content", Map.of("video_url", source))
+                            : Map.of("status", "running"));
                 }
             });
             server.createContext("/preparation-input/", exchange -> {

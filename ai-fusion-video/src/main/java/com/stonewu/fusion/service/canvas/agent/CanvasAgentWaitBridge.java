@@ -116,7 +116,6 @@ public class CanvasAgentWaitBridge {
         var result = json.object(Map.of());
         var results = result.putArray("results");
         Set<String> ids = new HashSet<>();
-        boolean ready = true;
         for (JsonNode call : calls) {
             String toolId = call.path("id").asText();
             if (toolId.isBlank() || !ids.add(toolId)) {
@@ -131,10 +130,9 @@ public class CanvasAgentWaitBridge {
                     || kernel.tools().stream().noneMatch(item -> item.name().equals(name))) {
                 throw new IllegalStateException("外部等待工具未登记或不在本轮白名单内");
             }
-            var entry = results.addObject().put("toolCallId", toolId).put("toolName", name);
+            Object output;
             try {
                 var actor = new CanvasActor(agent.getUserId(), agent.getActorTeamId());
-                Object output;
                 if (projectGeneration) {
                     output = projectMedia.poll(agent, toolId, json.object(call.path("input")));
                 } else if (executor instanceof CanvasExternalTool external) {
@@ -142,19 +140,22 @@ public class CanvasAgentWaitBridge {
                 } else {
                     output = children.poll(agent, toolId, name, scope, actor);
                 }
-                ready &= output != null;
-                if (output != null) {
-                    entry.set("result", json.object(output));
-                }
             } catch (BusinessException unavailable) {
                 if (!Set.of(400, 403, 404, 409, 410, 422).contains(unavailable.getCode())) {
                     throw unavailable;
                 }
-                entry.set("result", json.object(
-                        Map.of("status", "error", "code", unavailable.getCode(), "message", unavailable.getMessage())));
+                output = Map.of("status", "error", "code", unavailable.getCode(), "message", unavailable.getMessage());
+            }
+            if (output != null) {
+                results.addObject().put("toolCallId", toolId).put("toolName", name).set("result", json.object(output));
             }
         }
-        if (!ready) {
+        if (results.size() < calls.size()) {
+            if (!results.isEmpty() && scope == null && ProjectMediaPipeline.VIDEO.root().equals(agent.getAgentType())) {
+                // 子任务完成即更新流水线，父 Agent 仍等待本轮全部结果。
+                waiting.recordExternalToolResults(id, agent.getUserId(), pending.toolCallId(), json.write(result))
+                        .block(STEP_TIMEOUT);
+            }
             return;
         }
         waiting.resumeExternal(

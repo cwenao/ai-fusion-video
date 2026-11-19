@@ -11,6 +11,7 @@ import com.stonewu.fusion.service.resource.ResourceQueryService;
 import com.stonewu.fusion.service.resource.StoryboardResourceQueryService;
 import com.stonewu.fusion.service.resource.model.ResourceCommandContext;
 import com.stonewu.fusion.service.system.SystemConfigService;
+import com.stonewu.fusion.service.storyboard.StoryboardAssetReferences;
 import org.junit.jupiter.api.Test;
 import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -31,7 +32,10 @@ class StoryboardQueryToolExecutorTests {
         when(boards.tree(CanvasValueType.STORYBOARD, 5, 2, actor)).thenReturn(root);
         when(boards.children(CanvasValueType.SHOT, CanvasValueType.STORYBOARD, 5, actor)).thenReturn(List.of(item));
         when(configuration.resolvePublicUrl("/media/image.png")).thenReturn("https://example.com/image.png");
-        var executor = new StoryboardQueryToolExecutor(new StoryboardToolQueries(boards, mock(ResourceQueryService.class), configuration, new CanvasJson(mapper)));
+        var resources = mock(ResourceQueryService.class);
+        var json = new CanvasJson(mapper);
+        var references = new StoryboardAssetReferences(resources, configuration, json);
+        var executor = new StoryboardQueryToolExecutor(new StoryboardToolQueries(boards, resources, references, json));
         var invocation = ToolExecutionContext.forInvocation(7L, 2, 81L,
                 new ResourceCommandContext(actor, "agent", null, "run", "call", "owner", 1L));
         var result = mapper.readTree(executor.execute("{\"storyboardId\":5}", invocation));

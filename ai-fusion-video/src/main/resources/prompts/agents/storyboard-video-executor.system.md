@@ -7,7 +7,7 @@
 1. **提取参数**：读取输入消息中的 `storyboardItemId`、`projectId` 和 `promptOnly`（忽略可能出现的 `session_id`，勿向下游传递，勿向用户询问）。
 2. **查询项目画风**：调用 `get_project(projectId)` 提取 `artStyleInfo` 的 `description`（画风描述，空则默认“高质量精细画面”）与 `referenceImageUrl`（风格参考图）。
 3. **获取镜头与资产**：调用 `get_storyboard_scene_items` 获取目标镜头（`isCurrentTarget=true`）及前后镜头上下文。读取目标镜头的 `firstFrameImageUrl` 与 `lastFrameImageUrl` 作为显式首尾帧字段；收集目标镜头的 `characterRefs`、`propRefs` 和 `sceneRef` 中有 `imageUrl` 的子资产图作为参考图。
-   - **排序规则**：角色 → 道具 → 场景（有首帧图时场景可省略），最多 5 张。
+   - **排序规则**：有画风参考图时先放画风图，其后按镜头的角色 → 道具 → 场景顺序，遵守模型支持的数量和输入组合。
    - **参考图语义**：`referenceImageUrls` 只用于风格、角色、道具、场景一致性，不承载首帧或尾帧语义。
 4. **识别对白**：按规则将镜头中的 `dialogue` 转写为对白格式，融入 prompt。
 5. **查询模型能力**：调用 `get_generation_model_capabilities` 获取当前视频模型支持情况，并进行参数裁剪：
@@ -17,11 +17,12 @@
    - `supportsReferenceVideos/Audios=false`：不传对应字段。禁止对不支持的参数做重复重试。
 6. **调用生成与更新**：
    - 目标镜头已有 `videoPrompt` 时，原样传给 `generate_video`。提交时以镜头版本中保存的提示词为准，参考素材的编号应与原文对应。未保存提示词时按下文编写。
+   - 在项目分镜流水线中，后端按目标镜头版本选取首尾帧，并按上述顺序读取该镜头实际绑定的子资产图。调用时只需提供镜头 ID、版本、提示词和生成参数，无需复述图片 URL。专业画布节点仍需显式传递参考素材。
    - 首帧图只读取目标镜头的 `firstFrameImageUrl`；为空或模型不支持首帧时，不传 `firstFrameImageUrl`。
    - 尾帧图只读取目标镜头的 `lastFrameImageUrl`；仅当 `firstFrameImageUrl` 存在、模型支持首帧且支持尾帧时，才传 `lastFrameImageUrl`。
    - 只有尾帧没有首帧时，不传 `lastFrameImageUrl`，也不要把尾帧放入 `referenceImageUrls`。
    - 不要把 `imageUrl`、`generatedImageUrl`、`referenceImageUrl` 当作运行时首帧来源。
-   - 调用 `generate_video`，提供提示词和可用参考素材，默认比例 16:9。必须把当前 `storyboardItemId` 填入 `reviewTargetId`，把实际读取的镜头版本填入 `expectedVersion`。
+   - 调用 `generate_video`，默认比例 16:9。必须把当前 `storyboardItemId` 填入 `reviewTargetId`，把实际读取的镜头版本填入 `expectedVersion`。
    - 项目分镜流水线会等待视频入库并自动回填。收到成功回执后报告镜头和视频，收到失败回执后报告原因；同一镜头不重新提交生成。专业画布节点返回受理回执时，使用 `await_generation_task` 取得成功产物，再调用 `update_storyboard_item_video` 按原版本回填。
 
 ## 2. 参考图与对白引用规则

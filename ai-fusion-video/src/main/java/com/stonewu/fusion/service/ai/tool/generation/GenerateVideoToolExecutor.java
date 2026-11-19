@@ -14,6 +14,7 @@ import com.stonewu.fusion.service.canvas.CanvasJson;
 import com.stonewu.fusion.service.canvas.agent.node.CanvasAgentNodeGeneration;
 import com.stonewu.fusion.service.generation.GenerationKind;
 import com.stonewu.fusion.service.generation.GenerationModelCapabilityService;
+import com.stonewu.fusion.service.generation.StoryboardVideoReferences;
 import com.stonewu.fusion.service.generation.job.GenerationSubmissionService;
 import com.stonewu.fusion.service.generation.review.GenerationReviewAdmission;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -50,6 +51,7 @@ public class GenerateVideoToolExecutor implements ToolExecutor {
     private final CanvasJson json;
     private final CanvasAgentNodeGeneration canvasModels;
     private final ProjectMediaCompletion projectMedia;
+    private final StoryboardVideoReferences storyboardReferences;
 
     @Override
     public String getToolName() {
@@ -159,28 +161,11 @@ public class GenerateVideoToolExecutor implements ToolExecutor {
             Integer duration = params.getInt("duration");
             Boolean cameraFixed = params.getBool("cameraFixed");
 
-            // 解析多模态参考图片列表
-            List<String> referenceImageUrlList = new ArrayList<>();
-            JSONArray refImagesArr = params.getJSONArray("referenceImageUrls");
-            if (refImagesArr != null) {
-                for (int i = 0; i < refImagesArr.size(); i++) {
-                    String url = refImagesArr.getStr(i);
-                    if (StrUtil.isNotBlank(url)) {
-                        referenceImageUrlList.add(url);
-                    }
-                }
-            }
-            String referenceImageUrls = CollUtil.isEmpty(referenceImageUrlList)
-                    ? null : JSONUtil.toJsonStr(referenceImageUrlList);
-
             // 解析参考视频列表
             String referenceVideoUrls = parseUrlArray(params, "referenceVideoUrls");
 
             // 解析参考音频列表
             String referenceAudioUrls = parseUrlArray(params, "referenceAudioUrls");
-
-            // 确定生成模式
-            String generateMode = StrUtil.isNotBlank(firstFrameImageUrl) ? "image2video" : "text2video";
 
             AiModel model = canvasModels.scoped(context) ? canvasModels.require(context,
                     GenerationKind.VIDEO) : resolvePreferredModel();
@@ -190,6 +175,18 @@ public class GenerateVideoToolExecutor implements ToolExecutor {
             var target = projectMedia.requireTarget(mutation, input, GenerationKind.VIDEO);
             String savedPrompt = target == null ? null : target.data().path("videoPrompt").textValue();
             String prompt = StrUtil.isNotBlank(savedPrompt) ? savedPrompt : params.getStr("prompt");
+            String referenceImageUrls;
+            if (target == null) {
+                referenceImageUrls = parseUrlArray(params, "referenceImageUrls");
+            } else {
+                var images = storyboardReferences.resolve(target, mutation.actor(),
+                        generationModelCapabilityService.resolveVideoCapability(model),
+                        config.getBool("exclusiveInputModes", config.getBool("mutuallyExclusiveInputModes", false)));
+                firstFrameImageUrl = images.first();
+                lastFrameImageUrl = images.last();
+                referenceImageUrls = images.references().isEmpty() ? null : JSONUtil.toJsonStr(images.references());
+            }
+            String generateMode = StrUtil.isNotBlank(firstFrameImageUrl) ? "image2video" : "text2video";
             // 旧模型保留原工具默认值；新契约由统一校验应用模型默认值。
             if (!config.containsKey("videoRules")) {
                 if (StrUtil.isBlank(prompt)) {
@@ -230,7 +227,7 @@ public class GenerateVideoToolExecutor implements ToolExecutor {
                     "[generate_video] 提交生视频任务: prompt={}, mode={}, ratio={}, duration={}s, modelId={}, modelCode={}, 首帧: {}, 参考图: {}张",
                     StrUtil.sub(prompt, 0, 80), generateMode, ratio, duration, model.getId(), model.getCode(),
                     firstFrameImageUrl != null ? "有" : "无",
-                    referenceImageUrlList.size());
+                    referenceImageUrls == null ? 0 : JSONUtil.parseArray(referenceImageUrls).size());
 
             var review = reviews.agent(mutation, GenerationKind.VIDEO, input.get("reviewTargetId"));
             var accepted = submissions.video(task, ResourceToolRequests.requestId(json, mutation), mutation, null,

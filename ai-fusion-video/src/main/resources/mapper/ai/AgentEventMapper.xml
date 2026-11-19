@@ -162,4 +162,9 @@
         ORDER BY sequence_no DESC
         LIMIT 1
     </select>
+    <select id="selectSettledExternalTools" resultType="String">
+        SELECT tool_call_id FROM afv_agent_event
+        WHERE run_id = #{runId} AND sequence_no &gt; #{pausedThrough}
+          AND raw_event_type = 'PLATFORM_TOOL_RESULT'
+    </select>
 </mapper>

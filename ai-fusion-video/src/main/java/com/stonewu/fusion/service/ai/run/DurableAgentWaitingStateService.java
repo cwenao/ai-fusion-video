@@ -158,6 +158,14 @@ public final class DurableAgentWaitingStateService implements AgentWaitingStateP
     }
 
     @Override
+    public Mono<Void> recordExternalToolResults(
+            String runId, long currentUserId, String toolCallId, String resultPayloadJson) {
+        var result = parseObject(resultPayloadJson, "resultPayloadJson");
+        return transactional(() -> recordExternalToolResultsTx(runId, currentUserId, toolCallId, result))
+                .flatMap(this::publishCommitted);
+    }
+
+    @Override
     public Mono<ResumedAgentRun> resumeConfirmation(ResumeConfirmationCommand command) {
         ResumeConfirmationCommand safeCommand = Objects.requireNonNull(
                 command, "command must not be null");
@@ -374,11 +382,15 @@ public final class DurableAgentWaitingStateService implements AgentWaitingStateP
             String runId, long currentUserId, String toolCallId) {
         AgentRun run = requireAuthorizedRun(runId, currentUserId);
         LocalDateTime now = runMapper.selectDatabaseNow();
+        return requirePendingExternal(run, toolCallId, now);
+    }
+
+    private PendingExternalExecution requirePendingExternal(AgentRun run, String toolCallId, LocalDateTime now) {
         requireWaiting(run, AgentRunStatus.WAITING_EXTERNAL, now);
         if (!Objects.equals(run.getWaitingToolCallId(), toolCallId)) {
             throw conflict("外部执行请求已处理或 toolCallId 不匹配");
         }
-        AgentEvent event = eventMapper.selectPendingExternalExecution(runId, toolCallId);
+        AgentEvent event = eventMapper.selectPendingExternalExecution(run.getRunId(), toolCallId);
         if (event == null) {
             throw conflict("外部执行候选不存在");
         }
@@ -388,6 +400,25 @@ public final class DurableAgentWaitingStateService implements AgentWaitingStateP
         }
         requireSameExpiry(run, pending.expiresAt());
         return pending;
+    }
+
+    private EventSignal recordExternalToolResultsTx(
+            String runId, long currentUserId, String toolCallId, JsonNode result) {
+        AgentRun run = requireAuthorizedRun(runId, currentUserId);
+        LocalDateTime now = runMapper.selectDatabaseNow();
+        var pending = requirePendingExternal(run, toolCallId, now);
+        if (!durableWait(run, pending)) {
+            throw conflict("仅持久化等待可记录部分外部结果");
+        }
+        long firstSequence = nextSequence(run);
+        long next = appendExternalToolResults(run, pending, result, firstSequence, now, false);
+        if (next == firstSequence) {
+            return null;
+        }
+        if (runMapper.advanceWaitingExternalSequence(run.getId(), toolCallId, next, now) != 1) {
+            throw conflict("外部执行等待状态已变更");
+        }
+        return new EventSignal(runId, next - 1);
     }
 
     private ResumeConfirmationTransition resumeConfirmationTx(
@@ -475,20 +506,7 @@ public final class DurableAgentWaitingStateService implements AgentWaitingStateP
     private ResumedAgentRun resumeExternalTx(ResumeExternalCommand command) {
         AgentRun run = requireAuthorizedRun(command.runId(), command.currentUserId());
         LocalDateTime now = runMapper.selectDatabaseNow();
-        requireWaiting(run, AgentRunStatus.WAITING_EXTERNAL, now);
-        if (!Objects.equals(run.getWaitingToolCallId(), command.toolCallId())) {
-            throw conflict("外部执行请求已处理或 toolCallId 不匹配");
-        }
-        AgentEvent pendingEvent = eventMapper.selectPendingExternalExecution(
-                command.runId(), command.toolCallId());
-        if (pendingEvent == null) {
-            throw conflict("外部执行候选不存在");
-        }
-        PendingExternalExecution pending = external(pendingEvent);
-        if (!Objects.equals(run.getWaitingToolName(), pending.toolName())) {
-            throw conflict("外部执行工具身份不匹配");
-        }
-        requireSameExpiry(run, pending.expiresAt());
+        PendingExternalExecution pending = requirePendingExternal(run, command.toolCallId(), now);
 
         long newEpoch = incrementOwnerEpoch(run);
         LocalDateTime leaseUntil = leaseUntil(now, command.ownerLease(), run.getDeadlineAt());
@@ -512,8 +530,9 @@ public final class DurableAgentWaitingStateService implements AgentWaitingStateP
                 payload,
                 now);
         boolean durable = durableWait(run, pending);
+        long next = increment(sequence);
         if (durable) {
-            sequence = appendCanvasToolResults(run, pending, payload.path("result"), sequence, now);
+            next = appendExternalToolResults(run, pending, payload.path("result"), next, now, true);
         }
         if (runMapper.resumeExternal(
                 run.getId(),
@@ -522,7 +541,7 @@ public final class DurableAgentWaitingStateService implements AgentWaitingStateP
                 command.newOwnerInstanceId(),
                 newEpoch,
                 leaseUntil,
-                increment(sequence),
+                next,
                 now) != 1) {
             throw conflict("外部执行请求已由其他节点处理");
         }
@@ -533,7 +552,7 @@ public final class DurableAgentWaitingStateService implements AgentWaitingStateP
                 deadline = run.getStartedAt().plusHours(24);
             }
             leaseUntil = leaseUntil(now, command.ownerLease(), deadline);
-            if (runMapper.recordCanvasResumeDispatch(command.runId(), newEpoch, command.resultPayloadJson(), sequence,
+            if (runMapper.recordCanvasResumeDispatch(command.runId(), newEpoch, command.resultPayloadJson(), next - 1,
                     now, deadline, leaseUntil) != 1) {
                 throw conflict("外部恢复消息未持久化");
             }
@@ -551,11 +570,12 @@ public final class DurableAgentWaitingStateService implements AgentWaitingStateP
                 || ProjectMediaPipeline.waitsDurably(run.getAgentType(), run.getProjectId()));
     }
 
-    private long appendCanvasToolResults(AgentRun run, PendingExternalExecution pending, JsonNode result,
-                                         long sequence, LocalDateTime now) {
+    private long appendExternalToolResults(AgentRun run, PendingExternalExecution pending, JsonNode result,
+                                           long next, LocalDateTime now, boolean complete) {
         var calls = parseObject(pending.suspendedPayloadJson(), "suspendedPayloadJson").path("toolCalls");
         var results = result.path("results");
-        if (!calls.isArray() || calls.isEmpty() || calls.size() > 16 || !results.isArray() || results.size() != calls.size()) {
+        if (!calls.isArray() || calls.isEmpty() || calls.size() > 16 || !results.isArray() || results.isEmpty()
+                || results.size() > calls.size() || (complete && results.size() != calls.size())) {
             throw conflict("外部结果与等待的工具数量不符");
         }
         Map<String, String> expected = new LinkedHashMap<>();
@@ -565,20 +585,24 @@ public final class DurableAgentWaitingStateService implements AgentWaitingStateP
                 throw conflict("等待的工具编号重复");
             }
         }
+        var settled = Set.copyOf(eventMapper.selectSettledExternalTools(run.getRunId(), run.getPausedThroughSequence()));
         for (JsonNode entry : results) {
             String id = requireJsonText(entry.get("toolCallId"), "toolCallId"), name = requireJsonText(
                     entry.get("toolName"), "toolName");
             if (!name.equals(expected.remove(id)) || !entry.path("result").isObject()) {
                 throw conflict("外部工具结果身份不符");
             }
+            if (settled.contains(id)) {
+                continue;
+            }
             boolean failed = "error".equals(entry.path("result").path("status").asText());
             var payload = JsonNodeFactory.instance.objectNode().put("outputType", "TOOL_FINISHED")
                     .put("toolCallId", id).put("toolName", name).put("toolStatus", failed ? "error" : "success")
                     .put("result", writeJson(entry.path("result")));
-            sequence = increment(sequence);
-            insertEvent(run, sequence, "PLATFORM_TOOL_RESULT", WAITING_SOURCE, null, id, "TOOL_FINISHED", payload, now);
+            insertEvent(run, next, "PLATFORM_TOOL_RESULT", WAITING_SOURCE, null, id, "TOOL_FINISHED", payload, now);
+            next = increment(next);
         }
-        return sequence;
+        return next;
     }
 
     private void requireCheckpoint(AgentRun run, WaitingCheckpoint checkpoint) {

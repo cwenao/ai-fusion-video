@@ -78,4 +78,7 @@ public interface AgentEventMapper extends BaseMapper<AgentEvent> {
     AgentEvent selectPendingExternalExecution(
             @Param("runId") String runId,
             @Param("toolCallId") String toolCallId);
+
+    List<String> selectSettledExternalTools(@Param("runId") String runId,
+                                            @Param("pausedThrough") long pausedThrough);
 }
