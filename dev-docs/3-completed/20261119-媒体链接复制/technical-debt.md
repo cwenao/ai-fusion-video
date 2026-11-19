@@ -6,4 +6,4 @@
 
 72 小时从新链接签发时起算。已签发的短时链接需要重新复制。历史外部直链由原存储方控制有效期。对象存储密钥撤销或对象被主动删除会导致链接失效，本地链接在访问时复核权限和资源版本。
 
-TOS 默认域名可以访问原媒体，部分桶会触发下载。浏览器内在线预览使用桶绑定的 HTTPS 自定义域名。真实环境待核对 `tos-01` 的桶权限、对象上传和新会话访问。 [TOS 浏览器预览说明](https://docs.volcengine.com/docs/TorchObjectStorage/Howtopreviewobjectsinabrowser?lang=zh)
+生产 `tos-01` 使用 TOS 默认域名。无登录浏览器打开实测链接时直接下载。浏览器内在线预览使用桶绑定的 HTTPS 自定义域名。生产验收核对了签名参数和当前访问行为，链接时效由对象存储按签发时间执行。 [TOS 浏览器预览说明](https://docs.volcengine.com/docs/TorchObjectStorage/Howtopreviewobjectsinabrowser?lang=zh)
