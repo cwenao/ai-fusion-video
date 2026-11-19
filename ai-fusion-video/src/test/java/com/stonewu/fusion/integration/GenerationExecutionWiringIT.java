@@ -93,6 +93,9 @@ class GenerationExecutionWiringIT {
     static final AtomicBoolean STORYBOARD_VIDEO_READY = new AtomicBoolean(false);
     static final AtomicReference<List<JsonNode>> STORYBOARD_SHOTS = new AtomicReference<>(List.of());
     static final AtomicInteger STORYBOARD_SUBMISSIONS = new AtomicInteger();
+    static final Map<String, String> STORYBOARD_VIDEO_REQUESTS = new ConcurrentHashMap<>();
+    static final String SAVED_STORYBOARD_PROMPT = "分镜验收，蓝色灯光\n镜头向左平移。";
+    static final String DRAFT_STORYBOARD_PROMPT = "分镜验收，红色背景";
     static final Map<String, ImagePipeline> IMAGE_PIPELINES = new ConcurrentHashMap<>();
     @DynamicPropertySource static void properties(DynamicPropertyRegistry p) {
         p.add("spring.datasource.url", MYSQL::getJdbcUrl);
@@ -210,6 +213,7 @@ class GenerationExecutionWiringIT {
             throws Exception {
         STORYBOARD_VIDEO_READY.set(false);
         STORYBOARD_SUBMISSIONS.set(0);
+        STORYBOARD_VIDEO_REQUESTS.clear();
         jdbc.update("UPDATE afv_ai_model SET default_model=FALSE WHERE model_type=3");
         var f = fixture("sync");
         VIDEO.set(sampleVideo());
@@ -240,7 +244,8 @@ class GenerationExecutionWiringIT {
         var board = ok(get("/api/storyboard/project/" + projectId, f.headers));
         var episode = storyboardChild(f, "episode", board, Map.of("episodeNumber", 1));
         var scene = storyboardChild(f, "scene", episode, Map.of("sceneNumber", "1"));
-        var shot = storyboardChild(f, "item", scene, Map.of("content", "红色背景，固定镜头"));
+        var shot = storyboardChild(f, "item", scene, Map.of("content", "红色背景，固定镜头",
+                "videoPrompt", SAVED_STORYBOARD_PROMPT));
         var shots = List.of(shot);
         if (disconnectBatch) {
             var updatedScene = ok(get("/api/storyboard/scene/" + scene.path("id").asLong(), f.headers));
@@ -272,7 +277,7 @@ class GenerationExecutionWiringIT {
             assertThat(pipeline.isDone()).isFalse();
             if (editWhileWaiting) {
                 var edit = Map.of("requestId", UUID.randomUUID().toString(), "id", shotId,
-                        "version", shot.path("version").asInt(), "patch", Map.of("remark", "并发编辑的备注"));
+                        "version", shot.path("version").asInt(), "patch", Map.of("content", "并发编辑的画面内容"));
                 ok(http.exchange("/api/storyboard/item", HttpMethod.PUT, new HttpEntity<>(edit, f.headers),
                         JsonNode.class));
             }
@@ -287,7 +292,7 @@ class GenerationExecutionWiringIT {
                 """, String.class, projectId);
         if (editWhileWaiting) {
             assertThat(written.path("generatedVideoUrl").isNull()).isTrue();
-            assertThat(written.path("remark").asText()).isEqualTo("并发编辑的备注");
+            assertThat(written.path("content").asText()).isEqualTo("并发编辑的画面内容");
             assertThat(jdbc.queryForObject("""
                     SELECT COUNT(*) FROM afv_agent_event e JOIN afv_agent_run a ON a.run_id=e.run_id
                     WHERE a.project_id=? AND e.raw_event_type='PLATFORM_TOOL_RESULT'
@@ -295,8 +300,10 @@ class GenerationExecutionWiringIT {
                     """, Integer.class, projectId)).isEqualTo(1);
         } else {
             assertThat(written.path("generatedVideoUrl").asText()).isEqualTo(reference);
-            assertThat(written.path("videoPrompt").asText()).isEqualTo("分镜验收，红色背景");
         }
+        assertThat(written.path("videoPrompt").asText()).isEqualTo(SAVED_STORYBOARD_PROMPT);
+        assertThat(STORYBOARD_VIDEO_REQUESTS.values()).singleElement()
+                .asString().contains(SAVED_STORYBOARD_PROMPT).doesNotContain(DRAFT_STORYBOARD_PROMPT);
         assertThat(written.path("version").asInt()).isEqualTo(shot.path("version").asInt() + 1);
         String review = "/api/generation/reviews/media/" + reference.substring("media://".length())
                 + "?target=SHOT_VIDEO&targetId=" + shotId;
@@ -339,9 +346,11 @@ class GenerationExecutionWiringIT {
         var replay = http.exchange("/api/ai/pipeline/reconnect?runId=" + runId + "&afterSequence=" + position[1],
                 HttpMethod.GET, new HttpEntity<>(streamHeaders), String.class);
         assertThat(replay.getBody()).contains("\"outputType\":\"DONE\"");
-        for (long id : shotIds) {
-            var written = ok(get("/api/storyboard/item/" + id, headers));
+        for (int index = 0; index < shotIds.size(); index++) {
+            var written = ok(get("/api/storyboard/item/" + shotIds.get(index), headers));
             assertThat(written.path("generatedVideoUrl").asText()).startsWith("media://");
+            assertThat(written.path("videoPrompt").asText())
+                    .isEqualTo(index == 0 ? SAVED_STORYBOARD_PROMPT : DRAFT_STORYBOARD_PROMPT);
         }
         assertThat(STORYBOARD_SUBMISSIONS.get()).isEqualTo(shotIds.size());
     }
@@ -1075,7 +1084,7 @@ class GenerationExecutionWiringIT {
                 var shot = shots.stream().filter(item -> input.contains("storyboardItemId: " + item.path("id").asLong() + "。"))
                         .findFirst().orElseThrow();
                 long id = shot.path("id").asLong();
-                String arguments = JSON.writeValueAsString(Map.of("prompt", "分镜验收，红色背景",
+                String arguments = JSON.writeValueAsString(Map.of("prompt", DRAFT_STORYBOARD_PROMPT,
                         "reviewTargetId", id, "expectedVersion", shot.path("version").asInt(),
                         "ratio", "16:9", "resolution", "1280x720", "duration", 4));
                 calls.addObject().put("index", 0).put("id", "shot-video-" + id).put("type", "function")
@@ -1148,6 +1157,7 @@ class GenerationExecutionWiringIT {
                     String id = "synthetic-review-video";
                     if (request.contains("分镜验收")) {
                         id = "storyboard-review-video-" + STORYBOARD_SUBMISSIONS.incrementAndGet();
+                        STORYBOARD_VIDEO_REQUESTS.put(id, request);
                     } else if (path.startsWith("/v1/videos/storyboard-review-video-")) {
                         id = path.substring("/v1/videos/".length());
                     }

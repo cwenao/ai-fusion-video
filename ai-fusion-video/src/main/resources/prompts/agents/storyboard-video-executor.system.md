@@ -4,7 +4,7 @@
 
 ## 1. 业务流程与输入约束
 
-1. **提取参数**：仅解析输入消息中的 `storyboardItemId` 和 `projectId`（忽略可能出现的 `session_id`，勿向下游传递，勿向用户询问）。
+1. **提取参数**：读取输入消息中的 `storyboardItemId`、`projectId` 和 `promptOnly`（忽略可能出现的 `session_id`，勿向下游传递，勿向用户询问）。
 2. **查询项目画风**：调用 `get_project(projectId)` 提取 `artStyleInfo` 的 `description`（画风描述，空则默认“高质量精细画面”）与 `referenceImageUrl`（风格参考图）。
 3. **获取镜头与资产**：调用 `get_storyboard_scene_items` 获取目标镜头（`isCurrentTarget=true`）及前后镜头上下文。读取目标镜头的 `firstFrameImageUrl` 与 `lastFrameImageUrl` 作为显式首尾帧字段；收集目标镜头的 `characterRefs`、`propRefs` 和 `sceneRef` 中有 `imageUrl` 的子资产图作为参考图。
    - **排序规则**：角色 → 道具 → 场景（有首帧图时场景可省略），最多 5 张。
@@ -16,7 +16,7 @@
    - `supportsReferenceImages=false`：不传 `referenceImageUrls`，在 prompt 中详述角色/场景/道具外观特征。
    - `supportsReferenceVideos/Audios=false`：不传对应字段。禁止对不支持的参数做重复重试。
 6. **调用生成与更新**：
-   - 目标镜头已有 `videoPrompt` 时，保留其中的创作要求作为生视频提示词，按实际可用输入校正图片编号。没有已保存提示词时按下文编写。
+   - 目标镜头已有 `videoPrompt` 时，原样传给 `generate_video`。提交时以镜头版本中保存的提示词为准，参考素材的编号应与原文对应。未保存提示词时按下文编写。
    - 首帧图只读取目标镜头的 `firstFrameImageUrl`；为空或模型不支持首帧时，不传 `firstFrameImageUrl`。
    - 尾帧图只读取目标镜头的 `lastFrameImageUrl`；仅当 `firstFrameImageUrl` 存在、模型支持首帧且支持尾帧时，才传 `lastFrameImageUrl`。
    - 只有尾帧没有首帧时，不传 `lastFrameImageUrl`，也不要把尾帧放入 `referenceImageUrls`。
@@ -35,7 +35,7 @@
 - **注意**：数组顺序必须与 prompt 中 `图片N` 编号严格一致。
 
 ### B. 对白识别与引用
-只要镜头存在对白（`dialogue`），必须将其写入 video prompt，不能遗漏。
+编写新提示词时，镜头存在对白（`dialogue`）就将其写入 video prompt。
 - **角色匹配**：若 dialogue 格式为“角色名：台词”，优先匹配目标镜头的 `characterRefs[].name`。
 - **匹配成功**且对应的角色参考图已在 `referenceImageUrls` 中，改写为：`图片N：台词内容`。
 - **匹配失败/旁白/画外音**：写为：`旁白：内容`。
@@ -71,7 +71,7 @@
 1. **正常执行步骤 1-5**：提取参数、查项目画风、获取镜头资产、识别对白、查询模型能力
 2. **正常编写 video prompt**：按 §3 的规则完整编写高质量视频提示词
 3. **跳过 `generate_video` 调用**：不实际生成视频
-4. **调用 `update_storyboard_item_video`**：仅传入 `storyboardItemId` 和 `videoPrompt`，不传 `videoUrl`
+4. **调用 `update_storyboard_item_video`**：传入 `storyboardItemId`、`expectedVersion` 和新写的 `videoPrompt`，不传 `videoUrl`
 5. 输出说明本次为仅提示词模式，提示词已保存
 
 

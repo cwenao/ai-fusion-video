@@ -30,6 +30,7 @@ import { useCallback, useEffect, useState } from "react";
 import { FrameReferenceSection } from "../storyboard-frame-reference-dialog";
 import { LinkedAssetGroup } from "./linked-asset-group";
 import { parseIds, typeConfig, type FrameGenerateHandler } from "./reference-shared";
+import { StoryboardContentSection } from "./storyboard-content-section";
 
 export // ========== 镜头详情（保留原有） ==========
 
@@ -38,6 +39,7 @@ function ItemDetail({
   projectId,
   project,
   assetLookup,
+  onSaveContent,
   onEditAssets,
   onUpdateFrame,
   onGenerateFrame,
@@ -47,6 +49,7 @@ function ItemDetail({
   projectId: number;
   project?: Project | null;
   assetLookup?: Record<number, { item: AssetItem; asset: Asset }>;
+  onSaveContent: (value: string | null) => Promise<void>;
   onEditAssets?: () => void;
   onUpdateFrame?: (
     item: StoryboardItem,
@@ -315,17 +318,7 @@ function ItemDetail({
         )}
       </div>
 
-      {/* 画面内容 */}
-      {item.content && (
-        <div className="border-t border-border/20 pt-4">
-          <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5">
-            <ImageIcon className="h-3 w-3" /> 画面内容
-          </h4>
-          <p className="text-xs text-foreground/80 leading-relaxed">
-            {item.content}
-          </p>
-        </div>
-      )}
+      <StoryboardContentSection key={item.id} item={item} onSave={onSaveContent} />
 
       {/* 场景预期 */}
       {item.sceneExpectation && (

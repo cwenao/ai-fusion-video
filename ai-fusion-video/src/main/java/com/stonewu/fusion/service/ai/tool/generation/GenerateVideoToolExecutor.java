@@ -67,7 +67,7 @@ public class GenerateVideoToolExecutor implements ToolExecutor {
                 生成AI视频。根据提示词和可选的参考图片生成视频片段。
 
                 适用场景：
-                1. 为分镜镜头生成视频：根据画面描述、运镜指令和参考首帧图生成视频
+                1. 为分镜镜头生成视频：使用已保存的视频提示词，未保存时按镜头内容编写
                 2. 文本生成视频：纯文字描述生成视频
                 3. 多模态参考生视频：传入角色/道具/场景的参考图片、参考视频、参考音频，提升画面中人物和物品的一致性
 
@@ -152,7 +152,6 @@ public class GenerateVideoToolExecutor implements ToolExecutor {
     public String execute(String toolInput, ToolExecutionContext context) {
         try {
             JSONObject params = JSONUtil.parseObj(toolInput);
-            String prompt = params.getStr("prompt");
 
             String firstFrameImageUrl = params.getStr("firstFrameImageUrl");
             String lastFrameImageUrl = params.getStr("lastFrameImageUrl");
@@ -186,6 +185,11 @@ public class GenerateVideoToolExecutor implements ToolExecutor {
             AiModel model = canvasModels.scoped(context) ? canvasModels.require(context,
                     GenerationKind.VIDEO) : resolvePreferredModel();
             var config = generationModelCapabilityService.getMergedModelConfig(model);
+            var mutation = context.requireMutationContext();
+            var input = json.read(toolInput, ObjectNode.class);
+            var target = projectMedia.requireTarget(mutation, input, GenerationKind.VIDEO);
+            String savedPrompt = target == null ? null : target.data().path("videoPrompt").textValue();
+            String prompt = StrUtil.isNotBlank(savedPrompt) ? savedPrompt : params.getStr("prompt");
             // 旧模型保留原工具默认值；新契约由统一校验应用模型默认值。
             if (!config.containsKey("videoRules")) {
                 if (StrUtil.isBlank(prompt)) {
@@ -228,13 +232,10 @@ public class GenerateVideoToolExecutor implements ToolExecutor {
                     firstFrameImageUrl != null ? "有" : "无",
                     referenceImageUrlList.size());
 
-            var mutation = context.requireMutationContext();
-            var input = json.read(toolInput, ObjectNode.class);
-            boolean storyboard = projectMedia.requireTarget(mutation, input, GenerationKind.VIDEO) != null;
             var review = reviews.agent(mutation, GenerationKind.VIDEO, input.get("reviewTargetId"));
             var accepted = submissions.video(task, ResourceToolRequests.requestId(json, mutation), mutation, null,
                     review);
-            if (storyboard) {
+            if (target != null) {
                 throw new ToolSuspendException("镜头视频已受理，生成完成后自动回填。");
             }
             return JSONUtil.createObj()

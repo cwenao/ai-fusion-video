@@ -9,7 +9,7 @@ import { Film, GripVertical, Plus, Trash2, Video, Play, ZoomIn, X } from "lucide
 import { VideoPreviewDialog } from "@/components/dashboard/video-preview-dialog";
 import { cn } from "@/lib/utils";
 import { resolveMediaUrl } from "@/lib/api/client";
-import type { StoryboardFrameType, StoryboardItem } from "@/lib/api/storyboard";
+import type { StoryboardFrameType, StoryboardItem, StoryboardItemFields } from "@/lib/api/storyboard";
 import { EditableCell } from "./editable-cell";
 import { useState, useRef, useCallback, useEffect } from "react";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
@@ -73,7 +73,7 @@ const COLUMNS: ColumnDef[] = [
   { label: "摄像机角度", field: "cameraAngle", initW: 90, minW: 60 },
   { label: "运镜", field: "cameraMovement", initW: 80, minW: 50 },
   {
-    label: "分镜内容",
+    label: "画面内容",
     field: "content",
     initW: 240,
     minW: 100,
@@ -134,7 +134,7 @@ export function StoryboardTableView({
   items: StoryboardItem[];
   selectedItemId: number | null;
   onSelectItem: (id: number | null) => void;
-  onUpdateItemField: (item: StoryboardItem, field: string, value: string | number | null) => Promise<void>;
+  onUpdateItemField: (item: StoryboardItem, field: keyof StoryboardItemFields, value: string | number | null) => Promise<void>;
   onAddItem: () => void;
   onDeleteItem: (id: number) => void;
   onReorderItems?: (reorderedItems: StoryboardItem[]) => void;
@@ -431,10 +431,11 @@ export function StoryboardTableView({
 
                 {/* 数据列 */}
                 {COLUMNS.map((col) => {
+                  const { field } = col;
                   const framePreviewUrl = item.firstFrameImageUrl || item.generatedImageUrl || item.imageUrl || item.referenceImageUrl;
                   return (
                     <div
-                      key={col.field}
+                      key={field}
                       className="px-2 py-2 flex items-center justify-center min-w-0 break-all"
                     >
                       {col.isImage ? (
@@ -463,7 +464,7 @@ export function StoryboardTableView({
                           </div>
                         )}
                       </div>
-                    ) : col.field === "frameReferences" ? (
+                    ) : field === "frameReferences" ? (
                       <div className="flex items-center justify-center gap-1">
                         {(["first", "last"] as StoryboardFrameType[]).map((frameType) => {
                           const label = frameType === "first" ? "首" : "尾";
@@ -543,7 +544,7 @@ export function StoryboardTableView({
                           <Video className="h-3.5 w-3.5 text-muted-foreground/30" />
                         )}
                       </div>
-                    ) : col.field === "assets" ? (
+                    ) : field === "assets" ? (
                       <div
                         onClick={(e) => {
                           e.stopPropagation();
@@ -712,27 +713,26 @@ export function StoryboardTableView({
                     ) : (
                       <EditableCell
                         value={
-                          col.field === "shotNumber"
+                          field === "shotNumber"
                             ? item.shotNumber || String(idx + 1)
-                            : col.field === "duration"
+                            : field === "duration"
                             ? item.duration
                               ? String(item.duration)
                               : ""
-                            : (item[col.field as keyof StoryboardItem] as string) ||
-                              ""
+                            : item[field] || ""
                         }
                         placeholder={
-                          col.field === "shotNumber" ? String(idx + 1) : ""
+                          field === "shotNumber" ? String(idx + 1) : ""
                         }
                         onSave={(val) =>
-                          onUpdateItemField(item, col.field, val)
+                          onUpdateItemField(item, field, val)
                         }
                         onCellClick={() => onSelectItem(item.id)}
                         className={cn(
                           "text-[11px] w-full",
-                          col.field === "shotNumber"
+                          field === "shotNumber"
                             ? "font-mono text-muted-foreground text-center"
-                            : col.field === "content"
+                            : field === "content"
                             ? ""
                             : "text-muted-foreground text-center"
                         )}

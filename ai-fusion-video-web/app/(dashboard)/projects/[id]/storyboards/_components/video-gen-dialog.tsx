@@ -27,6 +27,7 @@ export function VideoGenDialog({
   items,
   onConfirm,
 }: VideoGenDialogProps) {
+  const singleItem = items.length === 1 ? items[0] : null;
   const defaultSelected = useMemo(
     () => new Set(items.map((item) => item.id)),
     [items]
@@ -90,7 +91,7 @@ export function VideoGenDialog({
     }}>
       <DialogContent className="flex max-h-[calc(100vh-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-lg">
         <DialogHeader className="shrink-0 border-b border-border/20 px-5 py-4 pr-14">
-          <DialogTitle>{items.length === 1 ? "生成镜头视频" : "批量生成视频"}</DialogTitle>
+          <DialogTitle>{singleItem ? "生成镜头视频" : "批量生成视频"}</DialogTitle>
           <DialogDescription>选择需要生成视频的分镜镜头</DialogDescription>
         </DialogHeader>
 
@@ -178,9 +179,11 @@ export function VideoGenDialog({
                         </span>
                       )}
                     </div>
-                    <p className="text-[10px] text-muted-foreground truncate mt-0.5">
-                      {item.content || "（无画面描述）"}
-                    </p>
+                    {!singleItem && (
+                      <p className="text-[10px] text-muted-foreground truncate mt-0.5">
+                        {item.content || "（无画面描述）"}
+                      </p>
+                    )}
                     <div className="flex items-center gap-1.5 mt-0.5">
                       {hasImage && (
                         <span className="text-[10px] text-cyan-400/70">
@@ -197,6 +200,16 @@ export function VideoGenDialog({
                 </button>
               );
             })
+          )}
+          {singleItem && (
+            <section className="flex min-w-0 flex-col gap-1 rounded-lg border border-border/20 bg-background/70 p-3">
+              <h3 className="text-xs font-medium">视频提示词</h3>
+              {singleItem.videoPrompt?.trim() ? (
+                <p className="whitespace-pre-wrap wrap-anywhere text-sm">{singleItem.videoPrompt}</p>
+              ) : (
+                <p className="text-xs text-muted-foreground">生成时将根据镜头内容编写提示词。</p>
+              )}
+            </section>
           )}
         </DialogScrollBody>
 

@@ -37,7 +37,8 @@ export function StoryboardRefPanel({
   onGenerateFrame,
   onBatchGenerateFrames,
   onGenerateVideos,
-  onSavePrompt,
+  showPromptCards,
+  onUpdateItemField,
   onEditAssets,
 }: {
   storyboard: Storyboard;
@@ -55,7 +56,12 @@ export function StoryboardRefPanel({
   onGenerateFrame?: FrameGenerateHandler;
   onBatchGenerateFrames?: BatchFrameGenerateHandler;
   onGenerateVideos: VideoGenerateHandler;
-  onSavePrompt?: (item: StoryboardItem, field: "videoPrompt" | "firstFramePrompt" | "lastFramePrompt", value: string | null) => Promise<void>;
+  showPromptCards: boolean;
+  onUpdateItemField: (
+    item: StoryboardItem,
+    field: "content" | "videoPrompt" | "firstFramePrompt" | "lastFramePrompt",
+    value: string | null,
+  ) => Promise<void>;
   onEditAssets?: (item: StoryboardItem) => void;
 }) {
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
@@ -75,13 +81,14 @@ export function StoryboardRefPanel({
           <div className="p-4">
             <StoryboardVideoToolLink projectId={projectId} item={selectedItem} className="w-full" />
           </div>
-          {onSavePrompt && <StoryboardPromptCards key={selectedItem.id} item={selectedItem} projectId={projectId}
-            project={project} scene={activeSceneGroup?.scene} onSave={onSavePrompt} />}
+          {showPromptCards && <StoryboardPromptCards key={selectedItem.id} item={selectedItem} projectId={projectId}
+            project={project} scene={activeSceneGroup?.scene} onSave={onUpdateItemField} />}
           <ItemDetail
             item={selectedItem}
             projectId={projectId}
             project={project}
             assetLookup={assetLookup}
+            onSaveContent={(value) => onUpdateItemField(selectedItem, "content", value)}
             onUpdateFrame={onUpdateFrame}
             onGenerateFrame={onGenerateFrame}
             onEditAssets={() => onEditAssets?.(selectedItem)}

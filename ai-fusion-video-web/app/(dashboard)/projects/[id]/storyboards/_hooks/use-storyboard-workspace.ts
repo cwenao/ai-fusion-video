@@ -7,7 +7,7 @@ import { useConfirm } from "@/components/ui/confirm-dialog";
 import { getApiErrorStatus } from "@/lib/api/api-error";
 import { toastApiError } from "@/lib/api/toast-api-error";
 import { scriptApi, type ScriptEpisode } from "@/lib/api/script";
-import { storyboardApi, type Storyboard, type StoryboardEpisode, type StoryboardFrameType, type StoryboardItem, type StoryboardScene } from "@/lib/api/storyboard";
+import { storyboardApi, type Storyboard, type StoryboardEpisode, type StoryboardFrameType, type StoryboardItem, type StoryboardItemFields, type StoryboardScene } from "@/lib/api/storyboard";
 import { assetApi } from "@/lib/api/asset";
 import { useProject } from "../../project-context";
 import { useStoryboardGeneration } from "./use-storyboard-generation";
@@ -567,32 +567,6 @@ export function useStoryboardWorkspace(projectId: number) {
     }
   };
 
-  const handleUpdateItemField = async (
-    item: StoryboardItem,
-    field: string,
-    value: string | number | null
-  ) => {
-    try {
-      const payload = {
-        id: item.id,
-        version: item.version,
-        [field]: field === "duration" ? (value === "" || value === null ? null : Number(value)) : value,
-      };
-      const updated = await storyboardApi.updateItem(payload, requests.forPayload(payload));
-      requests.clear();
-      setSceneGroups((prev) =>
-        prev.map((g) => ({
-          ...g,
-          items: g.items.map((i) => (i.id === updated.id ? updated : i)),
-        }))
-      );
-      await refreshStoryboardData();
-    } catch (err) {
-      console.error("更新条目失败:", err);
-      throw err;
-    }
-  };
-
   const updateItemInSceneGroups = useCallback((updated: StoryboardItem) => {
     setSceneGroups((prev) =>
       prev.map((g) => ({
@@ -627,10 +601,16 @@ export function useStoryboardWorkspace(projectId: number) {
     }
   }, []);
 
-  const handleSaveItemPrompt = useCallback(async (
-    item: StoryboardItem, field: "videoPrompt" | "firstFramePrompt" | "lastFramePrompt", value: string | null,
+  const handleUpdateItemField = useCallback(async (
+    item: StoryboardItem,
+    field: keyof StoryboardItemFields,
+    value: string | number | null,
   ) => {
-    const payload = { id: item.id, version: item.version, [field]: value };
+    const payload = {
+      id: item.id,
+      version: item.version,
+      [field]: field === "duration" && value !== null ? (value === "" ? null : Number(value)) : value,
+    };
     try {
       const updated = await storyboardApi.updateItem(payload, requests.forPayload(payload));
       requests.clear();
@@ -814,7 +794,6 @@ export function useStoryboardWorkspace(projectId: number) {
     handleDeleteItem,
     handleUpdateItemField,
     handleUpdateItemFrame,
-    handleSaveItemPrompt,
     handleOpenFrameDialog,
     handleCloseFrameDialog,
     handleReorderItems,

@@ -67,7 +67,7 @@ export function StoryboardWorkspace({ workspace }: { workspace: ReturnType<typeo
     handleDeleteScene,
     handleReorderScenes,
     handleUpdateItemFrame,
-    handleSaveItemPrompt,
+    handleUpdateItemField,
     handleCloseFrameDialog,
     handleComposeEpisodeVideo,
     handleAiStoryboard,
@@ -255,7 +255,8 @@ export function StoryboardWorkspace({ workspace }: { workspace: ReturnType<typeo
                   projectId={projectId}
                   project={project}
                   assetLookup={assetLookup}
-                  onSavePrompt={viewMode === "card" ? handleSaveItemPrompt : undefined}
+                  showPromptCards={viewMode === "card"}
+                  onUpdateItemField={handleUpdateItemField}
                   onUpdateFrame={handleUpdateItemFrame}
                   onGenerateFrame={handleGenerateItemFrame}
                   onBatchGenerateFrames={handleBatchGenerateSceneFrames}
@@ -283,7 +284,8 @@ export function StoryboardWorkspace({ workspace }: { workspace: ReturnType<typeo
         projectId={projectId}
         project={project}
         assetLookup={assetLookup}
-        onSavePrompt={viewMode === "card" ? handleSaveItemPrompt : undefined}
+        showPromptCards={viewMode === "card"}
+        onUpdateItemField={handleUpdateItemField}
         onUpdateFrame={handleUpdateItemFrame}
         onGenerateFrame={handleGenerateItemFrame}
         onBatchGenerateFrames={handleBatchGenerateSceneFrames}
