@@ -74,6 +74,7 @@ export function StoryboardWorkspace({ workspace }: { workspace: ReturnType<typeo
     handleGenerateEpisodeStoryboard,
     handleGenerateItemFrame,
     handleBatchGenerateSceneFrames,
+    handleVideoGen,
   } = workspace;
   const shouldReduceMotion = useReducedMotion();
   const sectionVariants: Variants = {
@@ -258,6 +259,7 @@ export function StoryboardWorkspace({ workspace }: { workspace: ReturnType<typeo
                   onUpdateFrame={handleUpdateItemFrame}
                   onGenerateFrame={handleGenerateItemFrame}
                   onBatchGenerateFrames={handleBatchGenerateSceneFrames}
+                  onGenerateVideos={handleVideoGen}
                   onEditAssets={(item) => {
                     setEditingItem(item);
                     setEditAssetsOpen(true);
@@ -285,6 +287,7 @@ export function StoryboardWorkspace({ workspace }: { workspace: ReturnType<typeo
         onUpdateFrame={handleUpdateItemFrame}
         onGenerateFrame={handleGenerateItemFrame}
         onBatchGenerateFrames={handleBatchGenerateSceneFrames}
+        onGenerateVideos={handleVideoGen}
         onEditAssets={(item) => {
           setEditingItem(item);
           setEditAssetsOpen(true);

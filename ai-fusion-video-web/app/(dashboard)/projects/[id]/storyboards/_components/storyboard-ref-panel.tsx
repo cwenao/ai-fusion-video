@@ -21,6 +21,7 @@ import { SceneAssetPanel } from "./storyboard-reference/scene-asset-panel";
 import { StoryboardPromptCards } from "./storyboard-prompt-cards";
 import { StoryboardOverview } from "./storyboard-reference/storyboard-overview";
 import { StoryboardVideoToolLink } from "./storyboard-video-tool-link";
+import type { VideoGenerateHandler } from "./video-gen-dialog";
 
 // ========== 主面板 ==========
 
@@ -35,6 +36,7 @@ export function StoryboardRefPanel({
   onUpdateFrame,
   onGenerateFrame,
   onBatchGenerateFrames,
+  onGenerateVideos,
   onSavePrompt,
   onEditAssets,
 }: {
@@ -52,6 +54,7 @@ export function StoryboardRefPanel({
   ) => Promise<void> | void;
   onGenerateFrame?: FrameGenerateHandler;
   onBatchGenerateFrames?: BatchFrameGenerateHandler;
+  onGenerateVideos: VideoGenerateHandler;
   onSavePrompt?: (item: StoryboardItem, field: "videoPrompt" | "firstFramePrompt" | "lastFramePrompt", value: string | null) => Promise<void>;
   onEditAssets?: (item: StoryboardItem) => void;
 }) {
@@ -90,8 +93,8 @@ export function StoryboardRefPanel({
               <SceneAssetPanel
                 sceneGroup={activeSceneGroup}
                 projectId={projectId}
-                storyboard={storyboard}
                 onBatchGenerateFrames={onBatchGenerateFrames}
+                onGenerateVideos={onGenerateVideos}
                 onPreviewImage={handlePreviewImage}
               />
             </>
@@ -101,8 +104,8 @@ export function StoryboardRefPanel({
         <SceneAssetPanel
           sceneGroup={activeSceneGroup}
           projectId={projectId}
-          storyboard={storyboard}
           onBatchGenerateFrames={onBatchGenerateFrames}
+          onGenerateVideos={onGenerateVideos}
           onPreviewImage={handlePreviewImage}
         />
       ) : (

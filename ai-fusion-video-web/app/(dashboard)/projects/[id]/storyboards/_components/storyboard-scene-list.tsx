@@ -153,7 +153,7 @@ export function StoryboardSceneList({ workspace }: { workspace: ReturnType<typeo
           open
           items={[videoItem]}
           onClose={() => setVideoItemId(null)}
-          onConfirm={([itemId], promptOnly, reviewModelId) => handleVideoGen(itemId, promptOnly, reviewModelId)}
+          onConfirm={handleVideoGen}
         />
       )}
     </>

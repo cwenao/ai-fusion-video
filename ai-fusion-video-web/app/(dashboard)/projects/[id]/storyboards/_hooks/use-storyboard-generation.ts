@@ -278,26 +278,32 @@ const handleBatchGenerateSceneFrames = useCallback(
   );
 
   const handleVideoGen = useCallback(
-    (itemId: number, promptOnly: boolean, reviewModelId?: number) => {
+    (itemIds: number[], promptOnly: boolean, reviewModelId?: number) => {
       if (!storyboard) {
         return;
       }
+      const action = promptOnly ? "生成视频提示词" : "生成视频";
+      const title = itemIds.length === 1
+        ? `${action} (镜头 #${itemIds[0]})`
+        : `批量${action} (${itemIds.length} 个镜头)`;
       addPipeline({
-        label: `${promptOnly ? "生成视频提示词" : "生成视频"} (镜头 #${itemId})`,
+        label: title,
         projectId,
         request: {
           agentType: "storyboard_video_gen",
           toolExecutionMode: "FULL_ACCESS",
+          category: "pipeline",
+          title,
           projectId,
           generationReviewModelId: reviewModelId,
           context: {
-            selectedStoryboardItemIds: [itemId],
+            selectedStoryboardItemIds: itemIds,
             storyboardId: storyboard.id,
             promptOnly,
           },
         },
         onComplete: () => {
-          void refreshStoryboardItems([itemId]);
+          void refreshStoryboardItems(itemIds);
         },
       });
       setNotificationOpen(true);

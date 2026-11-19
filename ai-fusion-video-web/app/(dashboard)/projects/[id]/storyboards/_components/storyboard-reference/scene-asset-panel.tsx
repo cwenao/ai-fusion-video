@@ -2,18 +2,16 @@
 
 import type { AssetItem } from "@/lib/api/asset";
 import { assetApi } from "@/lib/api/asset";
-import type { Storyboard } from "@/lib/api/storyboard";
 import { toastApiError } from "@/lib/api/toast-api-error";
 import type { ImageModelOptions } from "@/components/dashboard/generation/image-model-fields";
 import { enqueueAssetImageGeneration } from "@/lib/asset-image-generation";
-import { usePipelineStore } from "@/lib/store/pipeline-store";
 import { cn } from "@/lib/utils";
 import { Camera, Loader2, Package, Sparkles, Video } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import type { AssetItemWithInfo, SelectedAssetItem } from "../batch-gen-dialog";
 import { BatchGenDialog } from "../batch-gen-dialog";
-import { VideoGenDialog } from "../video-gen-dialog";
+import { VideoGenDialog, type VideoGenerateHandler } from "../video-gen-dialog";
 import { AssetItemGroup } from "./asset-item-group";
 import { BatchFrameGenerateControl } from "./batch-frame-generate";
 import {
@@ -30,14 +28,14 @@ export // ========== 场次资产面板 ==========
 function SceneAssetPanel({
   sceneGroup,
   projectId,
-  storyboard,
   onBatchGenerateFrames,
+  onGenerateVideos,
   onPreviewImage,
 }: {
   sceneGroup: SceneWithItems;
   projectId: number;
-  storyboard: Storyboard;
   onBatchGenerateFrames?: BatchFrameGenerateHandler;
+  onGenerateVideos: VideoGenerateHandler;
   onPreviewImage?: (url: string, title: string) => void;
 }) {
   const router = useRouter();
@@ -152,9 +150,6 @@ function SceneAssetPanel({
     router.push(`/projects/${projectId}/assets?highlight=${item.assetId}`);
   };
 
-  const addPipeline = usePipelineStore((s) => s.addPipeline);
-  const setNotificationOpen = usePipelineStore((s) => s.setNotificationOpen);
-
   // 构建传给 BatchGenDialog 的子资产列表
   const batchGenItems: AssetItemWithInfo[] = allItems.map((ai) => ({
     item: ai,
@@ -174,35 +169,6 @@ function SceneAssetPanel({
       storyboardSceneId: reviewModelId === undefined ? undefined : sceneGroup.scene.id,
       onComplete: () => void loadAssets(),
     });
-  };
-
-  /** 批量生视频确认 */
-  const handleVideoGenConfirm = (
-    selectedItemIds: number[],
-    promptOnly: boolean,
-    reviewModelId?: number,
-  ) => {
-    addPipeline({
-      label: promptOnly
-        ? `批量生成视频提示词 (${selectedItemIds.length} 个镜头)`
-        : `批量生视频 (${selectedItemIds.length} 个镜头)`,
-      projectId,
-      request: {
-        agentType: "storyboard_video_gen",
-        toolExecutionMode: "FULL_ACCESS",
-        projectId,
-        generationReviewModelId: reviewModelId,
-        context: {
-          selectedStoryboardItemIds: selectedItemIds,
-          storyboardId: storyboard.id,
-          promptOnly,
-        },
-      },
-      onComplete: () => {
-        // 视频生成完成后可能需要刷新分镜数据
-      },
-    });
-    setNotificationOpen(true);
   };
 
   return (
@@ -324,7 +290,7 @@ function SceneAssetPanel({
         open={showVideoGen}
         onClose={() => setShowVideoGen(false)}
         items={sceneGroup.items}
-        onConfirm={handleVideoGenConfirm}
+        onConfirm={onGenerateVideos}
       />
     </div>
   );

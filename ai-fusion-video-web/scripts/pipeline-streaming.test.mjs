@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import vm from "node:vm";
 import ts from "typescript";
+import { create } from "zustand";
 
 const root = path.resolve(import.meta.dirname, "..");
 const flush = () => new Promise((resolve) => setImmediate(resolve));
@@ -13,9 +14,9 @@ function load(relative, mocks = {}) {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   }).outputText;
   const loadedModule = { exports: {} };
-  const require = (name) => mocks[name] ?? load(
-    path.posix.join(path.posix.dirname(relative), `${name}.ts`), mocks,
-  );
+  const require = (name) => mocks[name] ?? load(name.startsWith("@/")
+    ? `${name.slice(2)}.ts`
+    : path.posix.join(path.posix.dirname(relative), `${name}.ts`), mocks);
   vm.runInNewContext(`(function(require,module,exports){${source}\n})`, {
     TextDecoder, AbortController, URLSearchParams, Error, setTimeout, clearTimeout, console,
   }, { filename: relative })(require, loadedModule, loadedModule.exports);
@@ -89,6 +90,70 @@ test("HTTP 200 platform error envelopes are recognized as rejected starts", asyn
     headers: { "Content-Type": "application/json" },
   });
   await assert.rejects(receive(transport(response)), (error) => error.code === 500 && error.requestRejected === true);
+});
+
+function pipelineStoreHarness(t, readStatus) {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let initial;
+  const replays = [];
+  const api = {
+    pipelineStream: (_, callbacks) => {
+      initial = callbacks;
+      return new AbortController();
+    },
+    reconnectPipelineStream: (runId, sequence, callbacks) => {
+      replays.push({ runId, sequence, callbacks });
+      return new AbortController();
+    },
+    getPipelineStatus: readStatus,
+  };
+  const { usePipelineStore: store } = load("lib/store/pipeline-store.ts", {
+    zustand: { create },
+    "@/lib/api/ai-pipeline": api,
+    "@/lib/api/task-stream": {},
+  });
+  let refreshes = 0;
+  const id = store.getState().addPipeline({
+    projectId: 1,
+    label: "生成分镜视频",
+    request: { agentType: "storyboard_video_gen" },
+    onComplete: () => {
+      refreshes++;
+    },
+  });
+  initial.onEvent(event(1));
+  t.mock.timers.tick(16);
+  initial.onError(new Error("视频生成期间连接中断"));
+  return {
+    task: () => store.getState().tasks.find((task) => task.id === id),
+    replays,
+    refreshes: () => refreshes,
+  };
+}
+
+test("视频完成事件经重连送达后刷新分镜一次", (t) => {
+  const h = pipelineStoreHarness(t, async () => ({ runId: "run", status: "WAITING_EXTERNAL" }));
+  t.mock.timers.tick(1000);
+  const replay = h.replays[0];
+  assert.equal(replay.runId, "run");
+  assert.equal(replay.sequence, 1);
+  replay.callbacks.onEvent(event(2, "DONE"));
+  replay.callbacks.onComplete();
+  assert.equal(h.task().status, "done");
+  assert.equal(h.refreshes(), 1);
+});
+
+test("视频已完成时，重连流即使仍在等待也能根据后台状态收尾", async (t) => {
+  const h = pipelineStoreHarness(t, async () => ({ runId: "run", status: "COMPLETED", lastSequence: 2 }));
+  t.mock.timers.tick(3000);
+  await flush();
+  assert.equal(h.replays.length, 1);
+  assert.equal(h.task().status, "done");
+  assert.equal(h.refreshes(), 1);
+  h.replays[0].callbacks.onEvent(event(2, "DONE"));
+  h.replays[0].callbacks.onComplete();
+  assert.equal(h.task().state.lastSequence, 2);
+  assert.equal(h.refreshes(), 1);
 });
 
 function coordinatorHarness(t, response) {

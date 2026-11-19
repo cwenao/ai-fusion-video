@@ -21,8 +21,11 @@
         UPDATE afv_remote_generation_job SET next_poll_at = TIMESTAMPADD(SECOND, 2, UTC_TIMESTAMP(6)) WHERE id = #{id}
     </update>
     <update id="claim">
+        <!-- 排队不占用执行时限，只在首次取得许可时开始计时；轮询与租约接管沿用原截止时间。 -->
         UPDATE afv_remote_generation_job SET state = 'RUNNING', owner_instance_id = #{owner},
             owner_epoch = owner_epoch + 1, lease_until = TIMESTAMPADD(SECOND, 90, UTC_TIMESTAMP(6)),
+            deadline_at = CASE WHEN phase = 'NEW' AND permit_held = FALSE AND #{permitHeld} = TRUE
+                THEN TIMESTAMPADD(HOUR, 2, UTC_TIMESTAMP(6)) ELSE deadline_at END,
             permit_held = #{permitHeld}, revision = revision + 1, updated_at = UTC_TIMESTAMP(6) WHERE id = #{id}
     </update>
     <update id="heartbeat">

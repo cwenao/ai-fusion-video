@@ -18,7 +18,7 @@ interface PipelineStatusSyncOptions {
   reportError: (target: PipelineStatusSyncTarget, error: unknown) => void;
 }
 
-/** Keeps durable run metadata synchronized while no journal hydration owns it. */
+/** 查询持久化运行状态，允许事件回放同时进行。 */
 export class PipelineStatusSynchronizer {
   private timer: ReturnType<typeof setTimeout> | null = null;
   private polling = false;

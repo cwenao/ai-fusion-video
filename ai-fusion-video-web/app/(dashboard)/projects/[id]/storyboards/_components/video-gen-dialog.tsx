@@ -11,12 +11,14 @@ import { cn } from "@/lib/utils";
 import { SafeImage } from "@/components/media/managed-image";
 import type { StoryboardItem } from "@/lib/api/storyboard";
 
+export type VideoGenerateHandler = (itemIds: number[], promptOnly: boolean, reviewModelId?: number) => void;
+
 interface VideoGenDialogProps {
   open: boolean;
   onClose: () => void;
   /** 分镜条目列表 */
   items: StoryboardItem[];
-  onConfirm: (selectedItemIds: number[], promptOnly: boolean, reviewModelId?: number) => void;
+  onConfirm: VideoGenerateHandler;
 }
 
 export function VideoGenDialog({

@@ -212,6 +212,34 @@ class GenerationJobPersistenceIT {
     }
 
     @Test
+    void queuedWorkReceivesAnExecutionDeadlineOnlyWhenCapacityBecomesAvailable() {
+        insert("READY");
+        var first = jobs.claim("worker-a").orElseThrow();
+        String queued = insert("READY");
+        jdbc.update("""
+                UPDATE afv_remote_generation_job
+                SET deadline_at = TIMESTAMPADD(SECOND, -1, UTC_TIMESTAMP(6)) WHERE submission_id = ?
+                """, queued);
+        assertThat(jobs.claim("worker-b")).isEmpty();
+
+        jobs.remoteResult(first.claim(), RemoteGenerationResult.success(
+                List.of(RemoteGenerationResult.Output.image("media://completed"))));
+        jdbc.update("UPDATE afv_remote_generation_job SET next_poll_at = UTC_TIMESTAMP(6) WHERE submission_id = ?",
+                queued);
+        var started = jobs.claim("worker-b").orElseThrow();
+        assertThat(started.submissionId()).isEqualTo(queued);
+        assertThat(started.deadline()).isAfter(jobs.now().plusMinutes(119));
+
+        jdbc.update("""
+                UPDATE afv_remote_generation_job SET lease_until = TIMESTAMPADD(SECOND, -1, UTC_TIMESTAMP(6))
+                WHERE id = ?
+                """, started.id());
+        var resumed = jobs.claim("worker-c").orElseThrow();
+        assertThat(resumed.id()).isEqualTo(started.id());
+        assertThat(resumed.deadline()).isEqualTo(started.deadline());
+    }
+
+    @Test
     void restartFencesOldOwnerButAllowsImmutableLateReceiptWithoutResubmission() {
         String id = insert("READY");
         var old = jobs.claim("old-instance").orElseThrow();
