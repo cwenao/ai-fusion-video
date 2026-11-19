@@ -5,11 +5,13 @@ import { ManagedVideo } from "@/components/media/managed-video";
 import React, { memo, useState, useMemo } from "react";
 import { Film, Plus, Clock, Camera, Image as ImageIcon, GripHorizontal, Video, Play, Trash2 } from "lucide-react";
 import { VideoPreviewDialog } from "@/components/dashboard/video-preview-dialog";
+import { CopyMediaLinksButton } from "@/components/media/copy-media-links-button";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { resolveMediaUrl } from "@/lib/api/client";
 import type { StoryboardFrameType, StoryboardItem } from "@/lib/api/storyboard";
 import { SafeImage } from "@/components/media/managed-image";
+import { storyboardVideoSource } from "../storyboard-data";
 import { StoryboardVideoToolLink } from "./storyboard-video-tool-link";
 import {
   DndContext,
@@ -79,16 +81,14 @@ const CardItemUI = memo(
     ) => {
       const hasImage =
         item.firstFrameImageUrl || item.imageUrl || item.referenceImageUrl || item.generatedImageUrl;
-      const hasVideo = item.generatedVideoUrl || item.videoUrl;
-      const hasBoth = hasImage && hasVideo;
+      const videoSource = storyboardVideoSource(item);
+      const hasBoth = hasImage && videoSource;
 
       // 有视频时默认展示视频，否则展示图片
       const [mediaMode, setMediaMode] = useState<"image" | "video">(
-        hasVideo ? "video" : "image"
+        videoSource ? "video" : "image"
       );
 
-      const rawVideoUrl = (item.generatedVideoUrl || item.videoUrl || "") as string;
-      const videoSrc = resolveMediaUrl(item.generatedVideoUrl || item.videoUrl) || "";
       const imageSrc = (item.firstFrameImageUrl || item.generatedImageUrl || item.imageUrl || item.referenceImageUrl) as string;
 
       return (
@@ -114,22 +114,22 @@ const CardItemUI = memo(
           {/* 画面/视频区域 16:9 */}
           <div className="aspect-video relative bg-muted/40 overflow-hidden shrink-0 border-b border-border/50">
             {/* 视频模式 */}
-            {mediaMode === "video" && hasVideo ? (
+            {mediaMode === "video" && videoSource ? (
               <>
                 <ManagedVideo
-                  src={videoSrc}
+                  src={videoSource}
                   className="w-full h-full object-cover"
                   muted
                   preload="metadata"
                   playsInline
                 />
-                {onPreviewVideo && rawVideoUrl ? (
+                {onPreviewVideo ? (
                   <button
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
                       onSelect?.();
-                      onPreviewVideo(rawVideoUrl);
+                      onPreviewVideo(videoSource);
                     }}
                     className="absolute inset-0 flex items-center justify-center bg-black/20 transition-colors hover:bg-black/40"
                     title="预览视频"
@@ -271,17 +271,27 @@ const CardItemUI = memo(
               </div>
             )}
 
-            {/* 生成视频按钮 - 右下角悬浮（只在图片模式或没有切换 tab 时显示） */}
-            {onVideoGen && !hasBoth && (
-              <Button type="button" variant="secondary" size="icon-sm" aria-label="生成镜头视频"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onVideoGen(item.id);
-                }}
-                className="absolute right-2 bottom-2 z-20"
-              >
-                <Video />
-              </Button>
+            {!isOverlay && (videoSource || (onVideoGen && !hasBoth)) && (
+              <div className="absolute right-2 bottom-2 z-20 flex items-center gap-2">
+                {videoSource && (
+                  <CopyMediaLinksButton
+                    sources={[videoSource]}
+                    label="复制视频链接"
+                    variant="secondary"
+                    size="icon-sm"
+                  />
+                )}
+                {onVideoGen && !hasBoth && (
+                  <Button type="button" variant="secondary" size="icon-sm" aria-label="生成镜头视频"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onVideoGen(item.id);
+                    }}
+                  >
+                    <Video />
+                  </Button>
+                )}
+              </div>
             )}
           </div>
 

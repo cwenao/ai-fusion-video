@@ -1,4 +1,9 @@
+import type { StoryboardItem } from "@/lib/api/storyboard";
 import type { SceneWithItems } from "./storyboard-types";
+
+export function storyboardVideoSource(item: StoryboardItem): string | null {
+  return item.generatedVideoUrl || item.videoUrl || null;
+}
 
 /** 保留未变化场次与镜头的引用，后台刷新不会重建整个工作区。 */
 export function reconcileStoryboardGroups(previous: SceneWithItems[], next: SceneWithItems[]): SceneWithItems[] {

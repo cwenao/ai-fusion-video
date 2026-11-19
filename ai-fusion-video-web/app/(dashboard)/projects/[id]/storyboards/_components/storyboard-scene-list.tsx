@@ -1,7 +1,9 @@
 "use client";
 import { Camera, Loader2 } from "lucide-react";
 import { useState } from "react";
+import { CopyMediaLinksButton } from "@/components/media/copy-media-links-button";
 import { cn } from "@/lib/utils";
+import { storyboardVideoSource } from "../storyboard-data";
 import { StoryboardTableView } from "./storyboard-table-view";
 import { StoryboardCardView } from "./storyboard-card-view";
 import { VideoGenDialog } from "./video-gen-dialog";
@@ -66,20 +68,29 @@ export function StoryboardSceneList({ workspace }: { workspace: ReturnType<typeo
               >
                 {/* 场次标题：点击时亦可切换激活场次 */}
                 <div 
-                  className="flex items-center gap-2 mb-3 cursor-pointer group/title"
+                  className="flex flex-wrap items-center gap-2 mb-3 cursor-pointer group/title"
                   onClick={() => setActiveSceneId(scene.id)}
                 >
-                  <Camera className={cn(
-                    "h-3.5 w-3.5 transition-colors",
-                    activeSceneId === scene.id ? "text-primary" : "text-primary/60 group-hover/title:text-primary"
-                  )} />
-                  <h3 className={cn(
-                    "text-sm font-semibold transition-colors",
-                    activeSceneId === scene.id ? "text-primary" : "group-hover/title:text-primary"
-                  )}>
-                    {scene.sceneHeading ||
-                      `场次 ${scene.sceneNumber || scene.id}`}
-                  </h3>
+                  <div className="flex min-w-0 items-center gap-2">
+                    <Camera className={cn(
+                      "size-3.5 shrink-0 transition-colors",
+                      activeSceneId === scene.id ? "text-primary" : "text-primary/60 group-hover/title:text-primary"
+                    )} />
+                    <h3 className={cn(
+                      "min-w-0 wrap-break-word text-sm font-semibold transition-colors",
+                      activeSceneId === scene.id ? "text-primary" : "group-hover/title:text-primary"
+                    )}>
+                      {scene.sceneHeading ||
+                        `场次 ${scene.sceneNumber || scene.id}`}
+                    </h3>
+                    <CopyMediaLinksButton
+                      sources={items.map(storyboardVideoSource).filter((source) => source !== null)}
+                      label="复制场次视频链接"
+                      size="xs"
+                    >
+                      复制视频链接
+                    </CopyMediaLinksButton>
+                  </div>
                   {scene.location && (
                     <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-muted/30 text-muted-foreground">
                       {scene.intExt && `${scene.intExt} `}

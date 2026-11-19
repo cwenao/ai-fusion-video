@@ -1,5 +1,6 @@
 "use client";
 import { StoryboardVideoToolLink } from "./storyboard-video-tool-link";
+import { CopyMediaLinksButton } from "@/components/media/copy-media-links-button";
 import { ManagedVideo } from "@/components/media/managed-video";
 import { Button } from "@/components/ui/button";
 
@@ -13,6 +14,7 @@ import { EditableCell } from "./editable-cell";
 import { useState, useRef, useCallback, useEffect } from "react";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { SafeImage } from "@/components/media/managed-image";
+import { storyboardVideoSource } from "../storyboard-data";
 
 const TOOLTIP_CONTENT_CLASS = "flex flex-col gap-0.5 items-start text-left max-w-[220px] px-2.5 py-1.5 rounded-lg text-[11px] bg-white/85 dark:bg-zinc-900/85 backdrop-blur-md border border-zinc-200/50 dark:border-zinc-800/50 text-zinc-900 dark:text-zinc-50 shadow-lg [&_.bg-foreground]:bg-white/85 [&_.fill-foreground]:fill-white/85 dark:[&_.bg-foreground]:bg-zinc-900/85 dark:[&_.fill-foreground]:fill-zinc-900/85";
 
@@ -389,6 +391,7 @@ export function StoryboardTableView({
           >
             {/* ===== 数据行 ===== */}
             {items.map((item, idx) => {
+            const videoSource = storyboardVideoSource(item);
             const isDragging = dragIdx === idx;
             const isOver =
               overIdx === idx && dragIdx !== null && dragIdx !== idx;
@@ -502,10 +505,10 @@ export function StoryboardTableView({
                       </div>
                     ) : col.isVideo ? (
                       <div className="flex items-center justify-center h-11 w-16 rounded-md bg-muted/20 border border-border/10 overflow-hidden shrink-0 relative group/video">
-                        {(item.generatedVideoUrl || item.videoUrl) ? (
+                        {videoSource ? (
                           <>
                             <ManagedVideo
-                              src={resolveMediaUrl(item.generatedVideoUrl || item.videoUrl) || ""}
+                              src={videoSource}
                               className="w-full h-full object-cover"
                               muted
                               preload="metadata"
@@ -516,15 +519,13 @@ export function StoryboardTableView({
                                 render={
                                   <button
                                     type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
+                                    aria-label="预览镜头视频"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
                                       onSelectItem(item.id);
-                                      const rawVideoUrl = item.generatedVideoUrl || item.videoUrl;
-                                      if (rawVideoUrl) {
-                                        setPreviewVideoUrl(rawVideoUrl);
-                                      }
+                                      setPreviewVideoUrl(videoSource);
                                     }}
-                                    className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover/video:bg-black/40 transition-colors"
+                                    className="absolute inset-0 flex items-center justify-start bg-black/20 pl-2 transition-colors group-hover/video:bg-black/40"
                                   >
                                     <Play className="h-3.5 w-3.5 text-white/90 fill-white/90" />
                                   </button>
@@ -534,6 +535,9 @@ export function StoryboardTableView({
                                 预览视频
                               </TooltipContent>
                             </Tooltip>
+                            <div className="absolute right-1.5 top-1/2 -translate-y-1/2">
+                              <CopyMediaLinksButton sources={[videoSource]} label="复制视频链接" variant="secondary" />
+                            </div>
                           </>
                         ) : (
                           <Video className="h-3.5 w-3.5 text-muted-foreground/30" />

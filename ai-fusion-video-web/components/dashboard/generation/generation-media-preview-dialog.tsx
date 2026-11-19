@@ -1,4 +1,5 @@
 "use client";
+import { CopyMediaLinksButton } from "@/components/media/copy-media-links-button";
 import { ManagedVideo } from "@/components/media/managed-video";
 
 
@@ -27,6 +28,7 @@ export interface GenerationMediaPreview {
   url: string;
   title: string;
   posterUrl?: string;
+  copySource?: string;
 }
 
 interface GenerationMediaPreviewDialogProps {
@@ -207,6 +209,13 @@ export function GenerationMediaPreviewDialog({
               <ZoomIn className="h-4 w-4" />
             </Button>
             <span className="mx-0.5 h-5 w-px bg-border/40" />
+            {preview?.copySource && (
+              <CopyMediaLinksButton
+                sources={[preview.copySource]}
+                label={preview.type === "image" ? "复制图片链接" : "复制视频链接"}
+                size="icon-sm"
+              />
+            )}
             <DialogClose
               render={
                 <Button

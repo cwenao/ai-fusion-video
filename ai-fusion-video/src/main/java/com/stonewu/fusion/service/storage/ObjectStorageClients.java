@@ -1,5 +1,6 @@
 package com.stonewu.fusion.service.storage;
 
+import com.stonewu.fusion.service.media.model.MediaException;
 import com.volcengine.tos.TOSV2;
 import com.volcengine.tos.TOSV2ClientBuilder;
 import com.volcengine.tos.comm.HttpMethod;
@@ -11,6 +12,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
+import java.net.URI;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
@@ -41,9 +43,47 @@ public class ObjectStorageClients {
 
     public String signTosBrowserRead(ResolvedObjectStorageConfig config, String key, long seconds) {
         // 上传和服务端读取可以使用内网 Endpoint。浏览器使用同地域的 HTTPS 公网域名。
-        String endpoint = config.profile().endpointTemplate().replace("{region}", config.region());
+        String endpoint = tosPublicEndpoint(config);
         return tosClient(config, endpoint).preSignedURL(new PreSignedURLInput().setHttpMethod(HttpMethod.GET)
                 .setBucket(config.bucketName()).setKey(key).setExpires(seconds)).getSignedUrl();
+    }
+
+    public PrivateMediaDeliveryBucket forPrivateMediaDelivery(ResolvedObjectStorageConfig config) {
+        URI endpoint = httpsOrigin(config.endpoint(), "交付桶服务端点必须使用 HTTPS");
+        if (StorageProviderRegistry.VOLCENGINE_TOS.equals(config.provider())) {
+            String domain = config.customDomain();
+            boolean customDomain = domain != null && !domain.isBlank();
+            if (customDomain && !domain.contains("://")) {
+                domain = "https://" + domain.trim();
+            }
+            URI browserOrigin = customDomain
+                    ? httpsOrigin(domain, "TOS 交付桶需要填写已绑定的 HTTPS 自定义域名")
+                    : URI.create(tosPublicEndpoint(config));
+            return new TosPrivateMediaDeliveryBucket(tosClient(config, endpoint.toString()), config.bucketName(),
+                    browserOrigin, customDomain);
+        }
+        return new S3PrivateMediaDeliveryBucket(s3Clients.getClient(config), config, endpoint);
+    }
+
+    private String tosPublicEndpoint(ResolvedObjectStorageConfig config) {
+        return config.profile().endpointTemplate().replace("{region}", config.region());
+    }
+
+    private URI httpsOrigin(String value, String invalidMessage) {
+        if (value == null || value.isBlank()) {
+            throw MediaException.unavailable(invalidMessage);
+        }
+        URI origin;
+        try {
+            origin = URI.create(value.trim().replaceAll("/+$", ""));
+        } catch (IllegalArgumentException invalid) {
+            throw MediaException.unavailable(invalidMessage);
+        }
+        if (!"https".equals(origin.getScheme()) || origin.getHost() == null || origin.getUserInfo() != null
+                || !origin.getPath().isEmpty() || origin.getQuery() != null || origin.getFragment() != null) {
+            throw MediaException.unavailable(invalidMessage);
+        }
+        return origin;
     }
 
     private TOSV2 tosClient(ResolvedObjectStorageConfig config, String endpoint) {

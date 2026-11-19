@@ -1,4 +1,5 @@
 "use client";
+import { CopyMediaLinksButton } from "@/components/media/copy-media-links-button";
 import { ManagedMediaLink } from "@/components/media/managed-media-link";
 
 import { ManagedVideo } from "@/components/media/managed-video";
@@ -79,7 +80,8 @@ export function GenerationHistoryResult({
   storyboardWriteback,
   onPreview,
 }: GenerationHistoryResultProps) {
-  const mediaUrl = resolveMediaUrl(getResultMediaUrl(item));
+  const mediaSource = getResultMediaUrl(item);
+  const mediaUrl = resolveMediaUrl(mediaSource);
   const previewUrl = resolveMediaUrl(getResultPreviewUrl(item));
   const resultReady = Boolean(mediaUrl || previewUrl);
   const displayUrl = mediaUrl || previewUrl;
@@ -191,7 +193,7 @@ export function GenerationHistoryResult({
             type="button"
             onClick={() =>
               displayUrl &&
-              onPreview({ type: "image", url: displayUrl, title: "生成图片" })
+              onPreview({ type: "image", url: displayUrl, title: "生成图片", copySource: mediaSource ?? undefined })
             }
             title="在当前页预览图片"
             aria-label="预览生成图片"
@@ -216,6 +218,7 @@ export function GenerationHistoryResult({
                 url: mediaUrl,
                 posterUrl: previewUrl || undefined,
                 title: "生成视频",
+                copySource: mediaSource ?? undefined,
               })
             }
             title="在当前页预览视频"
@@ -269,6 +272,16 @@ export function GenerationHistoryResult({
         ) : (
           <div className="grid aspect-video place-items-center text-xs text-muted-foreground">
             视频处理中
+          </div>
+        )}
+        {mediaSource && (
+          <div className="absolute left-2 top-2">
+            <CopyMediaLinksButton
+              sources={[mediaSource]}
+              label={mode === "image" ? "复制图片链接" : "复制视频链接"}
+              variant="secondary"
+              size="icon-sm"
+            />
           </div>
         )}
       </div>
@@ -330,7 +343,7 @@ export function GenerationHistoryResult({
       )}
       {reviewRequested && mediaUrl && (
         <div className="border-t border-border/20 p-2">
-          <GenerationReviewBadge source={getResultMediaUrl(item)} expected />
+          <GenerationReviewBadge source={mediaSource} expected />
         </div>
       )}
     </article>

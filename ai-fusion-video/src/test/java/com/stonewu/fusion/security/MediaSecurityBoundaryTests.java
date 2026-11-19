@@ -2,13 +2,16 @@ package com.stonewu.fusion.security;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.stonewu.fusion.config.CorsProperties;
+import com.stonewu.fusion.controller.media.MediaCopyLinkController;
 import com.stonewu.fusion.controller.media.MediaContentController;
 import com.stonewu.fusion.controller.media.MediaExceptionHandler;
 import com.stonewu.fusion.controller.media.MediaPlaybackController;
 import com.stonewu.fusion.entity.media.MediaAccessTicketEntity;
 import com.stonewu.fusion.mapper.media.MediaAccessTicketMapper;
+import com.stonewu.fusion.service.canvas.CanvasActorResolver;
 import com.stonewu.fusion.service.media.MediaAccessTickets;
 import com.stonewu.fusion.service.media.MediaContentWriter;
+import com.stonewu.fusion.service.media.MediaCopyLinks;
 import com.stonewu.fusion.service.media.TosMediaPlayback;
 import com.stonewu.fusion.service.media.model.MediaException;
 import org.junit.jupiter.api.Test;
@@ -56,6 +59,16 @@ class MediaSecurityBoundaryTests {
             return new MediaPlaybackController(tickets, playback);
         }
 
+        @Bean
+        MediaCopyLinks copyLinks() {
+            return mock(MediaCopyLinks.class);
+        }
+
+        @Bean
+        MediaCopyLinkController copyLinkController(MediaCopyLinks copyLinks) {
+            return new MediaCopyLinkController(mock(CanvasActorResolver.class), copyLinks);
+        }
+
         @Bean MediaContentController content(MediaAccessTickets tickets) {
             return new MediaContentController(tickets, mock(MediaContentWriter.class));
         }
@@ -81,6 +94,9 @@ class MediaSecurityBoundaryTests {
             http.perform(post("/api/media-content/test-id/playback").param("ticket", "bad"))
                     .andExpect(status().isUnauthorized());
             http.perform(post("/api/media-resources/test-id/access")).andExpect(status().isUnauthorized());
+            http.perform(post("/api/media-resources/20000000-0000-0000-0000-000000000001/copy-link"))
+                    .andExpect(status().isUnauthorized());
+            verifyNoInteractions(context.getBean(MediaCopyLinks.class));
             http.perform(post("/api/media-resources/upload")).andExpect(status().isUnauthorized());
             http.perform(get("/api/media-resources/test-id")).andExpect(status().isUnauthorized());
         }

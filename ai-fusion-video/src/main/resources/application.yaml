@@ -68,6 +68,9 @@ app:
     requests-per-minute: ${PROJECT_MCP_REQUESTS_PER_MINUTE:120}
   storage:
     local-base-path: ./data/media
+  media:
+    delivery:
+      storage-config-id: ${APP_MEDIA_DELIVERY_STORAGE_CONFIG_ID:0}
   agent-workspace:
     local-base-path: ${AGENT_WORKSPACE_LOCAL_PATH:./data/agent-workspace}
 

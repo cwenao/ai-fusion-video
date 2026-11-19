@@ -1,11 +1,9 @@
 "use client";
+import { CopyMediaLinksButton } from "@/components/media/copy-media-links-button";
 import { ManagedMediaLink } from "@/components/media/managed-media-link";
-
 import { ManagedVideo } from "@/components/media/managed-video";
-
-
+import { Button } from "@/components/ui/button";
 import { Download, PlayCircle } from "lucide-react";
-import { resolveMediaUrl } from "@/lib/api/client";
 
 interface VideoPreviewDialogProps {
   open: boolean;
@@ -20,9 +18,7 @@ export function VideoPreviewDialog({
   videoUrl,
   onClose,
 }: VideoPreviewDialogProps) {
-  const resolvedVideoUrl = resolveMediaUrl(videoUrl) ?? videoUrl;
-
-  if (!open || !resolvedVideoUrl) {
+  if (!open || !videoUrl) {
     return null;
   }
 
@@ -35,33 +31,31 @@ export function VideoPreviewDialog({
         onClick={(event) => event.stopPropagation()}
         className="modal-surface relative w-full max-w-4xl overflow-hidden rounded-2xl border border-border/40"
       >
-        <div className="flex items-center justify-between border-b border-border/20 px-4 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/20 px-4 py-3">
           <h3 className="flex items-center gap-2 text-sm font-semibold">
             <PlayCircle className="h-4 w-4 text-emerald-500" />
             {title}
           </h3>
           <div className="flex items-center gap-2">
-            <ManagedMediaLink
-              href={resolvedVideoUrl}
-              target="_blank"
-              rel="noreferrer"
-              download
-              className="inline-flex items-center gap-1.5 rounded-lg border border-border/30 bg-muted/20 px-3 py-1.5 text-xs transition-colors hover:bg-muted/40"
+            <CopyMediaLinksButton sources={[videoUrl]} label="复制视频链接" size="xs" variant="outline">
+              复制链接
+            </CopyMediaLinksButton>
+            <Button
+              variant="outline"
+              size="xs"
+              nativeButton={false}
+              render={<ManagedMediaLink href={videoUrl} target="_blank" rel="noreferrer" download />}
             >
-              <Download className="h-3.5 w-3.5" />
+              <Download />
               下载视频
-            </ManagedMediaLink>
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-lg border border-border/30 bg-muted/20 px-3 py-1.5 text-xs transition-colors hover:bg-muted/40"
-            >
+            </Button>
+            <Button type="button" variant="ghost" size="xs" onClick={onClose}>
               关闭
-            </button>
+            </Button>
           </div>
         </div>
         <ManagedVideo
-          src={resolvedVideoUrl}
+          src={videoUrl}
           controls
           autoPlay
           playsInline

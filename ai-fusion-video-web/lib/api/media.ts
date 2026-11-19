@@ -47,6 +47,14 @@ export function accessMedia(
   );
 }
 
+export function issueMediaCopyLink(id: string) {
+  return http.post<never, Pick<MediaAccess, "url" | "expiresAt">>(
+    `/api/media-resources/${id}/copy-link`,
+    null,
+    { timeout: 240_000 },
+  );
+}
+
 export async function mediaAccessUrl(
   source: string,
   download = false,

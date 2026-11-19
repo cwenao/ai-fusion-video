@@ -22,12 +22,15 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.Base64;
 import java.util.HexFormat;
 import java.util.Objects;
+
+import static com.stonewu.fusion.service.storage.PrivateMediaDeliveryBucket.LINK_LIFETIME;
 
 /**
  * 不缓存授权；浏览器、生成尝试和 Agent 工作者各有明确的凭据生命周期。
@@ -53,7 +56,16 @@ public class MediaAccessTickets {
 
     @Transactional
     public Issued browser(String id, CanvasActor actor, boolean download) {
-        var expiry = clock.now().plusMinutes(5);
+        return browser(id, actor, download, Duration.ofMinutes(5));
+    }
+
+    @Transactional
+    public Issued copyLocal(String id, CanvasActor actor) {
+        return browser(id, actor, false, LINK_LIFETIME);
+    }
+
+    private Issued browser(String id, CanvasActor actor, boolean download, Duration lifetime) {
+        var expiry = clock.now().plus(lifetime);
         return issue(id, actor, download, new Binding("BROWSER", expiry, null, null, null, null, null, null));
     }
 
