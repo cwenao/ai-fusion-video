@@ -51,6 +51,7 @@ import com.stonewu.fusion.service.resource.model.InitializeProjectWorkspaceComma
 import com.stonewu.fusion.service.resource.ResourceAgentFence;
 import com.stonewu.fusion.service.resource.ResourceCommandService;
 import com.stonewu.fusion.service.resource.ResourceEventProjectionService;
+import com.stonewu.fusion.service.resource.ResourceHistoryCache;
 import com.stonewu.fusion.service.resource.ResourceChangeFeed;
 import com.stonewu.fusion.service.resource.model.ResourceCommandContext;
 import com.stonewu.fusion.service.resource.model.ResourceCommandReceipt;
@@ -122,6 +123,7 @@ import com.stonewu.fusion.service.ai.tool.storyboard.StoryboardToolQueries;
 import com.stonewu.fusion.service.generation.ProjectMediaCompletion;
 import com.stonewu.fusion.service.system.SystemConfigService;
 import com.stonewu.fusion.service.storyboard.StoryboardAssetReferences;
+import com.stonewu.fusion.service.storyboard.dto.StoryboardPromptVersion;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -199,7 +201,7 @@ class ResourceCommandIT {
         context.registerBean(RedisConnectionFactory.class, () -> new LettuceConnectionFactory(REDIS.getHost(), REDIS.getMappedPort(6379)));
         context.register(CacheConfig.class, CanvasJson.class, CanvasDocumentRepository.class, CanvasAccessRepository.class,
                 CanvasAccessPolicy.class, CanvasGraphRepository.class, CanvasJournalRepository.class, CanvasSnapshotCache.class,
-                CanvasRequestValidator.class, CanvasQueryService.class, ProjectResourcePatchHandler.class,
+                CanvasRequestValidator.class, CanvasQueryService.class, ProjectResourcePatchHandler.class, ResourceHistoryCache.class,
                 ResourceCommandService.class, ResourceEventProjectionService.class, ResourceChangeFeed.class, ProjectFields.class,
                 ProjectWorkspaceRepository.class, ProjectCreateHandler.class, ProjectDeleteHandler.class, ProjectInitializeHandler.class,
                 ResourceQueryService.class, ResourceAccessPolicy.class, ResourceSnapshotCache.class, ScriptMutationRepository.class, ScriptFields.class, ScriptCommandSupport.class,
@@ -1365,6 +1367,44 @@ class ResourceCommandIT {
                 .put("expectedVersion", 2).put("content", "取消后不可写")), storyboardInvocation(run, "late-write")), ObjectNode.class);
         assertThat(cancelled.path("errorCode").textValue()).isEqualTo("ACCESS_DENIED");
         assertThat(queries.get(CanvasValueType.SHOT, item, ACTOR).data().path("content").textValue()).isEqualTo("真实工具镜头");
+    }
+
+    @Test
+    void storyboardPromptHistoryReturnsThreePreviousTextsForTheAuthorizedField() {
+        long board = storyboard();
+        var draft = storyboardDraft(board, 0, 1);
+        ((ObjectNode) draft.path("scenes").get(0).path("shots").get(0))
+                .put("videoPrompt", "视频初稿").put("firstFramePrompt", "首帧原稿");
+        var episode = commands.execute(new ResourceCreateCommand(UUID.randomUUID().toString(),
+                CanvasValueType.STORYBOARD_EPISODE, null, draft), USER).result();
+        var boards = context.getBean(StoryboardResourceQueryService.class);
+        long shot = boards.tree(CanvasValueType.STORYBOARD_EPISODE, episode.path("id").longValue(), 2, ACTOR)
+                .path("scenes").get(0).path("items").get(0).path("id").longValue();
+        assertThat(boards.promptHistory(shot, "videoPrompt", ACTOR)).isEmpty();
+
+        String multiline = "横移穿过站台\n\t保留雨声。 ";
+        var patches = List.of(mapper.createObjectNode().put("videoPrompt", multiline),
+                mapper.createObjectNode().put("content", "更新画面").put("firstFramePrompt", "首帧改稿"),
+                mapper.createObjectNode().putNull("videoPrompt"),
+                mapper.createObjectNode().put("videoPrompt", "视频第四稿"),
+                mapper.createObjectNode().put("videoPrompt", "视频第五稿"),
+                mapper.createObjectNode().put("videoPrompt", "视频当前稿"));
+        int version = 0;
+        for (ObjectNode patch : patches) {
+            version = commands.patch(new ResourcePatchCommand(UUID.randomUUID().toString(), CanvasValueType.SHOT,
+                    shot, version, patch), USER).result().path("version").intValue();
+        }
+
+        var recent = boards.promptHistory(shot, "videoPrompt", ACTOR);
+        assertThat(recent).extracting(StoryboardPromptVersion::prompt)
+                .containsExactly("视频第五稿", "视频第四稿", multiline);
+        assertThat(recent).extracting(StoryboardPromptVersion::replacedAt).doesNotContainNull();
+        assertThat(boards.promptHistory(shot, "firstFramePrompt", ACTOR)).extracting(StoryboardPromptVersion::prompt)
+                .containsExactly("首帧原稿");
+        assertThat(boards.promptHistory(shot, "lastFramePrompt", ACTOR)).isEmpty();
+        rejects(() -> boards.promptHistory(shot, "content", ACTOR), CanvasErrorCode.INVALID_COMMAND);
+        rejects(() -> boards.promptHistory(shot, "videoPrompt", new CanvasActor(52, null)),
+                CanvasErrorCode.ACCESS_DENIED);
     }
 
     @Test

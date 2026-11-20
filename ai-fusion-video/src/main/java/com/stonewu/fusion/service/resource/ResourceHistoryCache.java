@@ -1,10 +1,12 @@
 package com.stonewu.fusion.service.resource;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.stonewu.fusion.mapper.resource.ResourceRevisionMapper;
 import com.stonewu.fusion.service.canvas.CanvasJson;
 import com.stonewu.fusion.service.canvas.model.CanvasErrorCode;
 import com.stonewu.fusion.service.canvas.model.CanvasException;
 import com.stonewu.fusion.service.resource.model.ResourceCommandReceipt;
+import com.stonewu.fusion.service.storyboard.dto.StoryboardPromptVersion;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cache.annotation.Cacheable;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
@@ -12,6 +14,7 @@ import com.stonewu.fusion.entity.resource.ResourceCommandEntity;
 import com.stonewu.fusion.mapper.resource.ResourceCommandMapper;
 import org.springframework.stereotype.Component;
 
+import java.time.ZoneOffset;
 import java.util.Map;
 
 /**
@@ -21,6 +24,7 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class ResourceHistoryCache {
     private final ResourceCommandMapper commands;
+    private final ResourceRevisionMapper revisions;
     private final CanvasJson json;
 
     @Cacheable(value = "resourceDocument", key = "'history:v1:' + #commandId")
@@ -35,5 +39,12 @@ public class ResourceHistoryCache {
                 row.getCanvasId(), row.getAgentRunId(), row.getToolCallId(), request.path("operation").asText(),
                 json.read(row.getResultJson(), ResourceCommandReceipt.class), request,
                 json.read(row.getUndoJson(), ObjectNode.class), row.getCommittedAt()));
+    }
+
+    @Cacheable(value = "resourceDocument", key = "'shot-prompt:v1:' + #id + ':' + #field + ':' + #version")
+    public String shotPromptHistory(long id, String field, int version) {
+        return json.write(revisions.shotPromptHistory(id, field, version).stream()
+                .map(row -> new StoryboardPromptVersion(row.version(), row.prompt(), row.replacedAt().toInstant(ZoneOffset.UTC)))
+                .toList());
     }
 }

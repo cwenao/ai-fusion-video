@@ -155,6 +155,12 @@ export type StoryboardItemCreateReq = Partial<StoryboardItemFields> & {
   insertAfterId?: number;
 };
 export type StoryboardItemUpdateReq = { id: number; version: number } & Partial<StoryboardItemFields>;
+export type StoryboardPromptField = "videoPrompt" | "firstFramePrompt" | "lastFramePrompt";
+export interface StoryboardPromptVersion {
+  version: number;
+  prompt: string;
+  replacedAt: string;
+}
 export interface StoryboardItemAssetsUpdateReq {
   version: number;
   characterIds?: number[];
@@ -226,6 +232,8 @@ export const storyboardApi = {
   listItems: (storyboardId: number) => http.get<never, StoryboardItem[]>("/api/storyboard/" + storyboardId + "/items"),
   listItemsByScene: (sceneId: number) => http.get<never, StoryboardItem[]>("/api/storyboard/scene/" + sceneId + "/items"),
   getItem: (id: number) => http.get<never, StoryboardItem>("/api/storyboard/item/" + id),
+  listPromptHistory: (id: number, field: StoryboardPromptField, signal: AbortSignal) =>
+    http.get<never, StoryboardPromptVersion[]>(`/api/storyboard/item/${id}/prompt-history`, { params: { field }, signal }),
   createItem: (data: StoryboardItemCreateReq, requestId: string = crypto.randomUUID()) => {
     const { storyboardSceneId, parentVersion, ...fields } = data;
     return create<StoryboardItem>("/api/storyboard/item", storyboardSceneId, parentVersion, fields, requestId);

@@ -6,12 +6,14 @@ import { cn } from "@/lib/utils";
 import { storyboardVideoSource } from "../storyboard-data";
 import { StoryboardTableView } from "./storyboard-table-view";
 import { StoryboardCardView } from "./storyboard-card-view";
+import { StoryboardPromptEditor } from "./prompt-editor/storyboard-prompt-editor";
 import { VideoGenDialog } from "./video-gen-dialog";
 import type { useStoryboardWorkspace } from "../_hooks/use-storyboard-workspace";
 
 export function StoryboardSceneList({ workspace }: { workspace: ReturnType<typeof useStoryboardWorkspace> }) {
   const {
     projectId,
+    project,
     assetLookup,
     setEditAssetsOpen,
     setEditingItem,
@@ -32,7 +34,11 @@ export function StoryboardSceneList({ workspace }: { workspace: ReturnType<typeo
     handleVideoGen,
   } = workspace;
   const [videoItemId, setVideoItemId] = useState<number | null>(null);
+  const [promptItemId, setPromptItemId] = useState<number | null>(null);
   const videoItem = sceneGroups.flatMap(({ items }) => items).find((item) => item.id === videoItemId);
+  const promptGroup = promptItemId === null ? undefined
+    : sceneGroups.find(({ items }) => items.some((item) => item.id === promptItemId));
+  const promptItem = promptGroup?.items.find((item) => item.id === promptItemId);
   return (
     <>
         <div
@@ -141,6 +147,7 @@ export function StoryboardSceneList({ workspace }: { workspace: ReturnType<typeo
                     }
                     onVideoGen={setVideoItemId}
                     onOpenFrameDialog={handleOpenFrameDialog}
+                    onEditPrompt={(item) => setPromptItemId(item.id)}
                   />
                 )}
               </div>
@@ -155,6 +162,11 @@ export function StoryboardSceneList({ workspace }: { workspace: ReturnType<typeo
           onClose={() => setVideoItemId(null)}
           onConfirm={handleVideoGen}
         />
+      )}
+      {promptItem && (
+        <StoryboardPromptEditor key={promptItem.id} item={promptItem} projectId={projectId} project={project}
+          scene={promptGroup?.scene} initialField="videoPrompt" onSave={handleUpdateItemField}
+          onClose={() => setPromptItemId(null)} />
       )}
     </>
   );

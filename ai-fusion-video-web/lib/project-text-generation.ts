@@ -3,7 +3,7 @@ import type { PipelineTask } from "@/lib/store/pipeline-types";
 
 interface ProjectTextRequest {
   projectId: number;
-  kind: "storyboardPrompt" | "assetAppearance" | "assetImagePrompt";
+  kind: "storyboardPrompt" | "storyboardPromptChat" | "assetAppearance" | "assetImagePrompt";
   title: string;
   context: Record<string, unknown>;
   draft: string;

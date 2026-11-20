@@ -6,6 +6,7 @@ import com.stonewu.fusion.entity.resource.ResourceRevisionEntity;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Mapper
@@ -17,6 +18,12 @@ public interface ResourceRevisionMapper extends BaseMapper<ResourceRevisionEntit
 
     record WritebackVersion(int version, Integer parentVersion) {
     }
+
+    record PromptRevision(int version, String prompt, LocalDateTime replacedAt) {
+    }
+
+    List<PromptRevision> shotPromptHistory(@Param("id") long id, @Param("field") String field,
+                                         @Param("through") int through);
 
     List<GenerationChange> generationChanges(@Param("type") String type, @Param("id") long id,
                                                @Param("after") int after, @Param("through") int through);

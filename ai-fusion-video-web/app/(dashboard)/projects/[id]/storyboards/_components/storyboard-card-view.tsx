@@ -3,7 +3,7 @@ import { ManagedVideo } from "@/components/media/managed-video";
 
 
 import React, { memo, useState, useMemo } from "react";
-import { Film, Plus, Clock, Camera, Image as ImageIcon, GripHorizontal, Video, Play, Trash2 } from "lucide-react";
+import { Film, Plus, Clock, Camera, Image as ImageIcon, GripHorizontal, PencilLine, Video, Play, Trash2 } from "lucide-react";
 import { VideoPreviewDialog } from "@/components/dashboard/video-preview-dialog";
 import { CopyMediaLinksButton } from "@/components/media/copy-media-links-button";
 import { Button } from "@/components/ui/button";
@@ -52,6 +52,7 @@ const CardItemUI = memo(
       onDelete?: (itemId: number) => void;
       onVideoGen?: (itemId: number) => void;
       onOpenFrameDialog?: (item: StoryboardItem, frameType: StoryboardFrameType) => void;
+      onEditPrompt?: (item: StoryboardItem) => void;
       onPreviewVideo?: (videoUrl: string) => void;
       attributes?: SortableBindings["attributes"];
       listeners?: SortableBindings["listeners"];
@@ -70,6 +71,7 @@ const CardItemUI = memo(
         onDelete,
         onVideoGen,
         onOpenFrameDialog,
+        onEditPrompt,
         onPreviewVideo,
         attributes,
         listeners,
@@ -297,22 +299,33 @@ const CardItemUI = memo(
 
           {/* 信息区域 (固定高度: 确保所有卡片对齐并避免网格跳动) */}
           <div className="h-[140px] p-3 flex flex-col">
-            {/* 第一行：景别 & 镜头运动 */}
-            <div className="flex items-center gap-1.5 flex-wrap shrink-0 mb-2">
-              {item.shotType && (
-                <span className="text-[10px] px-1.5 py-0.5 text-cyan-600 bg-cyan-50 dark:bg-cyan-500/10 dark:text-cyan-400 font-medium rounded-sm">
-                  {item.shotType}
-                </span>
-              )}
-              {item.cameraMovement && (
-                <span className="flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 text-violet-600 bg-violet-50 dark:bg-violet-500/10 dark:text-violet-400 font-medium rounded-sm">
-                  <Camera className="h-2.5 w-2.5" />
-                  {item.cameraMovement}
-                </span>
-              )}
-              {projectId !== undefined && (
-                <StoryboardVideoToolLink projectId={projectId} item={item} compact className="ml-auto" />
-              )}
+            <div className="mb-2 flex shrink-0 items-center justify-between gap-2">
+              <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                {item.shotType && (
+                  <span className="max-w-full truncate rounded-sm bg-cyan-50 px-1.5 py-0.5 text-[10px] font-medium text-cyan-600 dark:bg-cyan-500/10 dark:text-cyan-400" title={item.shotType}>
+                    {item.shotType}
+                  </span>
+                )}
+                {item.cameraMovement && (
+                  <span className="flex min-w-0 items-center gap-0.5 rounded-sm bg-violet-50 px-1.5 py-0.5 text-[10px] font-medium text-violet-600 dark:bg-violet-500/10 dark:text-violet-400" title={item.cameraMovement}>
+                    <Camera className="size-2.5 shrink-0" />
+                    <span className="truncate">{item.cameraMovement}</span>
+                  </span>
+                )}
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                {onEditPrompt && (
+                  <Button type="button" variant="ghost" size="xs" aria-haspopup="dialog" onClick={(event) => {
+                    event.stopPropagation();
+                    onSelect?.();
+                    onEditPrompt(item);
+                  }}>
+                    <PencilLine />
+                    编辑提示词
+                  </Button>
+                )}
+                {projectId !== undefined && <StoryboardVideoToolLink projectId={projectId} item={item} compact />}
+              </div>
             </div>
 
             {/* 画面内容 */}
@@ -358,6 +371,7 @@ function SortableCardItem({
   onVideoGen,
   onOpenFrameDialog,
   onPreviewVideo,
+  onEditPrompt,
 }: {
   projectId: number;
   item: StoryboardItem;
@@ -368,6 +382,7 @@ function SortableCardItem({
   onVideoGen?: (itemId: number) => void;
   onOpenFrameDialog?: (item: StoryboardItem, frameType: StoryboardFrameType) => void;
   onPreviewVideo?: (videoUrl: string) => void;
+  onEditPrompt: (item: StoryboardItem) => void;
 }) {
   const {
     attributes,
@@ -396,6 +411,7 @@ function SortableCardItem({
       onVideoGen={onVideoGen}
       onOpenFrameDialog={onOpenFrameDialog}
       onPreviewVideo={onPreviewVideo}
+      onEditPrompt={onEditPrompt}
       attributes={attributes}
       listeners={listeners}
       isDragging={isDragging}
@@ -413,6 +429,7 @@ export function StoryboardCardView({
   onReorderItems,
   onVideoGen,
   onOpenFrameDialog,
+  onEditPrompt,
 }: {
   projectId: number;
   items: StoryboardItem[];
@@ -423,6 +440,7 @@ export function StoryboardCardView({
   onReorderItems?: (reordered: StoryboardItem[]) => void;
   onVideoGen?: (itemId: number) => void;
   onOpenFrameDialog?: (item: StoryboardItem, frameType: StoryboardFrameType) => void;
+  onEditPrompt: (item: StoryboardItem) => void;
 }) {
   const [activeId, setActiveId] = useState<number | null>(null);
   const [previewVideoUrl, setPreviewVideoUrl] = useState<string | null>(null);
@@ -508,6 +526,7 @@ export function StoryboardCardView({
                 onVideoGen={onVideoGen}
                 onOpenFrameDialog={onOpenFrameDialog}
                 onPreviewVideo={setPreviewVideoUrl}
+                onEditPrompt={onEditPrompt}
               />
             ))}
 

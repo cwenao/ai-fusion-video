@@ -6,6 +6,7 @@ import com.stonewu.fusion.service.canvas.CanvasAccessPolicy;
 import com.stonewu.fusion.service.canvas.CanvasJson;
 import com.stonewu.fusion.service.canvas.model.CanvasActor;
 import com.stonewu.fusion.service.canvas.model.CanvasValueType;
+import com.stonewu.fusion.service.storyboard.dto.StoryboardPromptVersion;
 import com.stonewu.fusion.service.storyboard.dto.StoryboardStatistics;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -14,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static com.stonewu.fusion.service.canvas.model.CanvasValueType.*;
 
@@ -21,10 +23,13 @@ import static com.stonewu.fusion.service.canvas.model.CanvasValueType.*;
 @RequiredArgsConstructor
 @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
 public class StoryboardResourceQueryService {
+    private static final Set<String> PROMPT_FIELDS = Set.of("videoPrompt", "firstFramePrompt", "lastFramePrompt");
+
     private final StoryboardReadRepository boards;
     private final ResourceQueryService resources;
     private final CanvasAccessPolicy access;
     private final CanvasJson json;
+    private final ResourceHistoryCache history;
 
     public ObjectNode project(long project, CanvasActor actor) {
         access.requireProject(project, actor);
@@ -41,6 +46,15 @@ public class StoryboardResourceQueryService {
         resources.get(STORYBOARD, board, actor);
         return new StoryboardStatistics(boards.count(STORYBOARD_EPISODE, board), boards.count(STORYBOARD_SCENE, board),
                 boards.count(SHOT, board));
+    }
+
+    public List<StoryboardPromptVersion> promptHistory(long shotId, String field, CanvasActor actor) {
+        if (!PROMPT_FIELDS.contains(field)) {
+            throw StoryboardFields.invalid("仅支持查看视频、首帧和尾帧提示词的历史版本");
+        }
+        var shot = resources.get(SHOT, shotId, actor);
+        return List.of(json.read(history.shotPromptHistory(shotId, field, shot.header().version()),
+                StoryboardPromptVersion[].class));
     }
 
     public ObjectNode tree(CanvasValueType type, long id, int depth, CanvasActor actor) {

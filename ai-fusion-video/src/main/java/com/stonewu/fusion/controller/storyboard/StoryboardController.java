@@ -11,6 +11,7 @@ import com.stonewu.fusion.service.resource.StoryboardFields;
 import com.stonewu.fusion.service.resource.StoryboardResourceQueryService;
 import com.stonewu.fusion.service.resource.model.*;
 import com.stonewu.fusion.service.storyboard.VideoComposeService;
+import com.stonewu.fusion.service.storyboard.dto.StoryboardPromptVersion;
 import com.stonewu.fusion.service.storyboard.dto.StoryboardStatistics;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -153,6 +154,11 @@ public class StoryboardController {
     @GetMapping("/item/{id}")
     public CommonResult<ObjectNode> getItem(@PathVariable long id) {
         return read(SHOT, id);
+    }
+
+    @GetMapping("/item/{id}/prompt-history")
+    public CommonResult<List<StoryboardPromptVersion>> promptHistory(@PathVariable long id, @RequestParam String field) {
+        return CommonResult.success(boards.promptHistory(id, field, actors.current()));
     }
 
     @PostMapping("/item")
