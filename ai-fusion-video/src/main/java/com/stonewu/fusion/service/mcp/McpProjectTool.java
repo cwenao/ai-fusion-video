@@ -36,7 +36,7 @@ enum McpProjectTool {
     ASSET_CREATE(true, "一次创建主资产及其多个子资产，或向已有主资产追加一个子资产"),
     ASSET_BATCH_CREATE(true, "批量创建主资产，或在同一主资产下批量追加子资产，整批提交"),
     ASSET_UPDATE(true, "按版本更新资产设定，或更新子资产的时间线、表现状态、外观和生图提示词"),
-    ASSET_BATCH_UPDATE(true, "按版本批量更新主资产或子资产，整批提交"),
+    ASSET_BATCH_UPDATE(true, "按版本批量更新主资产或子资产，整批提交。更新子资产时，统一填写顶层 expectedParentVersion 或逐项填写 targets[].expectedParentVersion"),
     ASSET_BATCH_DELETE(true, "按版本批量删除主资产及其子资产，或仅删除同一主资产下指定的子资产"),
     MEDIA_GET(false, "读取项目媒体原件元数据和下载路径"),
     MEDIA_BATCH_GET(false, "按媒体 ID 批量读取项目原件的元数据和下载路径"),

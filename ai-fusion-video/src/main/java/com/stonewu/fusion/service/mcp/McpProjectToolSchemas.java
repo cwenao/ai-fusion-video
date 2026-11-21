@@ -50,6 +50,7 @@ class McpProjectToolSchemas {
     private static final Map<String, Object> BOARD_DETAIL = choice("storyboard", "episode", "scene", "shot");
     private static final Map<String, Object> BOARD_CHILD = choice("episode", "scene", "shot");
     private static final Map<String, Object> ASSET_KIND = choice("asset", "assetItem");
+    private static final String CHILD_BATCH_PARENT_VERSION = "目标为子资产时必填，使用批次开始前的主资产版本";
     private static final Map<String, Object> RAW_CONTENT = described(BOOLEAN,
             "是否返回剧本原文 rawContent。分集默认返回，主档默认省略");
     private static final Map<String, Object> PROMPT = choice("firstFramePrompt", "lastFramePrompt", "videoPrompt",
@@ -241,7 +242,7 @@ class McpProjectToolSchemas {
                     forms(create, SCRIPT_EPISODE, SCRIPT_SCENE));
             case SCRIPT_UPDATE -> update(params, required, SCRIPT_DETAIL,
                     forms(patch, SCRIPT, SCRIPT_EPISODE, SCRIPT_SCENE));
-            case SCRIPT_BATCH_UPDATE -> batchUpdate(params, required, SCRIPT_DETAIL, false,
+            case SCRIPT_BATCH_UPDATE -> batchUpdate(params, required, SCRIPT_DETAIL,
                     forms(patch, SCRIPT, SCRIPT_EPISODE, SCRIPT_SCENE));
             case SCRIPT_DELETE -> delete(params, required, choice("scene"));
             case SCRIPT_BATCH_DELETE -> batchDelete(params, required, choice("scene"));
@@ -259,7 +260,7 @@ class McpProjectToolSchemas {
                     forms(create, STORYBOARD_EPISODE, STORYBOARD_SCENE, SHOT));
             case STORYBOARD_UPDATE -> update(params, required, BOARD_DETAIL,
                     forms(patch, STORYBOARD, STORYBOARD_EPISODE, STORYBOARD_SCENE, SHOT));
-            case STORYBOARD_BATCH_UPDATE -> batchUpdate(params, required, BOARD_DETAIL, false,
+            case STORYBOARD_BATCH_UPDATE -> batchUpdate(params, required, BOARD_DETAIL,
                     forms(patch, STORYBOARD, STORYBOARD_EPISODE, STORYBOARD_SCENE, SHOT));
             case STORYBOARD_REORDER -> {
                 required(params, required, "parentKind", choice("storyboard", "episode", "scene"));
@@ -287,7 +288,7 @@ class McpProjectToolSchemas {
             case PROMPT_BATCH_SET -> {
                 required(params, required, "targetKind", TARGET);
                 required(params, required, "slot", PROMPT);
-                batchTargets(params, required, "targetId", "text", nullable(TEXT), true);
+                batchTargets(params, required, "targetId", "text", nullable(TEXT), CHILD_BATCH_PARENT_VERSION);
             }
             case ASSET_LIST -> {
                 list(params, required, ASSET_KIND);
@@ -306,7 +307,13 @@ class McpProjectToolSchemas {
                 update(params, required, ASSET_KIND, forms(patch, ASSET, ASSET_ITEM));
                 params.put("expectedParentVersion", VERSION);
             }
-            case ASSET_BATCH_UPDATE -> batchUpdate(params, required, ASSET_KIND, true, forms(patch, ASSET, ASSET_ITEM));
+            case ASSET_BATCH_UPDATE -> {
+                required(params, required, "kind", ASSET_KIND);
+                params.put("expectedParentVersion", described(VERSION,
+                        "kind 为 assetItem 且各目标的父版本相同时，可统一填写批次开始前的 parentVersion，各目标省略同名字段"));
+                batchTargets(params, required, "id", "patch", forms(patch, ASSET, ASSET_ITEM),
+                        "kind 为 assetItem 且未填写顶层 expectedParentVersion 时，每项必填其批次开始前的 parentVersion");
+            }
             case ASSET_BATCH_DELETE -> {
                 batchDelete(params, required, ASSET_KIND);
                 params.putAll(properties("parentId", described(ID, "删除子资产时填写所属主资产 ID"),
@@ -321,7 +328,7 @@ class McpProjectToolSchemas {
             }
             case MEDIA_BATCH_BIND -> {
                 required(params, required, "targetKind", TARGET);
-                batchTargets(params, required, "targetId", "bindings", bindings(), true);
+                batchTargets(params, required, "targetId", "bindings", bindings(), CHILD_BATCH_PARENT_VERSION);
             }
         }
         if (tool == McpProjectTool.PROMPT_SET || tool == McpProjectTool.MEDIA_BIND) {
@@ -401,16 +408,16 @@ class McpProjectToolSchemas {
     }
 
     private static void batchUpdate(Map<String, Object> params, List<String> required, Map<String, Object> kind,
-                                    boolean assetParent, Map<String, Object> fields) {
+                                    Map<String, Object> fields) {
         required(params, required, "kind", kind);
-        batchTargets(params, required, "id", "patch", fields, assetParent);
+        batchTargets(params, required, "id", "patch", fields, null);
     }
 
     private static void batchTargets(Map<String, Object> params, List<String> required, String idField,
-                                     String dataField, Map<String, Object> data, boolean assetParent) {
+                                     String dataField, Map<String, Object> data, String parentVersionDescription) {
         var fields = properties(idField, ID, "expectedVersion", VERSION, dataField, data);
-        if (assetParent) {
-            fields.put("expectedParentVersion", described(VERSION, "仅在目标为子资产时必填，使用批次开始前的主资产版本"));
+        if (parentVersionDescription != null) {
+            fields.put("expectedParentVersion", described(VERSION, parentVersionDescription));
         }
         var target = object(fields, idField, "expectedVersion", dataField);
         required(params, required, "targets", described(array(target, 1, MAX_ENTRIES),

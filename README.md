@@ -171,9 +171,11 @@ https://github.com/user-attachments/assets/acd181a0-541c-4163-a000-fa9ed72a5106
 | --- | --- | --- |
 | 读取 | `fusion_script_batch_get`、`fusion_storyboard_batch_get`、`fusion_asset_batch_get` | `kind` 和字符串 ID 数组 `ids`，返回 `data.items`。剧本原文开关 `includeRawContent` 与单条读取一致 |
 | 新增 | `fusion_script_batch_create`、`fusion_storyboard_batch_create`、`fusion_asset_batch_create` | `kind` 和 `items`，每项使用单条新增的 `fields` 结构。新增子对象时传同一个 `parentId` 及批次开始前的 `expectedParentVersion`。`data.items` 中每项含 `resource`，主资产还包含新建的子资产 |
-| 修改 | `fusion_script_batch_update`、`fusion_storyboard_batch_update`、`fusion_asset_batch_update` | `kind` 和 `targets`，每项包含 `id`、`expectedVersion`、`patch`。更新子资产时每项另传批次开始前的 `expectedParentVersion`。返回 `data.items` |
+| 修改 | `fusion_script_batch_update`、`fusion_storyboard_batch_update`、`fusion_asset_batch_update` | `kind` 和 `targets`，每项包含 `id`、`expectedVersion`、`patch`。子资产另需父版本。返回 `data.items` |
 | 提示词 | `fusion_prompt_batch_get`、`fusion_prompt_batch_set` | 传同一个 `targetKind` 和 `slot`。读取传 `targetIds`，设置传 `targets`，每项包含 `targetId`、`expectedVersion`、`text`。子资产设置时每项另传 `expectedParentVersion` |
 | 媒体 | `fusion_media_batch_get`、`fusion_media_batch_bind` | 读取原件元数据传 `mediaResourceIds`。绑定传 `targetKind` 和 `targets`，每项包含 `targetId`、`expectedVersion`、`bindings`。绑定子资产时每项另传 `expectedParentVersion` |
+
+使用 `fusion_asset_batch_update` 批量更新子资产时，传 `kind: "assetItem"`。从批次开始前的读取结果中取各目标的 `version` 和 `parentVersion`。自身版本写入各项的 `expectedVersion`。父版本有两种传法，二选一。各目标的 `parentVersion` 相同时，可在顶层填写一次 `expectedParentVersion`。也可在 `targets` 中为每个目标分别填写其 `expectedParentVersion`。更新主资产只需各项目标的 `expectedVersion`。
 
 批量删除传入资源类型 `kind` 和 `targets: [{ "id": "42", "expectedVersion": 3 }]`。
 

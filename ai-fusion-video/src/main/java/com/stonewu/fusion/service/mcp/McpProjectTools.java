@@ -236,8 +236,17 @@ class McpProjectTools {
 
     private Outcome batchUpdate(ProjectGrant grant, CanvasValueType type, ObjectNode args, String key) {
         var entries = new ArrayList<ResourceCommand>();
+        var batchParentVersion = args.get("expectedParentVersion");
         for (var target : args.path("targets")) {
-            entries.add(updateCommand(grant, type, (ObjectNode) target, key));
+            var targetArgs = (ObjectNode) target;
+            if (batchParentVersion != null) {
+                if (targetArgs.has("expectedParentVersion")) {
+                    throw McpProjectFailure.invalid("expectedParentVersion", "请选择统一填写或逐项填写主资产版本");
+                }
+                targetArgs = targetArgs.objectNode().setAll(targetArgs);
+                targetArgs.set("expectedParentVersion", batchParentVersion);
+            }
+            entries.add(updateCommand(grant, type, targetArgs, key));
         }
         var receipt = submitBatch(grant, type, key, entries);
         var data = json.object(Map.of());
