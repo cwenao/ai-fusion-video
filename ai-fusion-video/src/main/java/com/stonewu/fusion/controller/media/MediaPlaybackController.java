@@ -1,7 +1,7 @@
 package com.stonewu.fusion.controller.media;
 
 import com.stonewu.fusion.service.media.MediaAccessTickets;
-import com.stonewu.fusion.service.media.TosMediaPlayback;
+import com.stonewu.fusion.service.media.ObjectStorageMediaPlayback;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;
@@ -15,10 +15,10 @@ import org.springframework.web.bind.annotation.RestController;
 public class MediaPlaybackController {
 
     private final MediaAccessTickets tickets;
-    private final TosMediaPlayback playback;
+    private final ObjectStorageMediaPlayback playback;
 
     @GetMapping("/api/media-content/{id}/playback")
-    public ResponseEntity<TosMediaPlayback.Grant> playback(@PathVariable String id, @RequestParam String ticket) {
+    public ResponseEntity<ObjectStorageMediaPlayback.Grant> playback(@PathVariable String id, @RequestParam String ticket) {
         var grant = playback.issue(tickets.authorizePlayback(id, ticket));
         return ResponseEntity.ok().cacheControl(CacheControl.noStore())
                 .header("Referrer-Policy", "no-referrer").body(grant);

@@ -17,11 +17,14 @@ import com.stonewu.fusion.service.storage.StorageTypes;
 import com.volcengine.tos.TosException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.ContentDisposition;
 import org.springframework.stereotype.Component;
 import software.amazon.awssdk.core.exception.SdkException;
 
 import java.io.IOException;
 import java.nio.channels.Channels;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.UUID;
@@ -75,15 +78,32 @@ public class MediaCopyLinks {
                 var issued = tickets.copyLocal(id, actor);
                 yield new Link(issued.url(), issued.expiresAt());
             }
-            case StorageTypes.S3 -> publish(row, blob, actor);
+            case StorageTypes.S3 -> publish(row, blob, actor, deliveryBucket(0), LINK_LIFETIME, null);
             default -> throw MediaException.unavailable("当前媒体存储类型无法签发复制链接");
         };
     }
 
-    private Link publish(Row row, MediaBlob blob, CanvasActor actor) {
+    public Link download(String id, CanvasActor actor) {
+        MediaIoBoundary.requireOutsideTransaction();
+        var row = resources.get(id, false);
+        access.ready(row.resource(), actor);
+        if (ObjectStorageMediaPlayback.isPlayable(row.resource())) {
+            var blob = resources.blob(row.blobId());
+            if (StorageTypes.S3.equals(blob.backend())) {
+                String attachment = ContentDisposition.attachment()
+                        .filename(row.resource().name(), StandardCharsets.UTF_8).build().toString();
+                return publish(row, blob, actor, deliveryBucket(blob.storageConfigId()),
+                        MediaAccessTickets.BROWSER_LIFETIME, attachment);
+            }
+        }
+        var issued = tickets.browser(id, actor, true);
+        return new Link(issued.url(), issued.expiresAt());
+    }
+
+    private Link publish(Row row, MediaBlob blob, CanvasActor actor, PrivateMediaDeliveryBucket bucket,
+                         Duration lifetime, String contentDisposition) {
         String id = row.resource().id();
         String key = PrivateMediaDeliveryBucket.PREFIX + UUID.randomUUID();
-        var bucket = deliveryBucket();
         try {
             bucket.verify(key);
         } catch (SdkException | TosException failure) {
@@ -102,10 +122,10 @@ public class MediaCopyLinks {
             Row latest = resources.get(id, false);
             access.ready(latest.resource(), actor);
             if (latest.resource().version() != row.resource().version() || !latest.blobId().equals(row.blobId())) {
-                throw new MediaException(409, "MEDIA_DELIVERY_VERSION_CHANGED", "媒体已更新，请重新复制链接");
+                throw new MediaException(409, "MEDIA_DELIVERY_VERSION_CHANGED", "媒体已更新，请重新获取链接");
             }
-            Instant expiresAt = Instant.now().truncatedTo(ChronoUnit.SECONDS).plus(LINK_LIFETIME);
-            return new Link(bucket.signRead(key), expiresAt);
+            Instant expiresAt = Instant.now().truncatedTo(ChronoUnit.SECONDS).plus(lifetime);
+            return new Link(bucket.signRead(key, lifetime, contentDisposition), expiresAt);
         } catch (IOException | SdkException | TosException failure) {
             discard(bucket, key);
             log.warn("生成媒体交付链接失败，媒体编号={}，错误类型={}", id, failure.getClass().getSimpleName());
@@ -116,8 +136,9 @@ public class MediaCopyLinks {
         }
     }
 
-    private PrivateMediaDeliveryBucket deliveryBucket() {
-        StorageConfig target = deliveryConfigId > 0 ? configurations.selectById(deliveryConfigId)
+    private PrivateMediaDeliveryBucket deliveryBucket(long preferredConfigId) {
+        long configId = deliveryConfigId > 0 ? deliveryConfigId : preferredConfigId;
+        StorageConfig target = configId > 0 ? configurations.selectById(configId)
                 : configurations.selectPage(new Page<>(1, 1, false), Wrappers.lambdaQuery(StorageConfig.class)
                         .eq(StorageConfig::getIsDefault, true).eq(StorageConfig::getStatus, 1)
                         .orderByAsc(StorageConfig::getId)).getRecords().stream().findFirst().orElse(null);

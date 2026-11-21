@@ -4,7 +4,7 @@ let registration: Promise<void> | undefined;
 
 async function registerPlaybackWorker() {
   if (!window.isSecureContext || !("serviceWorker" in navigator)) {
-    throw new Error("此浏览器需要通过 HTTPS 打开融光以播放 TOS 媒体");
+    throw new Error("请通过 HTTPS 打开融光以播放对象存储媒体");
   }
   const workers = navigator.serviceWorker;
   const scriptUrl = new URL(WORKER_PATH, window.location.origin).href;
@@ -19,14 +19,14 @@ async function registerPlaybackWorker() {
     };
     const timeout = window.setTimeout(() => {
       workers.removeEventListener("controllerchange", finish);
-      reject(new Error("TOS 媒体播放器启动超时"));
+      reject(new Error("对象存储媒体播放器启动超时"));
     }, 10000);
     workers.addEventListener("controllerchange", finish);
     finish();
   });
 }
 
-export async function tosMediaPlaybackUrl(grantUrl: string) {
+export async function objectStoragePlaybackUrl(grantUrl: string) {
   registration ??= registerPlaybackWorker().catch((error: unknown) => {
     registration = undefined;
     throw error;

@@ -5,11 +5,11 @@ import com.stonewu.fusion.service.media.model.MediaException;
 import com.stonewu.fusion.service.media.model.MediaResource;
 import com.stonewu.fusion.service.storage.ObjectStorageClients;
 import com.stonewu.fusion.service.storage.ObjectStorageConfigResolver;
-import com.stonewu.fusion.service.storage.StorageProviderRegistry;
 import com.stonewu.fusion.service.storage.StorageTypes;
 import com.volcengine.tos.TosException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
+import software.amazon.awssdk.core.exception.SdkException;
 
 import java.io.IOException;
 import java.time.Duration;
@@ -19,7 +19,7 @@ import java.util.Base64;
 
 @Component
 @RequiredArgsConstructor
-public class TosMediaPlayback {
+public class ObjectStorageMediaPlayback {
 
     private static final int HEADER_SIZE = 24;
     private final MediaResourceRepository resources;
@@ -35,20 +35,18 @@ public class TosMediaPlayback {
         };
     }
 
-    boolean usesTos(String blobId) {
-        var blob = resources.blob(blobId);
-        return StorageTypes.S3.equals(blob.backend())
-                && StorageProviderRegistry.VOLCENGINE_TOS.equals(blobs.configuration(blob).getProvider());
+    boolean supports(MediaResource resource, String blobId) {
+        return isPlayable(resource) && StorageTypes.S3.equals(resources.blob(blobId).backend());
     }
 
     public Grant issue(MediaAccessTickets.Authorized access) {
         MediaIoBoundary.requireOutsideTransaction();
         var resource = access.resource();
         var blob = resources.blob(access.blobId());
-        var configuration = blobs.configuration(blob);
-        if (!isPlayable(resource) || !StorageProviderRegistry.VOLCENGINE_TOS.equals(configuration.getProvider())) {
-            throw new MediaException(400, "INVALID_TOS_PLAYBACK", "此媒体不支持 TOS 浏览器直读");
+        if (!isPlayable(resource) || !StorageTypes.S3.equals(blob.backend())) {
+            throw MediaException.invalid("此媒体不支持对象存储直读");
         }
+        var configuration = blobs.configuration(blob);
         var config = configurations.resolve(configuration);
         String object = blobs.objectKey(configuration, blob.objectKey());
         var client = clients.forManagedMedia(config);
@@ -65,14 +63,14 @@ public class TosMediaPlayback {
                 if (seconds < 1) {
                     throw new MediaException(403, "MEDIA_TICKET_DENIED", "媒体访问凭据已失效");
                 }
-                return new Grant(clients.signTosBrowserRead(config, object, seconds), encode(key),
+                return new Grant(clients.signBrowserRead(config, object, Duration.ofSeconds(seconds)), encode(key),
                         encode(Arrays.copyOfRange(header, 17, HEADER_SIZE)), resource.content().mimeType(),
                         resource.content().byteSize(), metadata.size(), access.expiresAt());
             } finally {
                 Arrays.fill(key, (byte) 0);
             }
-        } catch (IOException | TosException failure) {
-            throw MediaException.unavailable("无法准备 TOS 媒体播放");
+        } catch (IOException | TosException | SdkException failure) {
+            throw MediaException.unavailable("无法准备对象存储媒体直读");
         }
     }
 
@@ -84,7 +82,7 @@ public class TosMediaPlayback {
                         long ciphertextSize, Instant expiresAt) {
         @Override
         public String toString() {
-            return "TosMediaPlayback.Grant";
+            return "ObjectStorageMediaPlayback.Grant";
         }
     }
 }

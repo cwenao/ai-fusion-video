@@ -14,7 +14,7 @@ public interface PrivateMediaDeliveryBucket {
 
     void put(String key, String mimeType, InputStream data, long length);
 
-    String signRead(String key);
+    String signRead(String key, Duration lifetime, String contentDisposition);
 
     void delete(String key);
 }

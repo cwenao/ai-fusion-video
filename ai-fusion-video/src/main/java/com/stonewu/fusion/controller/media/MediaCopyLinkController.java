@@ -23,4 +23,10 @@ public class MediaCopyLinkController {
         var link = links.issue(id.toString(), actors.current());
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(CommonResult.success(link));
     }
+
+    @PostMapping("/api/media-resources/{id}/download-link")
+    public ResponseEntity<CommonResult<MediaCopyLinks.Link>> download(@PathVariable UUID id) {
+        var link = links.download(id.toString(), actors.current());
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(CommonResult.success(link));
+    }
 }

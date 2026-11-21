@@ -65,7 +65,7 @@ function validateGrant(grant) {
     || !/^(image|video|audio)\/[a-z0-9.+-]+$/i.test(mimeType) || mimeType === "image/svg+xml"
     || source.protocol !== "https:" || source.username || source.password
     || !(Date.parse(grant.expiresAt) > Date.now())) {
-    throw new Error("TOS 媒体授权无效");
+    throw new Error("对象存储媒体授权无效");
   }
   return segments;
 }
@@ -79,7 +79,7 @@ function blockReader(reader) {
       if (pending.length === 0) {
         const { value, done } = await reader.read();
         if (done) {
-          throw new Error("TOS 媒体分段不完整");
+          throw new Error("对象存储媒体分段不完整");
         }
         pending = value;
       }
@@ -92,7 +92,7 @@ function blockReader(reader) {
   };
 }
 
-async function openTosStream(request, grant, segments, range) {
+async function openObjectStream(request, grant, segments, range) {
   const { ciphertextSize, url } = grant;
   const first = segmentAt(range.start);
   const last = segmentAt(range.end);
@@ -101,7 +101,7 @@ async function openTosStream(request, grant, segments, range) {
   const nonce = decodeBase64Url(grant.noncePrefix);
   const keyBytes = decodeBase64Url(grant.key);
   if (nonce.length !== 7 || keyBytes.length !== 16) {
-    throw new Error("TOS 媒体解密参数无效");
+    throw new Error("对象存储媒体解密参数无效");
   }
   let key;
   try {
@@ -120,7 +120,7 @@ async function openTosStream(request, grant, segments, range) {
   if (upstream.status !== 206 || !upstream.body
     || upstream.headers.get("Content-Range") !== `bytes ${start}-${end}/${ciphertextSize}`) {
     await upstream.body?.cancel();
-    throw new Error("TOS 没有返回所请求的媒体分段");
+    throw new Error("对象存储没有返回所请求的媒体分段");
   }
   const reader = upstream.body.getReader();
   const read = blockReader(reader);
@@ -170,7 +170,7 @@ async function openTosStream(request, grant, segments, range) {
   });
 }
 
-export async function streamTosMedia(request, origin) {
+export async function streamObjectMedia(request, origin) {
   if (request.mode === "navigate" || !["GET", "HEAD"].includes(request.method)) {
     return new Response(null, { status: 404, headers: privateResponse });
   }
@@ -198,7 +198,7 @@ export async function streamTosMedia(request, origin) {
     if (range.partial) {
       headers["Content-Range"] = `bytes ${range.start}-${range.end}/${grant.size}`;
     }
-    const body = request.method === "HEAD" ? null : await openTosStream(request, grant, segments, range);
+    const body = request.method === "HEAD" ? null : await openObjectStream(request, grant, segments, range);
     return new Response(body, { status: range.partial ? 206 : 200, headers });
   } catch {
     return new Response(null, { status: 502, headers: privateResponse });

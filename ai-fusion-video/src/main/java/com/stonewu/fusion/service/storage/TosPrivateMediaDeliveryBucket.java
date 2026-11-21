@@ -25,9 +25,11 @@ import org.springframework.util.StringUtils;
 
 import java.io.InputStream;
 import java.net.URI;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Map;
 
 record TosPrivateMediaDeliveryBucket(TOSV2 client, String bucket, URI browserOrigin, boolean customDomain)
         implements PrivateMediaDeliveryBucket {
@@ -127,10 +129,14 @@ record TosPrivateMediaDeliveryBucket(TOSV2 client, String bucket, URI browserOri
     }
 
     @Override
-    public String signRead(String key) {
-        return client.preSignedURL(new PreSignedURLInput().setBucket(bucket).setKey(key).setHttpMethod(HttpMethod.GET)
-                .setExpires(LINK_LIFETIME.toSeconds()).setAlternativeEndpoint(browserOrigin.toString())
-                .setCustomDomain(customDomain)).getSignedUrl();
+    public String signRead(String key, Duration lifetime, String contentDisposition) {
+        var request = new PreSignedURLInput().setBucket(bucket).setKey(key).setHttpMethod(HttpMethod.GET)
+                .setExpires(lifetime.toSeconds()).setAlternativeEndpoint(browserOrigin.toString())
+                .setCustomDomain(customDomain);
+        if (contentDisposition != null) {
+            request.setQuery(Map.of("response-content-disposition", contentDisposition));
+        }
+        return client.preSignedURL(request).getSignedUrl();
     }
 
     @Override

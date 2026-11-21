@@ -12,6 +12,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.stonewu.fusion.config.CacheConfig;
 import com.stonewu.fusion.controller.media.MediaContentController;
 import com.stonewu.fusion.controller.media.MediaExceptionHandler;
+import com.stonewu.fusion.controller.media.MediaPlaybackController;
 import com.stonewu.fusion.controller.media.MediaResourceController;
 import com.stonewu.fusion.entity.storage.StorageConfig;
 import com.stonewu.fusion.mapper.storage.StorageConfigMapper;
@@ -75,7 +76,7 @@ import jakarta.validation.Validation;
 import jakarta.validation.Validator;
 import jakarta.validation.ValidatorFactory;
 import com.stonewu.fusion.service.media.MediaAccessTickets;
-import com.stonewu.fusion.service.media.TosMediaPlayback;
+import com.stonewu.fusion.service.media.ObjectStorageMediaPlayback;
 import com.stonewu.fusion.service.media.MediaBlobStore;
 import com.stonewu.fusion.service.media.MediaContentWriter;
 import com.stonewu.fusion.service.media.lifecycle.MediaBlobLocks;
@@ -257,9 +258,9 @@ abstract class MediaResourceTestContext {
                 ObjectStorageConfigResolver.class, ObjectStorageClients.class,
                 StorageProviderRegistry.class, MediaProbe.class, MediaRegistryTransactions.class,
                 MediaIntakeService.class,
-                MediaMetadataCache.class, MediaResourceQueries.class, MediaAccessTickets.class, TosMediaPlayback.class,
+                MediaMetadataCache.class, MediaResourceQueries.class, MediaAccessTickets.class, ObjectStorageMediaPlayback.class,
                 MediaStorageConfigGuard.class,
-                MediaResourceController.class, MediaContentController.class, MediaContentWriter.class);
+                MediaResourceController.class, MediaContentController.class, MediaPlaybackController.class, MediaContentWriter.class);
         context.refresh();
         intake = context.getBean(MediaIntakeService.class);
         registry = context.getBean(MediaRegistryTransactions.class);
@@ -267,6 +268,7 @@ abstract class MediaResourceTestContext {
         tickets = context.getBean(MediaAccessTickets.class);
         blobs = context.getBean(MediaBlobStore.class);
         http = MockMvcBuilders.standaloneSetup(context.getBean(MediaContentController.class),
+                        context.getBean(MediaPlaybackController.class),
                         context.getBean(MediaResourceController.class),
                         context.getBean(MediaBindingController.class), context.getBean(MediaImportController.class),
                         context.getBean(MediaPreviewController.class))

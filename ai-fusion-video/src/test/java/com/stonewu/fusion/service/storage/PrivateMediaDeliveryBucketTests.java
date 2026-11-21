@@ -39,6 +39,7 @@ import software.amazon.awssdk.awscore.exception.AwsErrorDetails;
 
 import java.io.ByteArrayInputStream;
 import java.net.URI;
+import java.time.Duration;
 import java.util.List;
 import java.util.function.Consumer;
 
@@ -128,17 +129,21 @@ class PrivateMediaDeliveryBucketTests {
                 .bucketName(BUCKET).region("cn-shanghai").accessKey("fixture-ak").secretKey("fixture-sk").build();
         var clients = new ObjectStorageClients(mock(S3ClientFactory.class));
         try {
-            var regional = URI.create(clients.forPrivateMediaDelivery(resolver.resolve(settings)).signRead(KEY));
+            var regional = URI.create(clients.forPrivateMediaDelivery(resolver.resolve(settings))
+                    .signRead(KEY, PrivateMediaDeliveryBucket.LINK_LIFETIME, null));
             assertThat(regional.getScheme()).isEqualTo("https");
             assertThat(regional.getHost()).isEqualTo(BUCKET + ".tos-cn-shanghai.volces.com");
             assertThat(regional.getPath()).isEqualTo("/" + KEY);
             assertThat(regional.getRawQuery()).contains("X-Tos-Expires=259200", "X-Tos-Signature=", "X-Tos-SignedHeaders=host");
 
             settings.setCustomDomain(CUSTOM_ORIGIN);
-            var custom = URI.create(clients.forPrivateMediaDelivery(resolver.resolve(settings)).signRead(KEY));
+            var target = clients.forPrivateMediaDelivery(resolver.resolve(settings));
+            var custom = URI.create(target.signRead(KEY, PrivateMediaDeliveryBucket.LINK_LIFETIME, null));
             assertThat(custom.getScheme() + "://" + custom.getHost()).isEqualTo(CUSTOM_ORIGIN);
             assertThat(custom.getPath()).isEqualTo("/" + KEY);
             assertThat(custom.getRawQuery()).contains("X-Tos-Expires=259200", "X-Tos-Signature=");
+            var download = URI.create(target.signRead(KEY, Duration.ofMinutes(5), "attachment; filename=shot.mp4"));
+            assertThat(download.getQuery()).contains("X-Tos-Expires=300", "response-content-disposition=attachment; filename=shot.mp4");
         } finally {
             clients.closeAll();
         }
@@ -153,11 +158,13 @@ class PrivateMediaDeliveryBucketTests {
         var target = s3Target(client);
 
         assertThatThrownBy(() -> target.verify(KEY)).isInstanceOf(MediaException.class).hasMessageContaining("阻止公共访问");
-        var signed = URI.create(target.signRead(KEY));
+        var signed = URI.create(target.signRead(KEY, PrivateMediaDeliveryBucket.LINK_LIFETIME, null));
         assertThat(signed.getScheme()).isEqualTo("https");
         assertThat(signed.getHost()).isEqualTo(BUCKET + ".s3.us-east-1.amazonaws.com");
         assertThat(signed.getPath()).isEqualTo("/" + KEY);
         assertThat(signed.getRawQuery()).contains("X-Amz-Expires=259200", "X-Amz-Signature=", "X-Amz-SignedHeaders=host");
+        var download = URI.create(target.signRead(KEY, Duration.ofMinutes(5), "attachment; filename=shot.mp4"));
+        assertThat(download.getQuery()).contains("X-Amz-Expires=300", "response-content-disposition=attachment; filename=shot.mp4");
     }
 
     @Test

@@ -1,7 +1,7 @@
 import { accessMedia } from "@/lib/api/media";
 import { resolveMediaUrl } from "@/lib/api/client";
 import { getApiErrorMessage } from "@/lib/api/api-error";
-import { tosMediaPlaybackUrl } from "@/lib/tos-media-playback";
+import { objectStoragePlaybackUrl } from "@/lib/object-storage-playback";
 
 export type MediaAccessMode = "link" | "download" | "playback";
 
@@ -33,7 +33,7 @@ export function subscribeMediaAccess(key: string, id: string | null, mode: Media
     try {
       const access = await accessMedia(id, mode === "download", current.controller.signal);
       const playback = mode === "playback" ? resolveMediaUrl(access.playbackUrl) : null;
-      const url = playback ? await tosMediaPlaybackUrl(playback) : resolveMediaUrl(access.url);
+      const url = playback ? await objectStoragePlaybackUrl(playback) : resolveMediaUrl(access.url);
       if (current.controller.signal.aborted) {
         return;
       }

@@ -22,6 +22,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
@@ -34,7 +35,9 @@ import static org.mockito.Mockito.doThrow;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.head;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @Testcontainers(disabledWithoutDocker = false)
@@ -264,6 +267,37 @@ class MediaResourceIT extends MediaResourceTestContext {
                         .header("Range", "bytes=5-45")).andExpect(status().isPartialContent())
                 .andReturn().getResponse().getContentAsByteArray();
         assertThat(decoded).isEqualTo(Arrays.copyOfRange(png, 5, 46));
+    }
+
+    @Test
+    void browserCanReadAnS3ImageFromItsSignedStorageEndpoint() throws Exception {
+        jdbc.update("UPDATE afv_storage_config SET is_default = (id = 72)");
+        String origin = "https://" + S3.getHost() + ":" + S3.getMappedPort(9000);
+        jdbc.update("UPDATE afv_storage_config SET options = ? WHERE id = 72",
+                mapper.writeValueAsString(Map.of("browserEndpoint", origin)));
+        var image = upload(id(), png, "直读.png", 71L, USER);
+
+        var response = http.perform(post("/api/media-resources/" + image.id() + "/access"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.playbackUrl").isString())
+                .andReturn().getResponse().getContentAsString();
+        var playback = URI.create(mapper.readTree(response).at("/data/playbackUrl").asText());
+        var grant = http.perform(get(playback)).andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andReturn().getResponse().getContentAsString();
+        var authorization = mapper.readTree(grant);
+        var signed = URI.create(authorization.path("url").asText());
+        assertThat(signed.toString()).startsWith(origin + "/");
+        assertThat(signed.getPath()).startsWith("/media-test/test/.afv-managed/");
+        assertThat(signed.getQuery()).contains("X-Amz-Signature=", "X-Amz-SignedHeaders=host");
+        // 测试桶只监听 HTTP，签名中的目标主机、路径和查询参数保持原样。
+        var testEndpoint = URI.create("http:" + signed.getRawSchemeSpecificPart());
+        var direct = HttpClient.newHttpClient().send(HttpRequest.newBuilder(testEndpoint)
+                .header("Range", "bytes=0-23").GET().build(), HttpResponse.BodyHandlers.ofByteArray());
+        assertThat(direct.statusCode()).isEqualTo(206);
+        assertThat(direct.headers().firstValue("Content-Range"))
+                .contains("bytes 0-23/" + authorization.path("ciphertextSize").longValue());
+        assertThat(direct.body()).hasSize(24);
+        http.perform(get(playback.getPath()).param("ticket", "bad")).andExpect(status().isForbidden());
     }
 
     @Test

@@ -90,7 +90,7 @@ class MediaCopyLinksTests {
         var clock = mock(ExecutionCoordinationMapper.class);
         when(clock.now()).thenReturn(LocalDateTime.parse("2026-11-19T06:00:00"));
         var ticketStore = mock(MediaAccessTicketMapper.class);
-        var realTickets = new MediaAccessTickets(ticketStore, clock, resources, access, null, mock(TosMediaPlayback.class));
+        var realTickets = new MediaAccessTickets(ticketStore, clock, resources, access, null, mock(ObjectStorageMediaPlayback.class));
         var localLinks = new MediaCopyLinks(resources, access, realTickets, blobs, configurations, resolver, clients, 0);
 
         var copied = localLinks.issue(ID, ACTOR);
@@ -103,6 +103,21 @@ class MediaCopyLinksTests {
         assertThat(inserted.getAllValues()).extracting(MediaAccessTicketEntity::getExpiresAt).containsExactly(
                 LocalDateTime.parse("2026-11-22T06:00:00"), LocalDateTime.parse("2026-11-19T06:05:00"));
         verifyNoInteractions(configurations, clients, bucket, blobs);
+    }
+
+    @Test
+    void requestedDownloadSignsAReadablePrivateCopyForFiveMinutes(@TempDir Path directory) throws Exception {
+        managedSource(directory);
+        Instant beforeSigning = Instant.now();
+
+        var download = links.download(ID, ACTOR);
+
+        assertThat(download.url()).startsWith(STORAGE_ORIGIN + PrivateMediaDeliveryBucket.PREFIX);
+        assertThat(download.expiresAt()).isBetween(beforeSigning.plusSeconds(299), Instant.now().plusSeconds(300));
+        var disposition = ArgumentCaptor.forClass(String.class);
+        verify(bucket).signRead(anyString(), eq(Duration.ofMinutes(5)), disposition.capture());
+        assertThat(disposition.getValue()).startsWith("attachment;").contains("filename*=UTF-8''");
+        verifyNoInteractions(tickets);
     }
 
     @Test
@@ -134,11 +149,11 @@ class MediaCopyLinksTests {
         var original = managedSource(directory);
         when(resources.get(ID, false)).thenReturn(original, row(3));
 
-        assertThatThrownBy(() -> links.issue(ID, ACTOR)).isInstanceOf(MediaException.class).hasMessage("媒体已更新，请重新复制链接");
+        assertThatThrownBy(() -> links.issue(ID, ACTOR)).isInstanceOf(MediaException.class).hasMessage("媒体已更新，请重新获取链接");
         var capture = ArgumentCaptor.forClass(String.class);
         verify(bucket).put(capture.capture(), eq("video/mp4"), any(InputStream.class), eq((long) ORIGINAL.length));
         verify(bucket).delete(capture.getValue());
-        verify(bucket, never()).signRead(anyString());
+        verify(bucket, never()).signRead(anyString(), any(), any());
     }
 
     @Test
@@ -171,7 +186,7 @@ class MediaCopyLinksTests {
             assertThat(call.<InputStream>getArgument(2).readAllBytes()).containsExactly(ORIGINAL);
             return null;
         }).when(bucket).put(anyString(), eq("video/mp4"), any(InputStream.class), eq((long) ORIGINAL.length));
-        when(bucket.signRead(anyString())).thenAnswer(call -> STORAGE_ORIGIN + call.getArgument(0) + "?signature=one");
+        when(bucket.signRead(anyString(), any(), any())).thenAnswer(call -> STORAGE_ORIGIN + call.getArgument(0) + "?signature=one");
         return row;
     }
 
@@ -182,6 +197,7 @@ class MediaCopyLinksTests {
         var page = new Page<StorageConfig>(1, 1, false);
         page.setRecords(List.of(config));
         when(configurations.selectPage(any(), any())).thenReturn(page);
+        when(configurations.selectById(9L)).thenReturn(config);
         when(clients.forPrivateMediaDelivery(any())).thenReturn(bucket);
     }
 

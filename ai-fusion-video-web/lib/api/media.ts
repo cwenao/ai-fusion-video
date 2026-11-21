@@ -55,21 +55,24 @@ export function issueMediaCopyLink(id: string) {
   );
 }
 
-export async function mediaAccessUrl(
-  source: string,
-  download = false,
-): Promise<string> {
-  const id = mediaId(source);
-  if (!id) return resolveMediaUrl(source) ?? "";
-  return resolveMediaUrl((await accessMedia(id, download)).url) ?? "";
-}
-
 export async function downloadMedia(source: string, name?: string) {
-  const url = await mediaAccessUrl(source, true);
+  const id = mediaId(source);
+  const reference = id ? (await http.post<never, Pick<MediaAccess, "url" | "expiresAt">>(
+    `/api/media-resources/${id}/download-link`,
+    null,
+    { timeout: 240_000 },
+  )).url : source;
+  const url = resolveMediaUrl(reference);
+  if (!url) {
+    throw new Error("下载地址不可用");
+  }
   const link = document.createElement("a");
   link.href = url;
   link.download = name ?? "";
-  link.rel = "noopener";
+  link.rel = "noreferrer";
+  if (!id) {
+    link.target = "_blank";
+  }
   link.click();
 }
 

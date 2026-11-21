@@ -12,7 +12,7 @@ import com.stonewu.fusion.service.canvas.CanvasActorResolver;
 import com.stonewu.fusion.service.media.MediaAccessTickets;
 import com.stonewu.fusion.service.media.MediaContentWriter;
 import com.stonewu.fusion.service.media.MediaCopyLinks;
-import com.stonewu.fusion.service.media.TosMediaPlayback;
+import com.stonewu.fusion.service.media.ObjectStorageMediaPlayback;
 import com.stonewu.fusion.service.media.model.MediaException;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.annotation.Bean;
@@ -50,12 +50,12 @@ class MediaSecurityBoundaryTests {
             return tickets;
         }
         @Bean
-        TosMediaPlayback playback() {
-            return mock(TosMediaPlayback.class);
+        ObjectStorageMediaPlayback playback() {
+            return mock(ObjectStorageMediaPlayback.class);
         }
 
         @Bean
-        MediaPlaybackController playbackController(MediaAccessTickets tickets, TosMediaPlayback playback) {
+        MediaPlaybackController playbackController(MediaAccessTickets tickets, ObjectStorageMediaPlayback playback) {
             return new MediaPlaybackController(tickets, playback);
         }
 
@@ -90,11 +90,13 @@ class MediaSecurityBoundaryTests {
             http.perform(get("/api/media-content/test-id/playback").param("ticket", "bad"))
                     .andExpect(status().isForbidden());
             verify(context.getBean(MediaAccessTickets.class)).authorizePlayback("test-id", "bad");
-            verifyNoInteractions(context.getBean(TosMediaPlayback.class));
+            verifyNoInteractions(context.getBean(ObjectStorageMediaPlayback.class));
             http.perform(post("/api/media-content/test-id/playback").param("ticket", "bad"))
                     .andExpect(status().isUnauthorized());
             http.perform(post("/api/media-resources/test-id/access")).andExpect(status().isUnauthorized());
             http.perform(post("/api/media-resources/20000000-0000-0000-0000-000000000001/copy-link"))
+                    .andExpect(status().isUnauthorized());
+            http.perform(post("/api/media-resources/20000000-0000-0000-0000-000000000001/download-link"))
                     .andExpect(status().isUnauthorized());
             verifyNoInteractions(context.getBean(MediaCopyLinks.class));
             http.perform(post("/api/media-resources/upload")).andExpect(status().isUnauthorized());
@@ -105,7 +107,7 @@ class MediaSecurityBoundaryTests {
     @Test
     void generationAndDownloadTicketsCannotAuthorizeBrowserDecryption() {
         var mapper = mock(MediaAccessTicketMapper.class);
-        var playback = mock(TosMediaPlayback.class);
+        var playback = mock(ObjectStorageMediaPlayback.class);
         var tickets = new MediaAccessTickets(mapper, null, null, null, null, playback);
         String token = "a".repeat(43);
         when(mapper.authorize(anyString(), anyString())).thenReturn(

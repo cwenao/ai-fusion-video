@@ -1,9 +1,11 @@
 "use client";
+import { useState } from "react";
 import { CopyMediaLinksButton } from "@/components/media/copy-media-links-button";
-import { ManagedMediaLink } from "@/components/media/managed-media-link";
 import { ManagedVideo } from "@/components/media/managed-video";
 import { Button } from "@/components/ui/button";
-import { Download, PlayCircle } from "lucide-react";
+import { downloadMedia } from "@/lib/api/media";
+import { toastApiError } from "@/lib/api/toast-api-error";
+import { Download, Loader2, PlayCircle } from "lucide-react";
 
 interface VideoPreviewDialogProps {
   open: boolean;
@@ -18,8 +20,20 @@ export function VideoPreviewDialog({
   videoUrl,
   onClose,
 }: VideoPreviewDialogProps) {
+  const [downloading, setDownloading] = useState(false);
   if (!open || !videoUrl) {
     return null;
+  }
+
+  async function handleDownload(source: string) {
+    setDownloading(true);
+    try {
+      await downloadMedia(source);
+    } catch (error) {
+      toastApiError(error, "下载视频失败");
+    } finally {
+      setDownloading(false);
+    }
   }
 
   return (
@@ -41,12 +55,14 @@ export function VideoPreviewDialog({
               复制链接
             </CopyMediaLinksButton>
             <Button
+              type="button"
               variant="outline"
               size="xs"
-              nativeButton={false}
-              render={<ManagedMediaLink href={videoUrl} target="_blank" rel="noreferrer" download />}
+              disabled={downloading}
+              aria-busy={downloading || undefined}
+              onClick={() => void handleDownload(videoUrl)}
             >
-              <Download />
+              {downloading ? <Loader2 className="animate-spin motion-reduce:animate-none" /> : <Download />}
               下载视频
             </Button>
             <Button type="button" variant="ghost" size="xs" onClick={onClose}>

@@ -1,12 +1,8 @@
 package com.stonewu.fusion.service.storage;
 
 import com.stonewu.fusion.service.media.model.MediaException;
-import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
-import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.core.sync.RequestBody;
-import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
-import software.amazon.awssdk.services.s3.S3Configuration;
 import software.amazon.awssdk.services.s3.model.ExpirationStatus;
 import software.amazon.awssdk.services.s3.model.LifecycleRule;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
@@ -14,7 +10,6 @@ import software.amazon.awssdk.services.s3.model.S3Exception;
 import software.amazon.awssdk.services.s3.model.ServerSideEncryption;
 import software.amazon.awssdk.services.s3.model.StorageClass;
 import software.amazon.awssdk.services.s3.model.TransitionStorageClass;
-import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 
 import java.io.InputStream;
 import java.net.URI;
@@ -115,18 +110,8 @@ record S3PrivateMediaDeliveryBucket(S3Client client, ResolvedObjectStorageConfig
     }
 
     @Override
-    public String signRead(String key) {
-        try (var signer = S3Presigner.builder().region(Region.of(config.signingRegion())).endpointOverride(origin)
-                .credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create(config.accessKey(), config.secretKey())))
-                .serviceConfiguration(S3Configuration.builder().pathStyleAccessEnabled(config.pathStyleAccessEnabled())
-                        .checksumValidationEnabled(false).build()).build()) {
-            var signed = signer.presignGetObject(request -> request.signatureDuration(LINK_LIFETIME)
-                    .getObjectRequest(object -> object.bucket(config.bucketName()).key(key)));
-            if (!signed.isBrowserExecutable()) {
-                throw MediaException.unavailable("无法签发可在浏览器打开的 S3 交付链接");
-            }
-            return signed.url().toExternalForm();
-        }
+    public String signRead(String key, Duration lifetime, String contentDisposition) {
+        return ObjectStorageClients.signS3Read(config, origin, key, lifetime, contentDisposition);
     }
 
     @Override

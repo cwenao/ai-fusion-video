@@ -39,12 +39,13 @@ import static com.stonewu.fusion.service.storage.PrivateMediaDeliveryBucket.LINK
 @RequiredArgsConstructor
 public class MediaAccessTickets {
     private static final SecureRandom RANDOM = new SecureRandom();
+    static final Duration BROWSER_LIFETIME = Duration.ofMinutes(5);
     private final MediaAccessTicketMapper tickets;
     private final ExecutionCoordinationMapper clock;
     private final MediaResourceRepository resources;
     private final MediaAccessPolicy access;
     private final GenerationJobRepository generationJobs;
-    private final TosMediaPlayback playback;
+    private final ObjectStorageMediaPlayback playback;
 
     public record Issued(String resourceId, String url, Instant expiresAt, boolean download,
                          @JsonInclude(JsonInclude.Include.NON_NULL) String playbackUrl) {
@@ -56,7 +57,7 @@ public class MediaAccessTickets {
 
     @Transactional
     public Issued browser(String id, CanvasActor actor, boolean download) {
-        return browser(id, actor, download, Duration.ofMinutes(5));
+        return browser(id, actor, download, BROWSER_LIFETIME);
     }
 
     @Transactional
@@ -115,7 +116,7 @@ public class MediaAccessTickets {
         var resource = row.resource();
         access.ready(resource, actor);
         boolean browserPlayback = "BROWSER".equals(binding.purpose()) && !download
-                && TosMediaPlayback.isPlayable(resource) && playback.usesTos(row.blobId());
+                && playback.supports(resource, row.blobId());
         byte[] random = new byte[32];
         RANDOM.nextBytes(random);
         String token = Base64.getUrlEncoder().withoutPadding().encodeToString(random);

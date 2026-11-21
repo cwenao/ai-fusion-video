@@ -10,9 +10,15 @@ import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.s3.S3Configuration;
+import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 
 import java.io.IOException;
 import java.net.URI;
+import java.time.Duration;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
@@ -41,11 +47,14 @@ public class ObjectStorageClients {
         return new S3ObjectStorageClient(s3Clients.getClient(config), config.bucketName(), managedMedia);
     }
 
-    public String signTosBrowserRead(ResolvedObjectStorageConfig config, String key, long seconds) {
-        // 上传和服务端读取可以使用内网 Endpoint。浏览器使用同地域的 HTTPS 公网域名。
-        String endpoint = tosPublicEndpoint(config);
-        return tosClient(config, endpoint).preSignedURL(new PreSignedURLInput().setHttpMethod(HttpMethod.GET)
-                .setBucket(config.bucketName()).setKey(key).setExpires(seconds)).getSignedUrl();
+    public String signBrowserRead(ResolvedObjectStorageConfig config, String key, Duration lifetime) {
+        if (StorageProviderRegistry.VOLCENGINE_TOS.equals(config.provider())) {
+            // 数据面的浏览器 GET 使用同地域公网地址，服务端仍可通过内网端点读加密头。
+            return tosClient(config, tosPublicEndpoint(config)).preSignedURL(new PreSignedURLInput()
+                    .setHttpMethod(HttpMethod.GET).setBucket(config.bucketName()).setKey(key)
+                    .setExpires(lifetime.toSeconds())).getSignedUrl();
+        }
+        return signS3Read(config, s3BrowserOrigin(config), key, lifetime, null);
     }
 
     public PrivateMediaDeliveryBucket forPrivateMediaDelivery(ResolvedObjectStorageConfig config) {
@@ -62,7 +71,30 @@ public class ObjectStorageClients {
             return new TosPrivateMediaDeliveryBucket(tosClient(config, endpoint.toString()), config.bucketName(),
                     browserOrigin, customDomain);
         }
-        return new S3PrivateMediaDeliveryBucket(s3Clients.getClient(config), config, endpoint);
+        return new S3PrivateMediaDeliveryBucket(s3Clients.getClient(config), config, s3BrowserOrigin(config));
+    }
+
+    static String signS3Read(ResolvedObjectStorageConfig config, URI origin, String key, Duration lifetime,
+                             String contentDisposition) {
+        try (var signer = S3Presigner.builder().region(Region.of(config.signingRegion())).endpointOverride(origin)
+                .credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create(config.accessKey(), config.secretKey())))
+                .serviceConfiguration(S3Configuration.builder().pathStyleAccessEnabled(config.pathStyleAccessEnabled())
+                        .checksumValidationEnabled(false).build()).build()) {
+            var signed = signer.presignGetObject(request -> request.signatureDuration(lifetime)
+                    .getObjectRequest(object -> object.bucket(config.bucketName()).key(key)
+                            .responseContentDisposition(contentDisposition)));
+            if (!signed.isBrowserExecutable()) {
+                throw MediaException.unavailable("无法签发可在浏览器读取的 S3 地址");
+            }
+            return signed.url().toExternalForm();
+        }
+    }
+
+    private URI s3BrowserOrigin(ResolvedObjectStorageConfig config) {
+        var options = StorageConfigOptions.parseOrEmpty(config.source().getOptions());
+        String browserEndpoint = StorageConfigOptions.getString(options, "browserEndpoint");
+        return httpsOrigin(browserEndpoint == null ? config.endpoint() : browserEndpoint,
+                "S3 媒体直读需要浏览器可达的 HTTPS 服务端点");
     }
 
     private String tosPublicEndpoint(ResolvedObjectStorageConfig config) {

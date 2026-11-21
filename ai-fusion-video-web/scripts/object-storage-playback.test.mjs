@@ -1,14 +1,14 @@
 import assert from "node:assert/strict";
 import { createCipheriv, randomBytes } from "node:crypto";
 import test from "node:test";
-import { streamTosMedia } from "../public/media-playback-stream.mjs";
+import { streamObjectMedia } from "../public/media-playback-stream.mjs";
 
 const origin = "https://fusion.example";
 const playback = new URL("/_afv/media-playback", origin);
 const grantUrl = new URL("/api/media-content/12345678-1234-1234-1234-123456789012/playback", origin);
 grantUrl.searchParams.set("ticket", "a".repeat(43));
 playback.searchParams.set("grant", grantUrl.href);
-const tos = "https://test.tos-cn-shanghai.volces.com/cipher?signature=test";
+const storageUrl = "https://objects.example.test/media-bucket/cipher?X-Amz-Signature=test";
 const size = 1024 * 1024 + 181;
 const firstPayload = 1024 * 1024 - 40;
 const plain = randomBytes(size);
@@ -25,7 +25,7 @@ for (const [index, payload] of [plain.subarray(0, firstPayload), plain.subarray(
 }
 const encrypted = Buffer.concat(ciphertext);
 const grant = {
-  url: tos,
+  url: storageUrl,
   key: key.toString("base64url"),
   noncePrefix: nonce.toString("base64url"),
   size,
@@ -40,7 +40,7 @@ function mockFetch(t, { denied, incorrectRange, corrupt } = {}) {
     if (input.toString() === grantUrl.href) {
       return denied ? new Response(null, { status: 403 }) : Response.json(grant);
     }
-    assert.equal(input, tos);
+    assert.equal(input, storageUrl);
     assert.equal(options.credentials, "omit");
     const [, from, to] = /^bytes=(\d+)-(\d+)$/.exec(options.headers.Range);
     const start = Number(from);
@@ -64,7 +64,7 @@ test("streaming range across the first segment returns authenticated plaintext i
   const reads = mockFetch(t);
   const start = firstPayload - 7;
   const end = firstPayload + 17;
-  const response = await streamTosMedia(new Request(playback, {
+  const response = await streamObjectMedia(new Request(playback, {
     headers: { Range: `bytes=${start}-${end}` },
   }), origin);
   assert.equal(response.status, 206);
@@ -75,29 +75,29 @@ test("streaming range across the first segment returns authenticated plaintext i
 
 test("a suffix seek reads only the final ciphertext segment", async (t) => {
   const reads = mockFetch(t);
-  const response = await streamTosMedia(new Request(playback, {
+  const response = await streamObjectMedia(new Request(playback, {
     headers: { Range: "bytes=-18" },
   }), origin);
   assert.deepEqual(Buffer.from(await response.arrayBuffer()), plain.subarray(-18));
   assert.deepEqual(reads, [[1024 * 1024, encrypted.length - 1]]);
 });
 
-test("expired authorization never requests the TOS object", async (t) => {
+test("expired authorization never requests the storage object", async (t) => {
   const reads = mockFetch(t, { denied: true });
-  assert.equal((await streamTosMedia(new Request(playback), origin)).status, 403);
+  assert.equal((await streamObjectMedia(new Request(playback), origin)).status, 403);
   assert.deepEqual(reads, []);
 });
 
 test("mismatched Range response is rejected before any plaintext is returned", async (t) => {
   mockFetch(t, { incorrectRange: true });
-  const response = await streamTosMedia(new Request(playback), origin);
+  const response = await streamObjectMedia(new Request(playback), origin);
   assert.equal(response.status, 502);
   assert.equal(await response.text(), "");
 });
 
 test("a damaged GCM segment is rejected before any plaintext is returned", async (t) => {
   mockFetch(t, { corrupt: true });
-  const response = await streamTosMedia(new Request(playback), origin);
+  const response = await streamObjectMedia(new Request(playback), origin);
   assert.equal(response.status, 502);
   assert.equal(await response.text(), "");
 });
